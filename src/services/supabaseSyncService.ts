@@ -130,7 +130,14 @@ export async function loadCloudState(): Promise<CloudState | null> {
     if (!latestDesignVersionByProfile.has(version.profile_id)) latestDesignVersionByProfile.set(version.profile_id, version);
   }
   const profiles = (profileRows as CloudProfileRow[]).map(row => {
-    const base = row.data;
+    // The normalized identity lives in the Supabase row. Older records may
+    // not have copied id/username into the JSON data payload, so always merge
+    // the row values back before the profile enters React state and autosave.
+    const base = {
+      ...row.data,
+      id: row.id,
+      username: row.username,
+    } as Profile;
     const version = latestDesignVersionByProfile.get(row.id);
     const themeId = version?.theme_id || row.active_theme_id;
     const layoutId = version?.layout_id || row.active_layout_id;
@@ -210,6 +217,9 @@ export async function loadCloudState(): Promise<CloudState | null> {
 
 export async function saveCloudProfile(profile: Profile, workspaceId: string): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
+  if (!profile?.id?.trim() || !profile?.username?.trim()) {
+    throw new Error('Cannot save cloud profile: profile id and username are required.');
+  }
   // Legacy profiles use the flat theme shape. Migrate that shape before the
   // strict boundary check; current versioned themes are validated as-is.
   const rawTheme = profile.standardTheme || normalizeTheme(profile.theme);
