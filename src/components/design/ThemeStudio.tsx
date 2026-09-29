@@ -149,26 +149,81 @@ const ColorTokenEditor: React.FC<{
     const parsed = parseColorInput(next, format);
     if (parsed) onChange(parsed);
   };
+  const ratio = calculateContrastRatio(value, contrastAgainst);
+  const isAccessible = ratio >= 4.5;
+  const isAAA = ratio >= 7;
   const accessibleAlternative = calculateContrastRatio('#FFFFFF', contrastAgainst) >= calculateContrastRatio('#000000', contrastAgainst) ? '#FFFFFF' : '#000000';
+
   return (
-    <div className="rounded-xl border border-line bg-canvas/60 p-3 space-y-2" data-color-token={token}>
+    <div className="rounded-xl border border-line bg-canvas/70 p-3.5 space-y-2.5 transition-all hover:border-line-strong hover:bg-canvas/90" data-color-token={token}>
       <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-semibold text-ink">{label}</label>
-        <span className="font-mono text-[10px] text-muted">{calculateContrastRatio(value, contrastAgainst)}:1</span>
+        <label className="text-xs font-semibold text-ink flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full border border-black/10 dark:border-white/10 shadow-xs shrink-0" style={{ backgroundColor: value }} />
+          <span>{label}</span>
+        </label>
+        <span 
+          title={`Contrast ratio against surface: ${ratio}:1`}
+          className={`font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+            isAAA 
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
+              : isAccessible 
+                ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' 
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+          }`}
+        >
+          <span>{ratio}:1</span>
+          <span>{isAAA ? 'AAA' : isAccessible ? 'AA' : 'Notice'}</span>
+        </span>
       </div>
       <div className="flex items-center gap-2">
-        <input aria-label={`${label} color picker`} type="color" value={normalizeHex(value) || '#000000'} onChange={(event) => commit(event.target.value)} className="h-8 w-9 rounded border border-line-strong bg-transparent" />
-        <input aria-label={`${label} ${format} value`} value={draft} onChange={(event) => commit(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 py-1.5 text-xs font-mono text-ink focus:outline-none" />
-        <select aria-label={`${label} color format`} value={format} onChange={(event) => setFormat(event.target.value as ColorFormat)} className="rounded-lg border border-line bg-surface px-1.5 py-1.5 text-[10px] text-ink">
-          <option value="hex">HEX</option><option value="rgb">RGB</option><option value="hsl">HSL</option>
+        <div className="relative group shrink-0">
+          <input 
+            aria-label={`${label} color picker`} 
+            type="color" 
+            value={normalizeHex(value) || '#000000'} 
+            onChange={(event) => commit(event.target.value)} 
+            className="h-9 w-9 rounded-lg border border-line-strong bg-transparent cursor-pointer p-0.5" 
+          />
+        </div>
+        <input 
+          aria-label={`${label} ${format} value`} 
+          value={draft} 
+          onChange={(event) => commit(event.target.value)} 
+          className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-mono text-ink focus:outline-none focus:ring-1 focus:ring-accent" 
+        />
+        <select 
+          aria-label={`${label} color format`} 
+          value={format} 
+          onChange={(event) => setFormat(event.target.value as ColorFormat)} 
+          className="rounded-lg border border-line bg-surface px-2 py-1.5 text-[10px] font-semibold text-ink cursor-pointer focus:outline-none"
+        >
+          <option value="hex">HEX</option>
+          <option value="rgb">RGB</option>
+          <option value="hsl">HSL</option>
         </select>
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-muted">
-        <span>Before</span><span className="h-4 w-4 rounded border border-line" style={{ backgroundColor: defaultValue }} /><span>Current</span><span className="h-4 w-4 rounded border border-line" style={{ backgroundColor: value }} /><span className="ml-auto">Accessible: <code className="font-mono text-ink">{accessibleAlternative}</code></span>
-      </div>
-      <div className="flex gap-2">
-        <button type="button" onClick={() => onChange(defaultValue)} className="rounded-md border border-line px-2 py-1 text-[10px] font-semibold text-muted hover:bg-surface hover:text-ink cursor-pointer">Restore default</button>
-        <button type="button" onClick={() => onChange('#000000')} className="rounded-md border border-line px-2 py-1 text-[10px] font-semibold text-muted hover:bg-surface hover:text-ink cursor-pointer">Reset token</button>
+      <div className="flex items-center justify-between gap-2 pt-0.5 text-[10px] text-muted border-t border-line/60">
+        <div className="flex items-center gap-1.5">
+          <span className="text-subtle">Default</span>
+          <button 
+            type="button" 
+            onClick={() => onChange(defaultValue)}
+            title="Restore default color token"
+            className="h-4 w-4 rounded-full border border-line cursor-pointer hover:scale-110 transition-transform" 
+            style={{ backgroundColor: defaultValue }} 
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-subtle">Safe suggestion</span>
+          <button 
+            type="button" 
+            onClick={() => onChange(accessibleAlternative)}
+            title={`Apply safe high-contrast alternative: ${accessibleAlternative}`}
+            className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded border border-line bg-surface text-ink hover:border-accent hover:text-accent cursor-pointer transition-colors"
+          >
+            {accessibleAlternative}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -999,8 +1054,8 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         </div>
 
         {/* Four-stage builder navigation */}
-        <div className="rounded-2xl border border-line bg-surface p-2 shadow-sm">
-          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
+        <div className="rounded-2xl border border-line bg-surface/90 p-2.5 shadow-xs backdrop-blur-xs">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
             {STUDIO_STAGES.map((stage, index) => {
               const isActive = activeStage === stage.id;
               const isComplete = STUDIO_STAGES.findIndex(item => item.id === activeStage) > index;
@@ -1011,18 +1066,32 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   onClick={() => openStudioStage(stage)}
                   aria-current={isActive ? 'step' : undefined}
                   aria-label={`${stage.label}: ${stage.description}`}
-                  className={`min-h-14 min-w-[9.5rem] flex-1 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${isActive ? 'bg-ink text-white shadow-sm' : 'text-muted hover:bg-canvas hover:text-ink'}`}
+                  className={`min-h-14 min-w-[9.5rem] flex-1 rounded-xl px-3 py-2 text-left transition-all cursor-pointer relative overflow-hidden ${
+                    isActive 
+                      ? 'bg-ink text-white shadow-sm ring-1 ring-ink/20' 
+                      : 'text-muted hover:bg-canvas hover:text-ink border border-transparent hover:border-line'
+                  }`}
                 >
-                  <span className={`mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${isActive ? 'bg-white/15 text-white' : isComplete ? 'bg-success-surface text-success' : 'bg-canvas text-muted'}`}>
-                    {isComplete ? '✓' : index + 1}
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                      isActive 
+                        ? 'bg-white/20 text-white' 
+                        : isComplete 
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
+                          : 'bg-canvas text-muted border border-line'
+                    }`}>
+                      {isComplete ? '✓' : index + 1}
+                    </span>
+                    <span className="text-xs font-bold truncate">{stage.label}</span>
+                  </div>
+                  <span className={`mt-1 block pl-7 text-[10px] leading-tight ${isActive ? 'text-white/70' : 'text-subtle'}`}>
+                    {stage.description}
                   </span>
-                  <span className="text-xs font-semibold">{stage.label}</span>
-                  <span className={`mt-1 block pl-7 text-[10px] leading-tight ${isActive ? 'text-white/70' : 'text-subtle'}`}>{stage.description}</span>
                 </button>
               );
             })}
           </div>
-          <div role="tablist" aria-label={`${currentStage.label} theme settings`} className="mt-2 flex items-center gap-1 overflow-x-auto border-t border-line px-1 pt-2 scrollbar-none">
+          <div role="tablist" aria-label={`${currentStage.label} theme settings`} className="mt-2.5 flex items-center gap-1.5 overflow-x-auto border-t border-line/70 px-1 pt-2.5 scrollbar-none">
             {currentStage.tabs.map(tab => (
               <button
                 key={tab}
@@ -1030,7 +1099,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 onClick={() => openStudioTab(tab)}
                 role="tab"
                 aria-selected={activeTab === tab}
-                className={`min-h-11 whitespace-nowrap rounded-lg px-3 text-[11px] font-semibold transition-colors cursor-pointer ${activeTab === tab ? 'bg-accent text-white' : 'text-muted hover:bg-canvas hover:text-ink'}`}
+                className={`min-h-9 whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                  activeTab === tab 
+                    ? 'bg-accent text-white shadow-xs' 
+                    : 'text-muted hover:bg-canvas hover:text-ink'
+                }`}
               >
                 {STUDIO_TAB_LABELS[tab]}{tab === 'snapshots' ? ` (${snapshots.length})` : ''}
               </button>
@@ -1041,8 +1114,36 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         {activeTab === 'starterSites' && (
           <div className="space-y-5">
             <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4 sm:p-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Starter Sites</div><h3 className="mt-1 text-base font-bold text-ink">Start with real content, not a blank canvas</h3><p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted">A starter site creates profile copy, social links, pages, blocks, SEO metadata, and a suggested CTA. Applying one requires confirmation and does not change silently.</p></div><span className="rounded-full bg-surface px-2.5 py-1 text-[10px] font-semibold text-muted">{PERSONA_TEMPLATES.length} content starters</span></div>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{PERSONA_TEMPLATES.map(persona => <article key={persona.id} className="rounded-xl border border-line bg-surface p-4"><div className="text-[10px] font-semibold uppercase tracking-wider text-accent">{persona.eyebrow}</div><h4 className="mt-1 text-sm font-bold text-ink">{persona.name}</h4><p className="mt-1.5 min-h-10 text-[11px] leading-relaxed text-muted">{persona.description}</p><div className="mt-3 flex flex-wrap gap-1.5">{persona.fields.slice(0, 5).map(field => <span key={field} className="rounded-full bg-canvas px-2 py-1 text-[10px] text-muted">{field}</span>)}</div><button type="button" onClick={() => applyPersonaTemplate(persona)} className="mt-4 min-h-10 w-full rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white hover:bg-ink/85 cursor-pointer">Use this starter</button></article>)}</div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Starter Sites Catalog</div>
+                  <h3 className="mt-1 text-base font-bold text-ink">Start with curated content, not a blank canvas</h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted">A starter site crafts real bio copy, relevant social platforms, structured blocks, SEO metadata, and goal-driven conversion defaults.</p>
+                </div>
+                <span className="rounded-full bg-surface border border-line px-3 py-1 text-[10px] font-semibold text-muted shrink-0">{PERSONA_TEMPLATES.length} content starters</span>
+              </div>
+              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {PERSONA_TEMPLATES.map(persona => (
+                  <article key={persona.id} className="rounded-2xl border border-line bg-surface p-4 flex flex-col justify-between hover:border-line-strong hover:shadow-xs transition-all">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-accent">{persona.eyebrow}</span>
+                        <span className="text-[9px] font-mono text-muted uppercase px-1.5 py-0.5 rounded bg-canvas border border-line">{persona.category}</span>
+                      </div>
+                      <h4 className="mt-1.5 text-sm font-bold text-ink">{persona.name}</h4>
+                      <p className="mt-1.5 min-h-11 text-[11px] leading-relaxed text-muted">{persona.description}</p>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {persona.fields.slice(0, 5).map(field => (
+                          <span key={field} className="rounded-md bg-canvas border border-line/60 px-2 py-0.5 text-[10px] text-muted">{field}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => applyPersonaTemplate(persona)} className="mt-4 min-h-10 w-full rounded-xl bg-ink px-3 py-2 text-xs font-semibold text-white hover:bg-ink/85 cursor-pointer transition-colors shadow-xs">
+                      Use this starter
+                    </button>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -1051,8 +1152,13 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         {activeTab === 'presets' && (
           <div className="space-y-6">
             <div>
-              <div className="text-xs font-semibold text-muted uppercase tracking-wider font-mono mb-3">
-                Specification Curated Presets
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <div>
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider font-mono">
+                    Specification Curated Presets ({SPEC_THEME_PRESETS.length})
+                  </div>
+                  <p className="text-[11px] text-muted mt-0.5">Tested against WCAG AA color standards and multi-device viewports.</p>
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {SPEC_THEME_PRESETS.map((preset) => {
@@ -1060,33 +1166,43 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   return (
                     <div
                       key={preset.id}
-                      className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group cursor-pointer ${
+                      className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden group flex flex-col justify-between ${
                         isSelected 
-                          ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-surface' 
-                          : 'border-line bg-surface/60 hover:border-line-strong'
+                          ? 'border-accent ring-2 ring-accent/20 bg-surface shadow-md' 
+                          : 'border-line bg-surface/70 hover:border-line-strong hover:bg-surface hover:shadow-xs'
                       }`}
                     >
-                      <ThemePreviewCard theme={preset} profile={activeProfile} />
-
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-semibold text-ink">{preset.name}</div>
-                          <div className="text-[10px] text-muted mt-0.5">{preset.tokens.typography.displayFamily.split(',')[0]}</div>
+                      <div>
+                        <div className="relative overflow-hidden rounded-xl">
+                          <ThemePreviewCard theme={preset} profile={activeProfile} />
+                          {isSelected && (
+                            <span className="absolute top-2 right-2 rounded-full bg-accent px-2 py-0.5 text-[9px] font-bold text-white shadow-xs">
+                              Active
+                            </span>
+                          )}
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-accent shrink-0" />}
+
+                        <div className="mt-3 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-ink truncate flex items-center gap-1.5">
+                              <span>{preset.name}</span>
+                              <span className="text-[9px] font-mono text-muted/80">({preset.tokens.typography.displayFamily.split(',')[0]})</span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className="rounded-md bg-canvas border border-line px-1.5 py-0.5 text-[9px] font-semibold text-ink">{preset.category || 'Creator'}</span>
+                              <span className="rounded-md bg-canvas px-1.5 py-0.5 text-[9px] text-muted capitalize">{preset.mode || 'system'}</span>
+                              <span className="rounded-md bg-canvas px-1.5 py-0.5 text-[9px] text-muted capitalize">{preset.background.type}</span>
+                              {preset.supportsRTL !== false && <span className="rounded-md bg-indigo-500/10 text-accent px-1.5 py-0.5 text-[9px] font-medium">RTL</span>}
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />}
+                        </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">{preset.category || 'Creator'}</span>
-                        {(preset.supportedGoals || ['contact']).slice(0, 2).map(goal => <span key={goal} className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium text-accent">{goal}</span>)}
-                        <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">{preset.mode === 'dark' ? 'Dark' : preset.mode === 'light' ? 'Light' : 'Light / dark'}</span>
-                        {preset.supportsRTL !== false && <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">Arabic-ready</span>}
-                        {preset.mobileFirst !== false && <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">Mobile-first</span>}
-                        <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">{preset.background.type}</span>
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        <button type="button" onClick={() => previewPreset(preset)} className="min-h-11 rounded-lg border border-line px-2 py-2 text-[11px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer">Preview theme</button>
-                        <button type="button" onClick={() => applyVisualStyle(preset)} className="min-h-11 rounded-lg bg-ink px-2 py-2 text-[11px] font-semibold text-white hover:opacity-90 cursor-pointer">Apply appearance</button>
-                        <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-11 rounded-lg border border-accent/40 bg-accent/10 px-2 py-2 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer">Apply layout</button>
+
+                      <div className="mt-3.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3 pt-2.5 border-t border-line/60">
+                        <button type="button" onClick={() => previewPreset(preset)} className="min-h-9 rounded-lg border border-line px-2 py-1.5 text-[11px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors">Preview</button>
+                        <button type="button" onClick={() => applyVisualStyle(preset)} className="min-h-9 rounded-lg bg-ink px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-ink/85 cursor-pointer transition-colors">Style</button>
+                        <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors">Layout</button>
                       </div>
                     </div>
                   );
@@ -1140,12 +1256,43 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               </div>
               <label className="flex items-center gap-2 text-[11px] text-muted">
                 <span>Theme mode</span>
-                <select aria-label="Theme mode" value={standardTheme.mode || 'system'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, mode: e.target.value as 'light' | 'dark' | 'system' }))} className="rounded-lg border border-line bg-canvas px-2 py-1.5 text-xs font-semibold text-ink focus:outline-none">
+                <select aria-label="Theme mode" value={standardTheme.mode || 'system'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, mode: e.target.value as 'light' | 'dark' | 'system' }))} className="rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink focus:outline-none">
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                   <option value="system">System</option>
                 </select>
               </label>
+            </div>
+
+            {/* Quick Harmonious Accent Palettes */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-ink">Curated Accent Harmonies</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { name: 'Indigo Electric', accent: '#6366F1', text: '#FFFFFF', bg: '#090D16' },
+                  { name: 'Emerald Luxe', accent: '#10B981', text: '#022C22', bg: '#061712' },
+                  { name: 'Rose Radiance', accent: '#F43F5E', text: '#FFFFFF', bg: '#14080E' },
+                  { name: 'Amber Sunset', accent: '#F59E0B', text: '#18181B', bg: '#181408' }
+                ].map(palette => (
+                  <button
+                    key={palette.name}
+                    type="button"
+                    onClick={() => {
+                      handleUpdateColor('accent', palette.accent);
+                      handleUpdateColor('accentText', palette.text);
+                    }}
+                    className="p-2.5 rounded-xl border border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas text-left cursor-pointer transition-all flex items-center gap-2.5"
+                  >
+                    <div className="h-6 w-6 rounded-lg border border-black/10 shadow-xs shrink-0 flex items-center justify-center font-bold text-[9px]" style={{ backgroundColor: palette.accent, color: palette.text }}>
+                      A
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-[11px] font-bold text-ink truncate">{palette.name}</span>
+                      <span className="block font-mono text-[9px] text-muted">{palette.accent}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1339,10 +1486,48 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
 
         {/* Tab 3: Typography */}
         {activeTab === 'typography' && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-5">
+          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-line">
-              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Typography Tokens (Section 3.2)</h3>
-              <span className="text-[11px] text-muted">Approved Font Catalog</span>
+              <div>
+                <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Typography Tokens (Section 3.2)</h3>
+                <p className="mt-1 text-[11px] text-muted">Preview real font specimens and configure architectural typographic scales.</p>
+              </div>
+              <span className="text-[10px] rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 text-accent font-medium">Curated Catalog</span>
+            </div>
+
+            {/* Visual Font Specimen Carousel / Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-ink">Curated Display Typefaces</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {[
+                  { id: 'Syne, ui-sans-serif, system-ui, sans-serif', name: 'Syne', tag: 'Architectural Modern', sample: 'Aa Bb Cc 123', style: { fontFamily: 'Syne, sans-serif' } },
+                  { id: 'Plus Jakarta Sans, system-ui, sans-serif', name: 'Plus Jakarta Sans', tag: 'Balanced Editorial', sample: 'Aa Bb Cc 123', style: { fontFamily: 'Plus Jakarta Sans, sans-serif' } },
+                  { id: 'Manrope, Inter, ui-sans-serif, sans-serif', name: 'Manrope', tag: 'Clean Geometric', sample: 'Aa Bb Cc 123', style: { fontFamily: 'Manrope, sans-serif' } },
+                  { id: 'Inter, ui-sans-serif, system-ui, sans-serif', name: 'Inter', tag: 'Universal Technical', sample: 'Aa Bb Cc 123', style: { fontFamily: 'Inter, sans-serif' } },
+                  { id: 'Fraunces, serif', name: 'Fraunces', tag: 'Expressive Serif', sample: 'Aa Bb Cc 123', style: { fontFamily: 'Fraunces, serif' } }
+                ].map(font => {
+                  const isSelected = standardTheme.tokens.typography.displayFamily.includes(font.name);
+                  return (
+                    <button
+                      key={font.name}
+                      type="button"
+                      onClick={() => handleUpdateTypography('displayFamily', font.id)}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'border-accent bg-accent/10 ring-1 ring-accent/30 text-ink shadow-xs' 
+                          : 'border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-ink" style={font.style}>{font.name}</span>
+                        {isSelected && <span className="text-[10px] font-bold text-accent">Active</span>}
+                      </div>
+                      <div className="text-[10px] text-muted mt-0.5">{font.tag}</div>
+                      <div className="mt-2 text-sm text-ink truncate" style={font.style}>{font.sample}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1819,18 +2004,47 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <label className="block text-xs font-medium text-body">Layout template</label>
                   <span className="text-[10px] text-subtle">Appearance and composition only</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {LAYOUT_TEMPLATES.map(template => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onClick={() => applyLayoutTemplate(template)}
-                      className={`rounded-xl border p-3 text-left transition-colors cursor-pointer ${standardTheme.layout?.templateId === template.id ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/30' : 'border-line bg-canvas hover:border-line-strong'}`}
-                    >
-                      <span className="block text-xs font-semibold text-ink">{template.name}</span>
-                      <span className="mt-1 block text-[10px] text-muted">{template.goal}</span>
-                    </button>
-                  ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {LAYOUT_TEMPLATES.map(template => {
+                    const isSelected = standardTheme.layout?.templateId === template.id;
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => applyLayoutTemplate(template)}
+                        className={`rounded-xl border p-3.5 text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                          isSelected 
+                            ? 'border-accent bg-accent/10 ring-1 ring-accent/30 text-ink shadow-xs' 
+                            : 'border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="block text-xs font-bold text-ink">{template.name}</span>
+                            <span className="mt-0.5 block text-[10px] text-muted">{template.goal}</span>
+                          </div>
+                          {isSelected && (
+                            <span className="text-[10px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20">Selected</span>
+                          )}
+                        </div>
+
+                        {/* Visual mini-wireframe preview */}
+                        <div className="mt-3 h-8 w-full rounded-md border border-line/80 bg-surface/80 p-1 flex flex-col justify-center gap-1">
+                          <div className={`h-1.5 rounded-full bg-muted/40 ${template.alignment === 'center' ? 'mx-auto w-12' : 'w-10'}`} />
+                          <div className="flex gap-1 justify-center items-center">
+                            <div className="h-2 rounded-xs bg-accent/30 flex-1" />
+                            <div className="h-2 rounded-xs bg-muted/20 flex-1" />
+                          </div>
+                        </div>
+
+                        <div className="mt-2.5 flex flex-wrap gap-1">
+                          <span className="rounded bg-surface px-1.5 py-0.5 text-[9px] font-medium text-muted uppercase tracking-wider">{template.headerStyle}</span>
+                          <span className="rounded bg-surface px-1.5 py-0.5 text-[9px] font-medium text-muted uppercase tracking-wider">{template.alignment}</span>
+                          <span className="rounded bg-surface px-1.5 py-0.5 text-[9px] font-medium text-muted uppercase tracking-wider">{template.navigationStyle}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
