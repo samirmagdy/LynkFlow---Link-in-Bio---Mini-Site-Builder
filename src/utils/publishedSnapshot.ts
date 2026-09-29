@@ -15,6 +15,7 @@ export function createPublishedSnapshot(profile: Profile, publisherEmail: string
     bio: profile.bio || '',
     avatarUrl: profile.avatarUrl || '',
     category: profile.category || 'Creator',
+    starterSiteId: profile.starterSiteId,
     verified: !!profile.verified,
     socialPosition: profile.socialPosition || 'top',
     socialLinks: (profile.socialLinks || []).filter(link => link.active && link.url),

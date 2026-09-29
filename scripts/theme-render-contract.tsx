@@ -2,6 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppProvider } from '../src/context/AppContext';
 import { PublicProfileView } from '../src/components/preview/PublicProfileView';
+import { PhoneMockup } from '../src/components/preview/PhoneMockup';
 import { INITIAL_PROFILES } from '../src/data/mockData';
 import { SPEC_THEME_PRESETS } from '../src/data/themePresets';
 import { normalizeTheme, compileThemeToCssVariables } from '../src/utils/themeEngine';
@@ -47,6 +48,20 @@ for (const sourceTheme of representativeThemes) {
     if (!html.includes('data-image-placement=')) failures.push(`${label}: layout metadata missing from render`);
     if (!html.includes('max-width')) failures.push(`${label}: responsive/layout CSS missing from render`);
   }
+}
+
+const arabicPreview = renderToStaticMarkup(
+  <AppProvider lightweight>
+    <PhoneMockup
+      hideControls
+      previewSourceOverride="draft"
+      previewLocaleOverride="ar"
+      profileOverride={{ ...baseProfile, standardTheme: normalizeTheme({ ...baseProfile.standardTheme, language: 'en', direction: 'ltr' }) }}
+    />
+  </AppProvider>
+);
+if (!arabicPreview.includes('سمير مجدي') || !arabicPreview.includes('dir="rtl"') || !arabicPreview.includes('مصمم ومبدع مستقل')) {
+  failures.push('Arabic preview mode did not render mixed-language sample content and RTL direction');
 }
 
 console.log(`Theme render contract: ${representativeThemes.length} themes × 2 locales`);

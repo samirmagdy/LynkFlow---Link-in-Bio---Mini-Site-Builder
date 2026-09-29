@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { SPEC_THEME_PRESETS } from '../../data/themePresets';
 import { PublishedThemeSnapshot, StandardTheme } from '../../types/themeSchema';
-import { Block, BlockType, BrandKit } from '../../types';
-import { PERSONA_TEMPLATES, PersonaTemplate } from '../../data/personaTemplates';
+import { Block, BlockType, BrandKit, Profile } from '../../types';
+import { PERSONA_TEMPLATES, PersonaTemplate, composeStarterSiteTheme } from '../../data/personaTemplates';
 import { PhoneMockup } from '../preview/PhoneMockup';
 import { validateThemeAccessibility, validateProfileAccessibility, calculateContrastRatio, normalizeTheme, validateThemeSchema, calculateThemeQualityScore } from '../../utils/themeEngine';
 import { 
@@ -166,6 +166,40 @@ const ColorTokenEditor: React.FC<{
   );
 };
 
+const ThemePreviewCard: React.FC<{ theme: StandardTheme; label?: string; content?: Pick<Profile, 'displayName' | 'bio' | 'avatarUrl' | 'tabs'> }> = ({ theme, label = 'Theme preview', content }) => {
+  const preview = normalizeTheme(theme);
+  const colors = preview.tokens.colors;
+  const backgroundImage = preview.previewImage
+    ? `linear-gradient(rgba(15,23,42,.22), rgba(15,23,42,.22)), url(${preview.previewImage})`
+    : preview.background.gradientStops || undefined;
+  const displayName = content?.displayName?.trim() || 'Alex Vance';
+  const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AV';
+  const bio = content?.bio?.trim() || 'Creator, strategist, and storyteller sharing selected work.';
+  const blockTitles = (content?.tabs?.[0]?.blocks || []).filter(block => !block.isHidden).slice(0, 2).map(block => block.title || block.type);
+  const previewLinks = blockTitles.length ? blockTitles : ['Featured work', 'Start a conversation'];
+  return (
+    <div
+      className="relative h-40 w-full overflow-hidden rounded-xl border border-ink/10 p-3 shadow-inner"
+      aria-label={`${label}: ${preview.name} using ${displayName}`}
+      style={{ backgroundColor: colors.pageBackground, backgroundImage, backgroundSize: preview.previewImage ? 'cover' : undefined, backgroundPosition: 'center', fontFamily: preview.tokens.typography.bodyFamily }}
+    >
+      <div className="relative z-10 flex items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-[9px] font-bold" style={{ backgroundColor: colors.accent, borderColor: colors.accentText, color: colors.accentText }}>{initials}</div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[11px] font-bold" style={{ color: colors.primaryText }}>{displayName}</div>
+          <div className="truncate text-[8px]" style={{ color: colors.secondaryText }}>@creator</div>
+        </div>
+        <div className="h-5 w-5 rounded-full border" style={{ borderColor: colors.border, backgroundColor: colors.panelBackground }} />
+      </div>
+      <p className="relative z-10 mt-2 line-clamp-2 text-[8px] leading-relaxed" style={{ color: colors.secondaryText }}>{bio}</p>
+      <div className="relative z-10 mt-2 grid gap-1.5">
+        {previewLinks.map((title, index) => <div key={`${title}-${index}`} className="truncate rounded-lg border px-2 py-1.5 text-[8px] font-semibold" style={{ backgroundColor: index === 0 ? colors.accent : colors.panelBackground, borderColor: index === 0 ? colors.accent : colors.border, color: index === 0 ? colors.accentText : colors.primaryText }}>{title}</div>)}
+      </div>
+      <span className="absolute bottom-1.5 right-2 z-10 text-[7px] font-semibold uppercase tracking-wider" style={{ color: colors.secondaryText }}>Live content preview</span>
+    </div>
+  );
+};
+
 const STUDIO_STAGES: Array<{ id: StudioStage; label: string; description: string; tabs: StudioTab[] }> = [
   { id: 'foundation', label: 'Foundation', description: 'Choose starter content, visual style, and canvas.', tabs: ['starterSites', 'presets', 'background'] },
   { id: 'styling', label: 'Styling', description: 'Tune color contrast, type, and brand identity.', tabs: ['colors', 'typography', 'brand'] },
@@ -225,6 +259,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     ,applyBrandKitToTheme,
     hasUnpublishedChanges,
     saveStatus,
+    lastSavedAt,
     saveErrorMessage,
     retrySave,
     setPreviewSource,
@@ -251,6 +286,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [comparisonSnapshot, setComparisonSnapshot] = useState<PublishedThemeSnapshot | null>(null);
   const [comparisonDevice, setComparisonDevice] = useState<'mobile-small' | 'mobile' | 'tablet' | 'desktop' | 'wide'>('mobile');
   const [comparisonLocale, setComparisonLocale] = useState<'en' | 'ar'>('en');
+  const [, setRecencyTick] = useState(0);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const mobileBackgroundInputRef = useRef<HTMLInputElement>(null);
   const themeImportRef = useRef<HTMLInputElement>(null);
@@ -259,6 +295,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     latinFont: 'Inter, ui-sans-serif, system-ui, sans-serif', arabicFont: 'Noto Kufi Arabic, Tahoma, sans-serif', buttonStyle: 'filled' as const,
     imageStyle: 'rounded' as const, socialIconStyle: 'minimal' as const, updatedAt: new Date().toISOString()
   };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRecencyTick(value => value + 1), 30000);
+    return () => window.clearInterval(timer);
+  }, [lastSavedAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -530,7 +571,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }));
   };
 
-  const handleUpdateLayout = (key: keyof NonNullable<StandardTheme['layout']>, value: string) => {
+  const handleUpdateLayout = (key: keyof NonNullable<StandardTheme['layout']>, value: string | boolean) => {
     updateStandardTheme(prev => ({
       ...prev,
       layout: {
@@ -547,7 +588,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }));
   };
 
-  const handleUpdateResponsive = (viewport: keyof StandardTheme['responsive'], key: 'pageX' | 'pageY' | 'blockGap', value: number) => {
+  const handleUpdateResponsive = (viewport: keyof StandardTheme['responsive'], key: 'pageX' | 'pageY' | 'blockGap' | 'avatarSize' | 'headingScale' | 'imageHeight' | 'textAlign' | 'navigationPosition' | 'blockVisibility', value: number | string) => {
     updateStandardTheme(prev => ({
       ...prev,
       responsive: {
@@ -602,6 +643,21 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       layout: next.layout,
       responsive: next.responsive
     }));
+  };
+
+  const applySavedPreset = (preset: StandardTheme) => {
+    const composition = preset.presetComposition;
+    const changesLayout = composition?.changesLayout !== false;
+    const includesContent = composition?.includesStarterContent === true || composition?.changesContent === true;
+    const summary = changesLayout
+      ? `Apply “${preset.name}”? This changes the visual style and layout composition, but preserves your profile content and blocks.`
+      : `Apply “${preset.name}”? This changes appearance only and preserves your layout and content.`;
+    if (includesContent) {
+      if (!window.confirm(`${summary}\n\nThis preset also contains starter content. Continue only if you want to replace the current content.`)) return;
+    } else if (changesLayout && !window.confirm(summary)) {
+      return;
+    }
+    applyTheme(preset);
   };
 
   const handleUpdateVariant = (key: keyof NonNullable<StandardTheme['componentVariants']>, value: string) => {
@@ -659,6 +715,15 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   const snapshots = activeProfile.themeSnapshots || [];
+  const savedRecency = (() => {
+    if (!lastSavedAt) return 'Saved';
+    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(lastSavedAt).getTime()) / 60000));
+    if (elapsedMinutes < 1) return 'Saved just now';
+    if (elapsedMinutes === 1) return 'Saved 1 minute ago';
+    if (elapsedMinutes < 60) return `Saved ${elapsedMinutes} minutes ago`;
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    return `Saved ${elapsedHours} hour${elapsedHours === 1 ? '' : 's'} ago`;
+  })();
   const currentStage = STUDIO_STAGES.find(stage => stage.id === activeStage) || STUDIO_STAGES[0];
   const openStudioTab = (tab: StudioTab) => {
     const stage = STUDIO_STAGES.find(item => item.tabs.includes(tab));
@@ -673,9 +738,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const applyPersonaTemplate = (template: PersonaTemplate) => {
     if (!window.confirm(`Apply “${template.name}”? This replaces the current draft blocks with the persona starter structure.`)) return;
     const stamp = Date.now();
-    applyTheme(template.theme);
+    applyTheme(composeStarterSiteTheme(template));
     updateDraftProfile(prev => ({
       ...prev,
+      starterSiteId: template.id,
       category: template.category,
       bio: prev.bio && !prev.bio.toLowerCase().includes('welcome to my') ? prev.bio : template.bio,
       socialLinks: template.socialLinks.map((social, index) => ({
@@ -732,7 +798,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           {/* Action Toolbar */}
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <span role="status" title={saveErrorMessage || undefined} className={`mr-1 inline-flex max-w-[11rem] truncate rounded-full border px-2 py-1 text-[10px] font-semibold ${saveStatus === 'error' || saveStatus === 'conflict' ? 'border-danger/30 bg-danger-surface text-danger' : saveStatus === 'offline' ? 'border-warning/30 bg-warning-surface text-warning' : saveStatus === 'saving' ? 'border-warning/30 bg-warning-surface text-warning' : 'border-success/30 bg-success-surface text-success'}`}>
-              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? 'Draft saved' : 'Saved'}
+              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? `Draft · ${savedRecency.toLowerCase()}` : savedRecency}
             </span>
             {(saveStatus === 'error' || saveStatus === 'conflict') && <button type="button" onClick={() => void retrySave()} className="rounded-md border border-danger/30 px-2 py-1 text-[10px] font-semibold text-danger hover:bg-danger-surface cursor-pointer">Retry</button>}
             <button
@@ -895,10 +961,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {PERSONA_TEMPLATES.map(persona => (
                   <article key={persona.id} className="overflow-hidden rounded-xl border border-line bg-surface">
-                    <div
-                      className="h-24 bg-cover bg-center"
-                      style={{ backgroundColor: persona.theme.tokens.colors.pageBackground, backgroundImage: persona.theme.previewImage ? `linear-gradient(rgba(15,23,42,.18), rgba(15,23,42,.18)), url(${persona.theme.previewImage})` : persona.theme.background.gradientStops }}
-                    />
+                    <ThemePreviewCard theme={persona.theme} label="Starter theme preview" content={activeProfile} />
                     <div className="p-3.5">
                       <div className="text-[10px] font-semibold uppercase tracking-wider text-accent">{persona.eyebrow}</div>
                       <h4 className="mt-1 text-sm font-bold text-ink">{persona.name}</h4>
@@ -929,28 +992,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                           : 'border-line bg-surface/60 hover:border-line-strong'
                       }`}
                     >
-                      <div 
-                        className="w-full h-12 rounded-lg mb-2.5 flex items-center justify-center p-2 shadow-inner border border-ink/5"
-                        style={{
-                          backgroundColor: preset.tokens.colors.pageBackground,
-                          backgroundImage: preset.previewImage
-                            ? `linear-gradient(rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0.16)), url(${preset.previewImage})`
-                            : preset.background.gradientStops || undefined,
-                          backgroundSize: preset.previewImage ? 'cover' : undefined,
-                          backgroundPosition: 'center'
-                        }}
-                      >
-                        <div 
-                          className="w-16 h-4 rounded text-[9px] font-semibold flex items-center justify-center border"
-                          style={{
-                            backgroundColor: preset.tokens.colors.panelBackground,
-                            borderColor: preset.tokens.colors.border,
-                            color: preset.tokens.colors.primaryText
-                          }}
-                        >
-                          CTA
-                        </div>
-                      </div>
+                      <ThemePreviewCard theme={preset} content={activeProfile} />
 
                       <div className="flex items-center justify-between">
                         <div>
@@ -990,28 +1032,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                     return (
                       <button
                         key={preset.id}
-                        onClick={() => applyTheme(preset)}
+                        onClick={() => applySavedPreset(preset)}
                         className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group cursor-pointer ${
                           isSelected 
                             ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-surface' 
                             : 'border-line bg-surface/60 hover:border-line-strong'
                         }`}
                       >
-                        <div 
-                          className="w-full h-12 rounded-lg mb-2.5 flex items-center justify-center p-2 shadow-inner border border-ink/5"
-                          style={{ backgroundColor: preset.tokens.colors.pageBackground }}
-                        >
-                          <div 
-                            className="w-16 h-4 rounded text-[9px] font-semibold flex items-center justify-center border"
-                            style={{
-                              backgroundColor: preset.tokens.colors.panelBackground,
-                              borderColor: preset.tokens.colors.border,
-                              color: preset.tokens.colors.primaryText
-                            }}
-                          >
-                            Custom
-                          </div>
-                        </div>
+                        <ThemePreviewCard theme={preset} label="Custom theme preview" content={activeProfile} />
                         <div className="flex items-center justify-between">
                           <div className="text-xs font-semibold text-ink truncate">{preset.name}</div>
                           {isSelected && <Check className="w-4 h-4 text-accent shrink-0" />}
@@ -1413,6 +1441,22 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted">
                 {([['logo', 'Lock logos'], ['colors', 'Lock colors'], ['fonts', 'Lock fonts'], ['spacing', 'Lock spacing']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={brandKit.lockedFields?.[key] === true} onChange={(e) => updateBrandKitField('lockedFields', { ...(brandKit.lockedFields || {}), [key]: e.target.checked })} /> {label}</label>)}
               </div>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-[11px] font-medium text-body">Collaborator editing mode
+                  <select value={brandKit.editingMode || 'full'} onChange={(e) => updateBrandKitField('editingMode', e.target.value as BrandKit['editingMode'])} className="mt-1.5 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-ink focus:outline-none">
+                    <option value="full">Full theme editing</option>
+                    <option value="content-only">Content-only editing</option>
+                    <option value="selected-overrides">Selected theme overrides</option>
+                  </select>
+                </label>
+                {brandKit.editingMode === 'selected-overrides' && <div className="rounded-lg border border-line bg-surface p-2.5 text-[10px] text-muted">
+                  <p className="font-semibold text-ink">Allowed theme overrides</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {([['colors', 'Colors'], ['fonts', 'Fonts'], ['spacing', 'Spacing'], ['background', 'Background'], ['layout', 'Layout'], ['components', 'Components']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-1.5"><input type="checkbox" checked={(brandKit.allowedThemeOverrides || []).includes(key)} onChange={(e) => { const current = new Set(brandKit.allowedThemeOverrides || []); if (e.target.checked) current.add(key); else current.delete(key); updateBrandKitField('allowedThemeOverrides', Array.from(current)); }} /> {label}</label>)}
+                  </div>
+                </div>}
+              </div>
+              <p className="mt-3 text-[10px] text-subtle">These rules are enforced when themes are applied or edited, including imported themes and saved presets.</p>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/5 p-3">
               <p className="text-[11px] text-muted">Use this kit on the current profile without replacing its name, bio, links, pages, or blocks.</p>
@@ -1727,7 +1771,21 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <select value={standardTheme.layout?.ctaPosition || 'priority-order'} onChange={(e) => handleUpdateLayout('ctaPosition', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"><option value="first">First after header</option><option value="after-header">After profile header</option><option value="priority-order">Use block priorities</option></select>
                 </div>
               </div>
-              {standardTheme.conversion?.goal === 'whatsapp' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input value={standardTheme.conversion.whatsappCountryCode || ''} onChange={(e) => handleUpdateConversion('whatsappCountryCode', e.target.value)} placeholder="Country code, e.g. +966" className="px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" /><input value={standardTheme.conversion.whatsappMessage || ''} onChange={(e) => handleUpdateConversion('whatsappMessage', e.target.value)} placeholder="Prefilled message" className="px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" /></div>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-[11px] font-medium text-body">Primary CTA block
+                  <select value={standardTheme.conversion?.primaryBlockId || ''} onChange={(e) => handleUpdateConversion('primaryBlockId', e.target.value || null)} className="mt-1.5 w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                    <option value="">Use theme priority order</option>
+                    {activeProfile.tabs.flatMap(tab => tab.blocks).map(block => <option key={block.id} value={block.id}>{block.title || block.type}</option>)}
+                  </select>
+                </label>
+                <label className="block text-[11px] font-medium text-body">Secondary CTA block
+                  <select value={standardTheme.conversion?.secondaryBlockId || ''} onChange={(e) => handleUpdateConversion('secondaryBlockId', e.target.value || null)} className="mt-1.5 w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                    <option value="">None</option>
+                    {activeProfile.tabs.flatMap(tab => tab.blocks).map(block => <option key={block.id} value={block.id}>{block.title || block.type}</option>)}
+                  </select>
+                </label>
+              </div>
+              {standardTheme.conversion?.goal === 'whatsapp' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input value={standardTheme.conversion.whatsappCountryCode || ''} onChange={(e) => handleUpdateConversion('whatsappCountryCode', e.target.value)} placeholder="Country code, e.g. +966" className="px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" /><input value={standardTheme.conversion.whatsappMessage || ''} onChange={(e) => handleUpdateConversion('whatsappMessage', e.target.value)} placeholder="Prefilled message" className="px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" /><input value={standardTheme.conversion.whatsappTrackingParameter || ''} onChange={(e) => handleUpdateConversion('whatsappTrackingParameter', e.target.value)} placeholder="Tracking parameter, e.g. theme_studio" className="px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" /><input value={standardTheme.conversion.businessHours || ''} onChange={(e) => handleUpdateConversion('businessHours', e.target.value)} placeholder="Business hours, e.g. Sun–Thu 09:00–17:00" className="px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" /></div>}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1774,6 +1832,15 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <option value="top">Top of page</option><option value="below-header">Below profile header</option><option value="bottom">Bottom of page</option>
                 </select>
               </div>
+
+              <label className="flex items-center gap-2 text-xs text-muted sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={standardTheme.layout?.showFooter !== false}
+                  onChange={(e) => handleUpdateLayout('showFooter', e.target.checked)}
+                />
+                Show LynkFlow footer and report-page action
+              </label>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Section grouping</label>
@@ -1928,8 +1995,22 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                     <div className="text-[11px] font-semibold capitalize text-ink">{viewport === 'smallMobile' ? 'Small mobile' : viewport}</div>
                     <label className="block text-[10px] text-muted">Horizontal padding ({viewportRules.pageX}px)</label>
                     <input aria-label={`${viewport} horizontal padding`} type="range" min="8" max="48" value={viewportRules.pageX} onChange={(e) => handleUpdateResponsive(viewport, 'pageX', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-[10px] text-muted">Vertical padding ({viewportRules.pageY}px)</label>
+                    <input aria-label={`${viewport} vertical padding`} type="range" min="8" max="64" value={viewportRules.pageY} onChange={(e) => handleUpdateResponsive(viewport, 'pageY', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
                     <label className="block text-[10px] text-muted">Block gap ({viewportRules.blockGap}px)</label>
                     <input aria-label={`${viewport} block gap`} type="range" min="6" max="36" value={viewportRules.blockGap} onChange={(e) => handleUpdateResponsive(viewport, 'blockGap', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-[10px] text-muted">Avatar size ({viewportRules.avatarSize || 88}px)</label>
+                    <input aria-label={`${viewport} avatar size`} type="range" min="48" max="140" value={viewportRules.avatarSize || 88} onChange={(e) => handleUpdateResponsive(viewport, 'avatarSize', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-[10px] text-muted">Heading scale ({Math.round((viewportRules.headingScale || 1) * 100)}%)</label>
+                    <input aria-label={`${viewport} heading scale`} type="range" min="75" max="160" value={Math.round((viewportRules.headingScale || 1) * 100)} onChange={(e) => handleUpdateResponsive(viewport, 'headingScale', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-[10px] text-muted">Media height ({viewportRules.imageHeight || 320}px)</label>
+                    <input aria-label={`${viewport} media height`} type="range" min="120" max="720" step="10" value={viewportRules.imageHeight || 320} onChange={(e) => handleUpdateResponsive(viewport, 'imageHeight', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-[10px] text-muted">Text alignment</label>
+                    <select aria-label={`${viewport} text alignment`} value={viewportRules.textAlign || 'center'} onChange={(e) => handleUpdateResponsive(viewport, 'textAlign', e.target.value)} className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-[10px] text-ink"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+                    <label className="block text-[10px] text-muted">Navigation</label>
+                    <select aria-label={`${viewport} navigation position`} value={viewportRules.navigationPosition || 'below-header'} onChange={(e) => handleUpdateResponsive(viewport, 'navigationPosition', e.target.value)} className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-[10px] text-ink"><option value="top">Top</option><option value="below-header">Below header</option><option value="bottom">Bottom</option></select>
+                    <label className="block text-[10px] text-muted">Block visibility</label>
+                    <select aria-label={`${viewport} block visibility`} value={viewportRules.blockVisibility || 'all'} onChange={(e) => handleUpdateResponsive(viewport, 'blockVisibility', e.target.value)} className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-[10px] text-ink"><option value="all">All blocks</option><option value="hide-media">Hide media</option><option value="hide-socials">Hide socials</option></select>
                   </div>
                   );
                 })}
@@ -2214,7 +2295,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
 
         <div className="sticky bottom-2 z-30 flex items-center justify-between gap-3 rounded-2xl border border-line-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur lg:hidden">
           <span className="min-w-0 truncate text-[11px] font-medium text-muted" role="status">
-            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed — retry above' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? 'Draft ready to publish' : 'All changes saved'}
+            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed — retry above' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? `Draft ready to publish · ${savedRecency.toLowerCase()}` : savedRecency}
           </span>
           <button type="button" onClick={() => setIsPublishOpen(true)} disabled={!hasUnpublishedChanges || !a11y.canPublish} className="shrink-0 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Publish</button>
         </div>

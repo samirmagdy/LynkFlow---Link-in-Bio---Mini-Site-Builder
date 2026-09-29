@@ -30,8 +30,10 @@ import {
   AnimeHoverEffect, 
   AnimeClickEffect 
 } from '../../types';
-import { normalizeTheme, compileThemeToCssVariables } from '../../utils/themeEngine';
+import { compileThemeToCssVariables } from '../../utils/themeEngine';
+import type { StandardTheme } from '../../types/themeSchema';
 import { getBlockVariantDefinition, resolveLinkVariant } from '../../utils/blockVariantRegistry';
+import { resolveProfileRenderModel, selectInitialProfileTab } from '../../utils/profileRenderModel';
 import { ThemeProvider } from './ThemeProvider';
 import { 
   runStaggeredEntrance, 
@@ -166,12 +168,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
   // Support deep-link tab URL routing (e.g. #tab=slug or #slug)
   const getInitialTabId = (): string => {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.replace(/^#/, '');
-      const matched = profile.tabs.find(t => t.slug === hash || t.id === hash || hash === `tab=${t.slug}`);
-      if (matched) return matched.id;
-    }
-    return profile.tabs[0]?.id || '';
+    const requested = typeof window !== 'undefined' ? window.location.hash : null;
+    return selectInitialProfileTab(profile.tabs, requested)?.id || '';
   };
 
   const [activeTabId, setActiveTabId] = useState<string>(getInitialTabId);
@@ -251,12 +249,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
   const profileContainerRef = useRef<HTMLDivElement>(null);
 
-  const rawTheme = profile.standardTheme || profile.theme;
-  const standardTheme = normalizeTheme(rawTheme);
+  const renderModel = resolveProfileRenderModel(profile, { tabIdOrHash: activeTabId });
+  const standardTheme = renderModel.theme as StandardTheme;
   const cssVars = compileThemeToCssVariables(standardTheme);
   const colors = standardTheme.tokens.colors;
   const legacyTheme = profile.theme;
-  const currentTab = profile.tabs.find(t => t.id === activeTabId) || profile.tabs[0];
+  const currentTab = renderModel.currentTab as typeof profile.tabs[number] | undefined;
 
   // Background styling behavior per Section 8
   const bgType = standardTheme.background.type;
@@ -282,8 +280,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     ? `${standardTheme.background.gradientStops}, ${mobileImageLayers}`
     : mobileImageLayers;
   const layout = standardTheme.layout || { maxWidth: '680px', alignment: 'center' as const, headerStyle: 'standard' as const, blockWidth: 'full' as const, navigationStyle: 'pills' as const };
-  const language = standardTheme.language === 'ar' ? 'ar' : 'en';
-  const direction = standardTheme.direction === 'rtl' ? 'rtl' : 'ltr';
+  const socialIconPlacement = layout.socialIconPlacement || (profile.socialPosition === 'bottom' ? 'footer' : 'header');
+  const language = renderModel.language;
+  const direction = renderModel.direction;
   const backgroundScale = standardTheme.background.scale || 1;
   const bgStyle: React.CSSProperties = {
     backgroundColor: standardTheme.background.fallbackColor || colors.pageBackground,
@@ -303,28 +302,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     ...cssVars
   };
   const variants = standardTheme.componentVariants || { link: 'solid' as const, image: 'rounded' as const, socialIcons: 'line' as const, form: 'card' as const };
-  const isBlockVisible = (block: Block) => {
-    if (block.isHidden) return false;
-    if (block.schedule?.enabled) {
-      const now = new Date().getTime();
-      if (block.schedule.start && new Date(block.schedule.start).getTime() > now) return false;
-      if (block.schedule.end && new Date(block.schedule.end).getTime() < now) return false;
-    }
-    return true;
+  const responsiveVisibility = (rule: NonNullable<StandardTheme['responsive']['mobile']>) => {
+    const mode = rule.blockVisibility || 'all';
+    return `--theme-media-display:${mode === 'hide-media' ? 'none' : 'block'};--theme-social-display:${mode === 'hide-socials' ? 'none' : 'flex'};`;
   };
-  const orderedCurrentBlocks = [...(currentTab?.blocks.filter(isBlockVisible) || [])].sort((a, b) => {
-    const conversion = standardTheme.conversion;
-    const score = (block: typeof a) => {
-      if (conversion?.primaryBlockId === block.id) return 0;
-      if (conversion?.secondaryBlockId === block.id) return 1;
-      if (layout.ctaPosition === 'first' && block.conversionRole === 'primary') return 0;
-      if (block.conversionRole === 'secondary') return 1;
-      if (block.conversionRole === 'supporting') return 3;
-      if (block.conversionRole === 'informational') return 4;
-      return 2;
-    };
-    return score(a) - score(b) || a.position - b.position;
-  });
+  const orderedCurrentBlocks = renderModel.blocks as Block[];
 
   // Anime.js Staggered Entrance Animation on load, tab switch, theme change or trigger
   useEffect(() => {
@@ -511,9 +493,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
   return (
     <ThemeProvider theme={standardTheme}>
-    <style>{`.profile-theme-root{font-size:calc(var(--theme-body-size,16px) * var(--theme-body-scale,1));line-height:var(--theme-body-lh,1.5);letter-spacing:var(--theme-letter-spacing,0);text-transform:var(--theme-text-transform,none)}.profile-theme-root h1,.profile-theme-root h2,.profile-theme-root h3{font-family:var(--theme-display-font,inherit);font-weight:var(--theme-heading-weight,700);line-height:var(--theme-heading-lh,1.15)}.profile-theme-root[dir=rtl] h1,.profile-theme-root[dir=rtl] h2,.profile-theme-root[dir=rtl] h3{font-family:var(--theme-arabic-font,var(--theme-display-font,inherit))}.profile-theme-root h1{font-size:calc(2rem * var(--theme-heading-scale,1))}.profile-theme-root button,.profile-theme-root a[role=button]{font-size:var(--theme-button-text-size,14px)}.profile-theme-root small,.profile-theme-root figcaption{font-size:var(--theme-caption-size,12px)}.profile-theme-root p,.profile-theme-root li{max-width:var(--theme-max-line-length,68ch)}.profile-theme-root[data-image-placement=full-bleed] .profile-media-block{margin-left:calc(var(--theme-page-x,20px) * -1);margin-right:calc(var(--theme-page-x,20px) * -1);border-radius:0}.profile-theme-root[data-image-placement=alternating] .profile-media-block:nth-of-type(even){transform:translateX(3%)}.profile-theme-root[data-section-grouping=grouped] main{padding:var(--theme-page-x,20px);border-radius:var(--theme-card-radius,16px)}.profile-theme-root[data-section-grouping=editorial] main{padding-top:var(--theme-page-x,20px);border-top:1px solid var(--theme-border, #30394D)}.profile-theme-root[data-navigation-position=bottom] [role=tablist]{position:sticky;bottom:0;z-index:20;margin-top:auto;margin-bottom:0;backdrop-filter:blur(14px)}`}</style>
-    <style>{`.profile-theme-root{--theme-content-max-width:${layout.maxWidth};--theme-page-x:${standardTheme.tokens.spacing.pageX}px;--theme-block-gap:${standardTheme.tokens.spacing.blockGap}px}@media (max-width:374px){.profile-theme-root{--theme-content-max-width:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).maxWidth}px!important;--theme-page-x:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).pageX}px!important;--theme-block-gap:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).blockGap}px!important}}@media (min-width:375px) and (max-width:639px){.profile-theme-root{--theme-content-max-width:${standardTheme.responsive.mobile.maxWidth}px!important;--theme-page-x:${standardTheme.responsive.mobile.pageX}px!important;--theme-block-gap:${standardTheme.responsive.mobile.blockGap}px!important}}@media (min-width:640px) and (max-width:1023px){.profile-theme-root{--theme-content-max-width:${standardTheme.responsive.tablet.maxWidth}px!important;--theme-page-x:${standardTheme.responsive.tablet.pageX}px!important;--theme-block-gap:${standardTheme.responsive.tablet.blockGap}px!important}}@media (min-width:1024px){.profile-theme-root{--theme-content-max-width:${standardTheme.responsive.desktop.maxWidth}px!important;--theme-page-x:${standardTheme.responsive.desktop.pageX}px!important;--theme-block-gap:${standardTheme.responsive.desktop.blockGap}px!important}}`}</style>
+    <style>{`.profile-theme-root{font-size:calc(var(--theme-body-size,16px) * var(--theme-body-scale,1));line-height:var(--theme-body-lh,1.5);letter-spacing:var(--theme-letter-spacing,0);text-transform:var(--theme-text-transform,none)}.profile-theme-root h1,.profile-theme-root h2,.profile-theme-root h3{font-family:var(--theme-display-font,inherit);font-weight:var(--theme-heading-weight,700);line-height:var(--theme-heading-lh,1.15)}.profile-theme-root[dir=rtl] h1,.profile-theme-root[dir=rtl] h2,.profile-theme-root[dir=rtl] h3{font-family:var(--theme-arabic-font,var(--theme-display-font,inherit))}.profile-theme-root h1{font-size:calc(2rem * var(--theme-heading-scale,1))}.profile-theme-root button,.profile-theme-root a[role=button]{font-size:var(--theme-button-text-size,14px)}.profile-theme-root small,.profile-theme-root figcaption{font-size:var(--theme-caption-size,12px)}.profile-theme-root p,.profile-theme-root li{max-width:var(--theme-max-line-length,68ch)}.profile-theme-root .profile-header{text-align:var(--theme-text-align,center)}.profile-theme-root .profile-avatar{width:var(--theme-avatar-size,88px)!important;height:var(--theme-avatar-size,88px)!important}.profile-theme-root .profile-media-block img,.profile-theme-root .profile-media-block video{height:var(--theme-image-height,auto);object-fit:cover}.profile-theme-root[data-image-placement=full-bleed] .profile-media-block{margin-left:calc(var(--theme-page-x,20px) * -1);margin-right:calc(var(--theme-page-x,20px) * -1);border-radius:0}.profile-theme-root[data-image-placement=alternating] .profile-media-block:nth-of-type(even){transform:translateX(3%)}.profile-theme-root[data-section-grouping=grouped] main{padding:var(--theme-page-x,20px);border-radius:var(--theme-card-radius,16px)}.profile-theme-root[data-section-grouping=editorial] main{padding-top:var(--theme-page-x,20px);border-top:1px solid var(--theme-border, #30394D)}.profile-theme-root[data-navigation-position=bottom] [role=tablist]{position:sticky;bottom:0;z-index:20;margin-top:auto;margin-bottom:0;backdrop-filter:blur(14px)}.profile-theme-root[data-block-visibility=hide-media] .profile-media-block{display:none}.profile-theme-root[data-block-visibility=hide-socials] .profile-social{display:none}`}</style>
+    <style>{`.profile-theme-root{--theme-content-max-width:${layout.maxWidth};--theme-page-x:${standardTheme.tokens.spacing.pageX}px;--theme-block-gap:${standardTheme.tokens.spacing.blockGap}px;--theme-page-y:${standardTheme.tokens.spacing.pageY}px;--theme-avatar-size:${standardTheme.header.avatarSize}px;--theme-heading-scale:${standardTheme.tokens.typography.headingScale || 1};--theme-image-height:auto;--theme-text-align:${layout.alignment === 'left' ? 'left' : 'center'};--theme-navigation-position:${layout.navigationPosition || 'below-header'};--theme-block-visibility:all}@media (max-width:374px){.profile-theme-root{--theme-content-max-width:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).maxWidth}px!important;--theme-page-x:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).pageX}px!important;--theme-page-y:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).pageY}px!important;--theme-block-gap:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).blockGap}px!important;--theme-avatar-size:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).avatarSize || standardTheme.header.avatarSize}px!important;--theme-heading-scale:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).headingScale || 1}!important;--theme-image-height:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).imageHeight || 220}px!important;--theme-text-align:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).textAlign || 'center'}!important;--theme-navigation-position:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).navigationPosition || 'below-header'}!important;--theme-block-visibility:${(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile).blockVisibility || 'all'}!important}}@media (min-width:375px) and (max-width:639px){.profile-theme-root{--theme-content-max-width:${standardTheme.responsive.mobile.maxWidth}px!important;--theme-page-x:${standardTheme.responsive.mobile.pageX}px!important;--theme-page-y:${standardTheme.responsive.mobile.pageY}px!important;--theme-block-gap:${standardTheme.responsive.mobile.blockGap}px!important;--theme-avatar-size:${standardTheme.responsive.mobile.avatarSize || standardTheme.header.avatarSize}px!important;--theme-heading-scale:${standardTheme.responsive.mobile.headingScale || 1}!important;--theme-image-height:${standardTheme.responsive.mobile.imageHeight || 280}px!important;--theme-text-align:${standardTheme.responsive.mobile.textAlign || 'center'}!important;--theme-navigation-position:${standardTheme.responsive.mobile.navigationPosition || 'below-header'}!important;--theme-block-visibility:${standardTheme.responsive.mobile.blockVisibility || 'all'}!important}}@media (min-width:640px) and (max-width:1023px){.profile-theme-root{--theme-content-max-width:${standardTheme.responsive.tablet.maxWidth}px!important;--theme-page-x:${standardTheme.responsive.tablet.pageX}px!important;--theme-page-y:${standardTheme.responsive.tablet.pageY}px!important;--theme-block-gap:${standardTheme.responsive.tablet.blockGap}px!important;--theme-avatar-size:${standardTheme.responsive.tablet.avatarSize || standardTheme.header.avatarSize}px!important;--theme-heading-scale:${standardTheme.responsive.tablet.headingScale || 1}!important;--theme-image-height:${standardTheme.responsive.tablet.imageHeight || 320}px!important;--theme-text-align:${standardTheme.responsive.tablet.textAlign || 'center'}!important;--theme-navigation-position:${standardTheme.responsive.tablet.navigationPosition || 'below-header'}!important;--theme-block-visibility:${standardTheme.responsive.tablet.blockVisibility || 'all'}!important}}@media (min-width:1024px){.profile-theme-root{--theme-content-max-width:${standardTheme.responsive.desktop.maxWidth}px!important;--theme-page-x:${standardTheme.responsive.desktop.pageX}px!important;--theme-page-y:${standardTheme.responsive.desktop.pageY}px!important;--theme-block-gap:${standardTheme.responsive.desktop.blockGap}px!important;--theme-avatar-size:${standardTheme.responsive.desktop.avatarSize || standardTheme.header.avatarSize}px!important;--theme-heading-scale:${standardTheme.responsive.desktop.headingScale || 1}!important;--theme-image-height:${standardTheme.responsive.desktop.imageHeight || 380}px!important;--theme-text-align:${standardTheme.responsive.desktop.textAlign || 'center'}!important;--theme-navigation-position:${standardTheme.responsive.desktop.navigationPosition || 'below-header'}!important;--theme-block-visibility:${standardTheme.responsive.desktop.blockVisibility || 'all'}!important}}`}</style>
     {composedMobileImageBackground && <style>{`@media (max-width:639px){.profile-theme-root{background-image:${composedMobileImageBackground}!important;background-size:${backgroundScale > 1 ? `${backgroundScale * 100}%` : (standardTheme.background.fit || 'cover')}!important;background-position:${standardTheme.background.focalPoint ? `${standardTheme.background.focalPoint.x}% ${standardTheme.background.focalPoint.y}%` : (standardTheme.background.position || 'center')}!important}}`}</style>}
+    <style>{`.profile-theme-root .profile-media-block{display:var(--theme-media-display,block)}.profile-theme-root .profile-social{display:var(--theme-social-display,flex)}@media (max-width:374px){.profile-theme-root{${responsiveVisibility(standardTheme.responsive.smallMobile || standardTheme.responsive.mobile)}}}@media (min-width:375px) and (max-width:639px){.profile-theme-root{${responsiveVisibility(standardTheme.responsive.mobile)}}}@media (min-width:640px) and (max-width:1023px){.profile-theme-root{${responsiveVisibility(standardTheme.responsive.tablet)}}}@media (min-width:1024px){.profile-theme-root{${responsiveVisibility(standardTheme.responsive.desktop)}}}`}</style>
     <div 
       data-profile-theme={standardTheme.id || `profile_${profile.id}`}
       data-image-placement={layout.imagePlacement || 'inline'}
@@ -590,16 +573,16 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       >
         {/* Profile Header */}
         <header
-          className={`flex flex-col mb-6 ${layout.alignment === 'left' ? 'items-start text-left' : 'items-center text-center'} ${layout.headerStyle === 'hero' ? 'mb-8' : layout.headerStyle === 'compact' ? 'mb-4' : ''}`}
+          className={`profile-header flex flex-col mb-6 ${layout.alignment === 'left' ? 'items-start text-left' : 'items-center text-center'} ${layout.headerStyle === 'hero' ? 'mb-8' : layout.headerStyle === 'compact' ? 'mb-4' : ''}`}
           style={{ alignItems: layout.alignment === 'left' ? 'flex-start' : 'center', textAlign: layout.alignment }}
         >
           {standardTheme.profile?.showAvatar !== false && <div className="relative mb-3.5 group anime-profile-item">
-            <div style={{ borderRadius: standardTheme.profile?.avatarShape === 'square' ? '0' : standardTheme.profile?.avatarShape === 'rounded' ? '18px' : '999px', overflow: 'hidden' }}>
+            <div className="profile-avatar" style={{ borderRadius: standardTheme.profile?.avatarShape === 'square' ? '0' : standardTheme.profile?.avatarShape === 'rounded' ? '18px' : '999px', overflow: 'hidden' }}>
               <Avatar
                 name={profile.displayName || profile.username}
                 size="2xl"
                 avatarUrl={profile.avatarUrl}
-                className="ring-2 ring-ink/10 shadow-lg"
+                className="profile-avatar ring-2 ring-ink/10 shadow-lg"
                 style={{ width: `${standardTheme.header.avatarSize}px`, height: `${standardTheme.header.avatarSize}px`, borderRadius: standardTheme.profile?.avatarShape === 'square' ? '0' : standardTheme.profile?.avatarShape === 'rounded' ? '18px' : '999px' }}
               />
             </div>
@@ -633,11 +616,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           )}
 
           {/* Social Icons Bar (Top Position) */}
-          {profile.socialPosition === 'top' && profile.socialLinks.some(s => s.active) && (
-            <div className="flex items-center justify-center gap-2 flex-wrap mb-4 anime-profile-item">
-              {profile.socialLinks.filter(s => s.active).map(link => (
+          {socialIconPlacement === 'header' && profile.socialLinks.some(s => s.active) && (
+            <div className="profile-social flex items-center justify-center gap-2 flex-wrap mb-4 anime-profile-item">
+              {profile.socialLinks.filter(s => s.active).map((link, linkIdx) => (
                 <a
-                  key={link.id}
+                  key={link.id || `header-social-${linkIdx}`}
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -669,11 +652,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 border: `1px solid var(--theme-border, #30394D)`
               }}
             >
-              {profile.tabs.map(tab => {
+              {profile.tabs.map((tab, tabIdx) => {
                 const isActive = tab.id === activeTabId;
                 return (
                   <button
-                    key={tab.id}
+                    key={tab.id || `tab-${tabIdx}`}
                     onClick={() => handleTabChange(tab.id)}
                     type="button"
                     role="tab"
@@ -696,6 +679,16 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           )}
         </header>
 
+        {socialIconPlacement === 'inline' && profile.socialLinks.some(s => s.active) && (
+          <div className="profile-social flex items-center justify-center gap-2 flex-wrap mb-5" aria-label="Social links">
+            {profile.socialLinks.filter(s => s.active).map((link, linkIdx) => (
+              <a key={link.id || `inline-social-${linkIdx}`} href={link.url} target="_blank" rel="noopener noreferrer" aria-label={link.platform} className="touch-target rounded-full flex items-center justify-center transition-all hover:scale-110" style={{ width: 'var(--theme-social-size, 36px)', height: 'var(--theme-social-size, 36px)', backgroundColor: variants.socialIcons === 'filled' ? 'var(--theme-accent, #6366F1)' : variants.socialIcons === 'minimal' ? 'transparent' : 'var(--theme-panel-bg, #151B2A)', border: '1px solid var(--theme-border, #30394D)', color: variants.socialIcons === 'filled' ? 'var(--theme-accent-text, #FFFFFF)' : 'var(--theme-social-color, var(--theme-text-primary, #F8FAFC))' }}>
+                {renderSocialIcon(link.platform)}
+              </a>
+            ))}
+          </div>
+        )}
+
         {/* Blocks Render List */}
         <main
           id={currentTab && profile.tabs.length > 1 ? `profile-tab-panel-${currentTab.id}` : undefined}
@@ -713,7 +706,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </div>
           )}
 
-          {orderedCurrentBlocks.map(block => {
+          {orderedCurrentBlocks.map((block, blockIdx) => {
             const cardClasses = `${getCardStyle()} transition-all duration-200 overflow-hidden`;
             const requestedVariant = block.type === 'link'
               ? variants.link
@@ -796,6 +789,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               case 'media': {
                 const payload = block.payload as MediaBlockPayload;
                 const embedInfo = sanitizeMediaEmbed(payload.url || '');
+                const isDirectVideo = payload.mediaType === 'video' && /\.(?:mp4|webm|mov)(?:$|[?#])/i.test(payload.url || '');
 
                 return (
                   <div
@@ -808,7 +802,20 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       borderRadius: standardTheme.blockDefaults?.media?.radius === 'none' ? 0 : standardTheme.blockDefaults?.media?.radius === 'sm' ? '8px' : standardTheme.blockDefaults?.media?.radius === 'md' ? '14px' : standardTheme.blockDefaults?.media?.radius === 'full' ? '999px' : 'var(--theme-card-radius, 16px)'
                     }}
                   >
-                    {payload.mediaType === 'video' && embedInfo.isValid ? (
+                    {isDirectVideo ? (
+                      <div className="relative w-full aspect-video bg-black/60">
+                        <video
+                          controls
+                          preload="metadata"
+                          poster={payload.poster || undefined}
+                          className="h-full w-full object-contain"
+                          aria-label={block.title}
+                        >
+                          <source src={payload.url} />
+                          {payload.captionsUrl && <track kind="captions" src={payload.captionsUrl} srcLang="en" label="English captions" />}
+                        </video>
+                      </div>
+                    ) : payload.mediaType === 'video' && embedInfo.isValid ? (
                       <div className="relative w-full aspect-video bg-black/60">
                         <iframe
                           src={embedInfo.embedUrl}
@@ -865,9 +872,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 return (
                   <div key={block.id} className={`${cardClasses} p-2`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))' }}>
                     <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-                      {payload.items.map(item => {
+                      {payload.items.map((item, itemIdx) => {
                         const image = <img src={item.image} alt={item.alt || item.title || block.title} loading="lazy" className="aspect-square w-full object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
-                        return item.url ? <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer">{image}</a> : <div key={item.id}>{image}</div>;
+                        const itemKey = item.id || `${block.id}-gallery-${itemIdx}`;
+                        return item.url ? <a key={itemKey} href={item.url} target="_blank" rel="noopener noreferrer">{image}</a> : <div key={itemKey}>{image}</div>;
                       })}
                     </div>
                     <h4 className="px-2 pt-2 pb-1 text-xs font-semibold">{block.title}</h4>
@@ -879,9 +887,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 const payload = block.payload as CarouselBlockPayload;
                 return (
                   <div key={block.id} className={`${cardClasses} overflow-x-auto snap-x snap-mandatory flex gap-2 p-2`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))' }}>
-                    {payload.items.map(item => {
+                    {payload.items.map((item, itemIdx) => {
                       const image = <img src={item.image} alt={item.alt || item.title || block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
-                      return <div key={item.id} className="min-w-[82%] snap-center">{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">{image}</a> : image}{item.title && <p className="text-xs mt-2" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{item.title}</p>}</div>;
+                      return <div key={item.id || `${block.id}-carousel-${itemIdx}`} className="min-w-[82%] snap-center">{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">{image}</a> : image}{item.title && <p className="text-xs mt-2" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{item.title}</p>}</div>;
                     })}
                   </div>
                 );
@@ -991,9 +999,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                         className="px-4 pb-4 pt-1 space-y-2 border-t"
                         style={{ borderColor: 'var(--theme-border, #30394D)' }}
                       >
-                        {payload.items.map(item => (
+                        {payload.items.map((item, itemIdx) => (
                           <a
-                            key={item.id}
+                            key={item.id || `${block.id}-folder-${itemIdx}`}
                             href={item.url || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1031,11 +1039,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       {block.title}
                     </h4>
                     <div className="space-y-2">
-                      {payload.items.map(faq => {
+                      {payload.items.map((faq, faqIdx) => {
                         const isExpanded = openFaqs[faq.id];
                         return (
                           <div 
-                            key={faq.id} 
+                            key={faq.id || `${block.id}-faq-${faqIdx}`} 
                             className="rounded-lg overflow-hidden border"
                             style={{ borderColor: 'var(--theme-border, #30394D)' }}
                           >
@@ -1197,12 +1205,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                           </div>
                         )}
 
-                        {payload.fields.map(field => {
+                        {payload.fields.map((field, fieldIdx) => {
                           const fieldError = formErrors[block.id]?.[field.id];
                           const currentValue = formValues[block.id]?.[field.id] || '';
 
                           return (
-                          <div key={field.id} className="space-y-1">
+                          <div key={field.id || `${block.id}-field-${fieldIdx}`} className="space-y-1">
                               <label htmlFor={`form-${block.id}-${field.id}`} className="block text-sm sm:text-[11px] font-medium" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
                                 {field.label} {field.required && <span className="text-danger">*</span>}
                               </label>
@@ -1241,7 +1249,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                                 >
                                   <option value="">{field.placeholder || 'Select an option...'}</option>
                                   {(field.options || []).map((opt, optIdx) => (
-                                    <option key={optIdx} value={opt} className="bg-surface text-ink">
+                                    <option key={`${field.id || fieldIdx}-option-${optIdx}`} value={opt} className="bg-surface text-ink">
                                       {opt}
                                     </option>
                                   ))}
@@ -1382,7 +1390,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
           return (
             <AnimatedBlockItem
-              key={block.id}
+              key={block.id || `block-${blockIdx}`}
               block={block}
               theme={legacyTheme}
               className="w-full"
@@ -1395,11 +1403,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         </main>
 
         {/* Social Icons Bar (Bottom Position) */}
-        {profile.socialPosition === 'bottom' && profile.socialLinks.some(s => s.active) && (
-          <div className="flex items-center justify-center gap-2 flex-wrap mt-8 mb-4">
-            {profile.socialLinks.filter(s => s.active).map(link => (
+        {socialIconPlacement === 'footer' && profile.socialLinks.some(s => s.active) && (
+          <div className="profile-social flex items-center justify-center gap-2 flex-wrap mt-8 mb-4">
+            {profile.socialLinks.filter(s => s.active).map((link, linkIdx) => (
               <a
-                key={link.id}
+                key={link.id || `footer-social-${linkIdx}`}
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -1419,21 +1427,23 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         )}
 
         {/* Public Footer */}
-        <footer className="mt-12 text-center text-xs pb-4">
-          <div className="flex items-center justify-center gap-3" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
-            <span className="font-medium">
-              Powered by <span className="font-bold text-ink tracking-tight">LynkFlow</span>
-            </span>
-            <span>·</span>
-            <button
-              onClick={() => onOpenReportModal?.()}
-              className="hover:underline flex items-center gap-1 opacity-70 hover:opacity-100 cursor-pointer"
-            >
-              <Flag className="w-3 h-3" />
-              <span>Report page</span>
-            </button>
-          </div>
-        </footer>
+        {layout.showFooter !== false && (
+          <footer className="mt-12 text-center text-xs pb-4">
+            <div className="flex items-center justify-center gap-3" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+              <span className="font-medium">
+                Powered by <span className="font-bold text-ink tracking-tight">LynkFlow</span>
+              </span>
+              <span>·</span>
+              <button
+                onClick={() => onOpenReportModal?.()}
+                className="hover:underline flex items-center gap-1 opacity-70 hover:opacity-100 cursor-pointer"
+              >
+                <Flag className="w-3 h-3" />
+                <span>Report page</span>
+              </button>
+            </div>
+          </footer>
+        )}
 
         {/* Privacy & Optional Tracking Consent Banner (AN-005) */}
         {isStandalone && !cookieConsentDismissed && (

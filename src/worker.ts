@@ -1,4 +1,10 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server.edge';
+import { PublicProfileView } from './components/preview/PublicProfileView';
+import type { Profile } from './types';
 import { normalizeTheme, validateThemeAccessibility, validateThemeSchema, validateProfileAccessibility } from './utils/themeEngine';
+import { createThemeDesignPersistence, mergeSparseOverride } from './utils/designSystemPersistence';
+import { resolveProfileRenderModel } from './utils/profileRenderModel';
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -175,8 +181,9 @@ function publicProfileUrl(origin: string, username: string): string {
   return `${origin.replace(/\/$/, '')}/@${encodeURIComponent(username.toLowerCase())}`;
 }
 
-export function renderPublicProfileBody(snapshot: Record<string, any>, canonicalUrl: string): string {
-  const theme = snapshot.standardTheme || {};
+function renderLegacyPublicProfileBody(snapshot: Record<string, any>, canonicalUrl: string): string {
+  const renderModel = resolveProfileRenderModel(snapshot);
+  const theme = renderModel.theme;
   const themeColors = theme.tokens?.colors || {};
   const themeShape = theme.tokens?.shape || {};
   const themeLayout = theme.layout || {};
@@ -185,9 +192,10 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, canonical
   const username = escapeHtml(snapshot.username || 'creator');
   const bio = escapeHtml(snapshot.bio || '');
   const avatar = safePublicHref(snapshot.avatarUrl);
-  const socialLinks = Array.isArray(snapshot.socialLinks) ? snapshot.socialLinks.filter((link: any) => link?.active && safePublicHref(link.url)) : [];
-  const tabs = Array.isArray(snapshot.tabs) ? snapshot.tabs : [];
-  const blocks = tabs.flatMap((tab: any) => Array.isArray(tab?.blocks) ? tab.blocks : []).filter((block: any) => !block?.isHidden);
+  const socialLinks = renderModel.socialLinks.filter((link: any) => safePublicHref(link.url));
+  const tabs = renderModel.tabs;
+  const currentTab = renderModel.currentTab || null;
+  const blocks = renderModel.blocks;
   const blockHtml = blocks.map((block: any) => {
     const payload = block?.payload || {};
     const title = escapeHtml(block?.title || '');
@@ -203,12 +211,12 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, canonical
     }
     if (block?.type === 'media' && payload.mediaType === 'image') {
       const src = safePublicHref(payload.url);
-      return src ? `<figure><img src="${escapeHtml(src)}" alt="${title || 'Profile image'}" loading="lazy" width="1200" height="800"><figcaption>${title}</figcaption></figure>` : '';
+      return src ? `<figure class="profile-media-block"><img src="${escapeHtml(src)}" alt="${title || 'Profile image'}" loading="lazy" width="1200" height="800"><figcaption>${title}</figcaption></figure>` : '';
     }
     if (block?.type === 'media' && payload.mediaType === 'video') {
       const src = safePublicHref(payload.url);
       const captions = safePublicHref(payload.captionsUrl);
-      return src ? `<figure><video controls preload="metadata" width="1200" height="675"${safePublicHref(payload.poster) ? ` poster="${escapeHtml(safePublicHref(payload.poster))}"` : ''}><source src="${escapeHtml(src)}">${captions ? `<track kind="captions" label="English captions" src="${escapeHtml(captions)}">` : ''}</video><figcaption>${title}</figcaption></figure>` : '';
+      return src ? `<figure class="profile-media-block"><video controls preload="metadata" width="1200" height="675"${safePublicHref(payload.poster) ? ` poster="${escapeHtml(safePublicHref(payload.poster))}"` : ''}><source src="${escapeHtml(src)}">${captions ? `<track kind="captions" label="English captions" src="${escapeHtml(captions)}">` : ''}</video><figcaption>${title}</figcaption></figure>` : '';
     }
     if (block?.type === 'gallery' || block?.type === 'carousel') {
       const items = Array.isArray(payload.items) ? payload.items : [];
@@ -218,7 +226,7 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, canonical
         const image = `<img src="${escapeHtml(src)}" alt="${escapeHtml(item.alt || item.title || title || 'Gallery image')}" loading="lazy" width="1200" height="900">`;
         return item.url && safePublicHref(item.url) ? `<a href="${escapeHtml(safePublicHref(item.url))}" rel="noopener noreferrer">${image}</a>` : image;
       }).join('');
-      return `<div class="profile-gallery ${block.type === 'carousel' ? 'is-carousel' : ''}">${images}</div><h2 class="profile-block-title">${title}</h2>`;
+      return `<div class="profile-media-block profile-gallery ${block.type === 'carousel' ? 'is-carousel' : ''}">${images}</div><h2 class="profile-block-title">${title}</h2>`;
     }
     if (block?.type === 'product') {
       const image = safePublicHref(payload.image);
@@ -259,11 +267,58 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, canonical
     }
     return '';
   }).join('');
-  const socialHtml = socialLinks.map((link: any) => `<a href="${escapeHtml(safePublicHref(link.url))}" rel="me noopener noreferrer">${escapeHtml(link.platform || 'Social link')}</a>`).join(' · ');
+  const socialHtml = socialLinks.map((link: any) => `<a href="${escapeHtml(safePublicHref(link.url))}" aria-label="${escapeHtml(link.platform || 'Social link')}" rel="me noopener noreferrer">${escapeHtml(link.platform || 'Social link')}</a>`).join('');
+  const socialPlacement = ['header', 'footer', 'inline'].includes(String(themeLayout.socialIconPlacement)) ? String(themeLayout.socialIconPlacement) : 'header';
+  const headerSocialHtml = socialPlacement === 'header' && socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : '';
+  const inlineSocialHtml = socialPlacement === 'inline' && socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : '';
+  const footerSocialHtml = socialPlacement === 'footer' && socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : '';
+  const tabNavigation = tabs.length > 1 && theme.layout?.navigationStyle !== 'none'
+    ? `<nav class="profile-tabs" aria-label="Profile sections" role="tablist">${tabs.map((tab: any, index: number) => `<a role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" href="#${escapeHtml(String(tab?.slug || tab?.id || ''))}">${escapeHtml(tab?.title || `Section ${index + 1}`)}</a>`).join('')}</nav>`
+    : '';
   const video = theme.background?.type === 'video' && safePublicHref(theme.background?.assetUrl) ? `<video class="profile-background-video" src="${escapeHtml(safePublicHref(theme.background.assetUrl))}"${safePublicHref(theme.background?.posterUrl) ? ` poster="${escapeHtml(safePublicHref(theme.background.posterUrl))}"` : ''}${theme.background?.autoplay === false ? '' : ' autoplay'}${theme.background?.muted === false ? '' : ' muted'}${theme.background?.loop === false ? '' : ' loop'} playsinline aria-hidden="true"></video>` : '';
-  const language = theme.language === 'ar' ? 'ar' : 'en';
-  const direction = theme.direction === 'rtl' ? 'rtl' : 'ltr';
-  return `${video}<main class="profile-shell" lang="${language}" dir="${direction}"><header class="profile-header">${avatar && themeProfile.showAvatar !== false ? `<img class="profile-avatar" src="${escapeHtml(avatar)}" alt="${displayName}" width="112" height="112">` : ''}<h1>${displayName}</h1><p class="profile-handle">@${username}</p>${bio ? `<p class="profile-bio">${bio}</p>` : ''}${socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : ''}</header><section aria-label="Profile links" class="profile-content"><ul>${blockHtml}</ul></section><footer><a href="${escapeHtml(canonicalUrl)}">${displayName} on LynkFlow</a></footer></main>`;
+  const language = renderModel.language;
+  const direction = renderModel.direction;
+  const footer = themeLayout.showFooter === false ? '' : `<footer><a href="${escapeHtml(canonicalUrl)}">${displayName} on LynkFlow</a></footer>`;
+  return `${video}<main class="profile-shell" lang="${language}" dir="${direction}"><header class="profile-header">${avatar && themeProfile.showAvatar !== false ? `<img class="profile-avatar" src="${escapeHtml(avatar)}" alt="${displayName}" width="112" height="112">` : ''}<h1>${displayName}</h1><p class="profile-handle">@${username}</p>${bio ? `<p class="profile-bio">${bio}</p>` : ''}${headerSocialHtml}${tabNavigation}</header>${inlineSocialHtml}<section aria-label="${escapeHtml(currentTab?.title || 'Profile links')}" class="profile-content"${currentTab && tabs.length > 1 ? ` data-tab-id="${escapeHtml(String(currentTab.id || ''))}"` : ''}><ul>${blockHtml}</ul></section>${footerSocialHtml}${footer}</main>`;
+}
+
+/**
+ * Server-render the same React profile renderer used by the editor preview
+ * and browser public page. The Worker supplies no-op interaction actions only
+ * for static HTML; hydration restores the real application context in the
+ * browser. This keeps markup, block variants, locale handling and fallbacks
+ * on one renderer instead of maintaining a second SSR switch statement.
+ */
+export function renderPublicProfileBody(snapshot: Record<string, any>, _canonicalUrl: string): string {
+  const normalizeStaticBlock = (block: any) => {
+    const payload = block?.payload && typeof block.payload === 'object' ? block.payload : {};
+    const arrayDefaults: Record<string, unknown> = {
+      folder: { items: [] },
+      faq: { items: [] },
+      gallery: { items: [] },
+      carousel: { items: [] },
+      form: { fields: [], successMessage: 'Thanks — your message was received.' },
+      emailSignup: { fields: [], successMessage: 'Thanks — you are subscribed.' },
+    };
+    return { ...block, payload: { ...(arrayDefaults[block?.type] as Record<string, unknown> || {}), ...payload } };
+  };
+  const profile = {
+    ...snapshot,
+    id: String(snapshot.profileId || snapshot.id || `published-${snapshot.username || 'profile'}`),
+    username: String(snapshot.username || snapshot.handle || 'creator'),
+    displayName: String(snapshot.displayName || snapshot.username || 'Creator'),
+    bio: String(snapshot.bio || ''),
+    status: 'published',
+    publishedVersion: Number(snapshot.version || snapshot.publishedVersion || 1),
+    socialLinks: Array.isArray(snapshot.socialLinks) ? snapshot.socialLinks : [],
+    tabs: Array.isArray(snapshot.tabs) ? snapshot.tabs.map((tab: any) => ({
+      ...tab,
+      blocks: Array.isArray(tab?.blocks) ? tab.blocks.map(normalizeStaticBlock) : []
+    })) : [],
+    standardTheme: normalizeTheme(snapshot.standardTheme || snapshot.theme || {}),
+    theme: snapshot.theme || snapshot.standardTheme || {},
+  } as unknown as Profile;
+  return renderToStaticMarkup(React.createElement(PublicProfileView, { profile, isStandalone: false }));
 }
 
 export function publicProfileStyles(snapshot: Record<string, any> = {}): string {
@@ -284,7 +339,10 @@ export function publicProfileStyles(snapshot: Record<string, any> = {}): string 
   const mobileBackgroundAsset = background.type === 'image' ? safePublicMediaUrl(background.mobileAssetUrl) : null;
   const backgroundImageUrl = backgroundAsset ? `url("${escapeHtml(backgroundAsset)}")` : 'none';
   const mobileBackgroundImageUrl = mobileBackgroundAsset ? `url("${escapeHtml(mobileBackgroundAsset)}")` : backgroundImageUrl;
-  const gradientImage = (background.type === 'gradient' || background.type === 'pattern') && typeof background.gradientStops === 'string' ? escapeHtml(background.gradientStops) : backgroundImageUrl;
+  const gradientStops = typeof background.gradientStops === 'string' ? escapeHtml(background.gradientStops) : null;
+  const gradientImage = background.type === 'image' && gradientStops && backgroundImageUrl !== 'none'
+    ? `${gradientStops}, ${backgroundImageUrl}`
+    : (background.type === 'gradient' || background.type === 'pattern') && gradientStops ? gradientStops : backgroundImageUrl;
   const backgroundOverlay = Math.max(0, Math.min(1, Number(background.overlay ?? 0)));
   const overlayColor = escapeHtml(background.overlayColor || '#000000');
   const overlayLayer = `color-mix(in srgb, ${overlayColor} ${Math.round(backgroundOverlay * 100)}%, transparent)`;
@@ -307,7 +365,16 @@ export function publicProfileStyles(snapshot: Record<string, any> = {}): string 
   const maxLineLength = escapeHtml(typography.maxLineLength || '68ch');
   const textTransform = ['none', 'uppercase', 'capitalize'].includes(typography.textTransform) ? typography.textTransform : 'none';
   const mobileOverride = background.type === 'image' && mobileBackgroundAsset ? `@media (max-width:639px){body{background-image:${backgroundOverlay > 0 ? `linear-gradient(${overlayLayer}, ${overlayLayer}), ` : ''}${mobileBackgroundImageUrl}!important;background-size:${backgroundSize}!important;background-position:${backgroundPosition}!important}}` : '';
-  return `<style>body{margin:0;background:${pageBackground};background-image:${backgroundLayer};background-size:${backgroundSize};background-position:${backgroundPosition};color:${text};font-family:${font};position:relative;direction:${theme.direction === 'rtl' ? 'rtl' : 'ltr'};color-scheme:${mode};font-size:calc(${bodySize} * ${bodyScale});line-height:${Number(typography.bodyLineHeight ?? 1.5)};letter-spacing:${escapeHtml(typography.letterSpacing || '0px')};text-transform:${textTransform}}${mobileOverride}.profile-shell[dir=rtl]{font-family:${arabicFont}}.profile-background-video{position:fixed;inset:0;width:100%;height:100%;object-fit:${theme.background?.fit === 'contain' ? 'contain' : 'cover'};object-position:${theme.background?.position || 'center'};z-index:-1;opacity:.7;${theme.background?.blur ? `filter:blur(${Number(theme.background.blur)}px);` : ''}}.profile-shell{max-width:${maxWidth};margin:0 auto;padding:48px 20px;position:relative}.profile-header{text-align:${layout.alignment === 'left' ? 'left' : 'center'}}.profile-avatar{border-radius:${avatarRadius}px;object-fit:cover;margin:0 auto 20px;display:block}.profile-header h1{font-size:calc(2rem * ${headingScale});font-weight:${Number(typography.headingWeight ?? 700)};line-height:${Number(typography.headingLineHeight ?? 1.15)};margin:0 0 4px}.profile-handle,.profile-bio{color:${secondary}}.profile-bio{line-height:1.6;max-width:${maxLineLength}}.profile-social{margin:20px 0;color:${accent}}.profile-social a{color:inherit}.profile-content ul{list-style:none;padding:0;display:grid;gap:${Number(theme.tokens?.spacing?.blockGap ?? 14)}px}.profile-link{display:block;padding:16px;border:1px solid ${border};border-radius:${radius}px;background:${panel};color:${text};text-decoration:none;font-size:${buttonTextSize}}.profile-link:hover{border-color:${accent}}.profile-content p{color:${secondary};line-height:1.6;max-width:${maxLineLength}}.profile-content figure{margin:18px 0}.profile-content figure img,.profile-content figure video{display:block;width:100%;height:auto;border-radius:${radius}px}.profile-content figcaption{color:${secondary};margin-top:8px;font-size:${captionSize}}.profile-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.profile-gallery.is-carousel{display:flex;overflow:auto}.profile-gallery.is-carousel>*{min-width:82%}.profile-gallery img{display:block;width:100%;aspect-ratio:1.2;object-fit:cover;border-radius:${radius}px}.profile-block-title{font-size:1rem;margin:.6rem 0}.profile-product{overflow:hidden;border:1px solid ${border};border-radius:${radius}px;background:${panel}}.profile-product img{display:block;width:100%;aspect-ratio:1.2;object-fit:cover}.profile-product>div{padding:16px}.profile-product h2{font-size:1rem;margin:0 0 6px}.profile-product p,.profile-form p,.profile-folder p{color:${secondary};line-height:1.5;max-width:${maxLineLength}}.profile-product-link{display:inline-block;margin-top:12px;color:${accent};font-weight:600;text-decoration:none;font-size:${buttonTextSize}}.profile-form{border:1px solid ${border};border-radius:${radius}px;background:${panel};padding:16px}.profile-form h2{font-size:1rem;margin:0}.profile-testimonial{border:1px solid ${border};border-radius:${radius}px;background:${panel};padding:16px}.profile-testimonial blockquote{margin:0 0 12px;line-height:1.6}.profile-testimonial span{color:${accent}}.profile-divider{margin:16px 0}.profile-divider hr{border:0;border-top:1px solid ${border}.profile-divider-spacer{height:24px}.profile-divider-sm{margin-block:8px}.profile-divider-lg{margin-block:24px}details{border-bottom:1px solid ${border};padding:14px 0}summary{cursor:pointer;font-weight:600}footer{text-align:center;margin-top:40px;color:${secondary};font-size:${captionSize}}footer a{color:inherit}</style>`;
+  const responsive = theme.responsive || {};
+  const responsiveRule = (key: 'smallMobile' | 'mobile' | 'tablet' | 'desktop', fallback: Record<string, number | string>) => {
+    const rule = responsive[key] || {};
+    const number = (name: string) => Number.isFinite(Number(rule[name])) ? Number(rule[name]) : Number(fallback[name]);
+    const textValue = (name: string, allowed: string[]) => allowed.includes(String(rule[name])) ? String(rule[name]) : String(fallback[name]);
+    const blockVisibility = textValue('blockVisibility', ['all', 'hide-media', 'hide-socials']);
+    return `--theme-content-max-width:${Math.max(280, Math.min(1600, number('maxWidth')))}px;--theme-page-x:${Math.max(8, Math.min(48, number('pageX')))}px;--theme-page-y:${Math.max(8, Math.min(64, number('pageY')))}px;--theme-block-gap:${Math.max(6, Math.min(36, number('blockGap')))}px;--theme-avatar-size:${Math.max(48, Math.min(140, number('avatarSize')))}px;--theme-heading-scale:${Math.max(.75, Math.min(1.6, number('headingScale')))};--theme-image-height:${Math.max(120, Math.min(720, number('imageHeight')))}px;--theme-text-align:${textValue('textAlign', ['left', 'center', 'right'])};--theme-block-visibility:${blockVisibility};--theme-media-display:${blockVisibility === 'hide-media' ? 'none' : 'block'};`;
+  };
+  const responsiveCss = `.${'profile-shell'}{max-width:var(--theme-content-max-width,${maxWidth});padding:var(--theme-page-y,48px) var(--theme-page-x,20px)}.profile-header{text-align:var(--theme-text-align,${layout.alignment === 'left' ? 'left' : 'center'})}.profile-avatar{width:var(--theme-avatar-size,${Number(theme.header?.avatarSize ?? 88)}px);height:var(--theme-avatar-size,${Number(theme.header?.avatarSize ?? 88)}px)}.profile-header h1{font-size:calc(2rem * var(--theme-heading-scale,${headingScale}))}.profile-content ul{gap:var(--theme-block-gap,${Number(theme.tokens?.spacing?.blockGap ?? 14)}px)}.profile-content figure img,.profile-content figure video{height:var(--theme-image-height,auto);object-fit:cover}.profile-content .profile-media-block{display:var(--theme-media-display,block)}.profile-social{display:${theme.layout?.socialIconPlacement === 'footer' ? 'none' : 'block'}}@media (max-width:374px){.profile-shell{${responsiveRule('smallMobile', { maxWidth: 374, pageX: 12, pageY: 14, blockGap: 10, avatarSize: 72, headingScale: .9, imageHeight: 220, textAlign: 'center', blockVisibility: 'all' })}}}@media (min-width:375px) and (max-width:639px){.profile-shell{${responsiveRule('mobile', { maxWidth: 680, pageX: 16, pageY: 16, blockGap: 12, avatarSize: 80, headingScale: .96, imageHeight: 280, textAlign: 'center', blockVisibility: 'all' })}}}@media (min-width:640px) and (max-width:1023px){.profile-shell{${responsiveRule('tablet', { maxWidth: 760, pageX: 24, pageY: 24, blockGap: 14, avatarSize: 88, headingScale: 1, imageHeight: 320, textAlign: 'center', blockVisibility: 'all' })}}}@media (min-width:1024px){.profile-shell{${responsiveRule('desktop', { maxWidth: 860, pageX: 28, pageY: 28, blockGap: 16, avatarSize: 96, headingScale: 1.05, imageHeight: 380, textAlign: 'center', blockVisibility: 'all' })}}}`;
+  return `<style>body{margin:0;background:${pageBackground};background-image:${backgroundLayer};background-size:${backgroundSize};background-position:${backgroundPosition};color:${text};font-family:${font};position:relative;direction:${theme.direction === 'rtl' ? 'rtl' : 'ltr'};color-scheme:${mode};font-size:calc(${bodySize} * ${bodyScale});line-height:${Number(typography.bodyLineHeight ?? 1.5)};letter-spacing:${escapeHtml(typography.letterSpacing || '0px')};text-transform:${textTransform}}${mobileOverride}${responsiveCss}.profile-shell[dir=rtl]{font-family:${arabicFont}}.profile-background-video{position:fixed;inset:0;width:100%;height:100%;object-fit:${theme.background?.fit === 'contain' ? 'contain' : 'cover'};object-position:${theme.background?.position || 'center'};z-index:-1;opacity:.7;${theme.background?.blur ? `filter:blur(${Number(theme.background.blur)}px);` : ''}}.profile-shell{max-width:${maxWidth};margin:0 auto;padding:48px 20px;position:relative}.profile-header{text-align:${layout.alignment === 'left' ? 'left' : 'center'}}.profile-avatar{border-radius:${avatarRadius}px;object-fit:cover;margin:0 auto 20px;display:block}.profile-header h1{font-size:calc(2rem * ${headingScale});font-weight:${Number(typography.headingWeight ?? 700)};line-height:${Number(typography.headingLineHeight ?? 1.15)};margin:0 0 4px}.profile-handle,.profile-bio{color:${secondary}}.profile-bio{line-height:1.6;max-width:${maxLineLength}}.profile-social{margin:20px 0;color:${accent};display:flex;flex-wrap:wrap;gap:8px;justify-content:center}.profile-social a{color:inherit}.profile-tabs{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;width:100%;margin:4px 0 20px;padding:4px;background:${panel};border:1px solid ${border};border-radius:${radius}px}.profile-tabs a{color:${secondary};text-decoration:none;padding:8px 12px;border-radius:${radius}px;font-size:${buttonTextSize}}.profile-tabs a[aria-selected=true]{background:${accent};color:${escapeHtml(colors.ctaText || '#ffffff')}}.profile-content ul{list-style:none;padding:0;display:grid;gap:${Number(theme.tokens?.spacing?.blockGap ?? 14)}px}.profile-link{display:block;padding:16px;border:1px solid ${border};border-radius:${radius}px;background:${panel};color:${text};text-decoration:none;font-size:${buttonTextSize}}.profile-link:hover{border-color:${accent}}.profile-content p{color:${secondary};line-height:1.6;max-width:${maxLineLength}}.profile-content figure{margin:18px 0}.profile-content figure img,.profile-content figure video{display:block;width:100%;height:auto;border-radius:${radius}px}.profile-content figcaption{color:${secondary};margin-top:8px;font-size:${captionSize}}.profile-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.profile-gallery.is-carousel{display:flex;overflow:auto}.profile-gallery.is-carousel>*{min-width:82%}.profile-gallery img{display:block;width:100%;aspect-ratio:1.2;object-fit:cover;border-radius:${radius}px}.profile-block-title{font-size:1rem;margin:.6rem 0}.profile-product{overflow:hidden;border:1px solid ${border};border-radius:${radius}px;background:${panel}}.profile-product img{display:block;width:100%;aspect-ratio:1.2;object-fit:cover}.profile-product>div{padding:16px}.profile-product h2{font-size:1rem;margin:0 0 6px}.profile-product p,.profile-form p,.profile-folder p{color:${secondary};line-height:1.5;max-width:${maxLineLength}}.profile-product-link{display:inline-block;margin-top:12px;color:${accent};font-weight:600;text-decoration:none;font-size:${buttonTextSize}}.profile-form{border:1px solid ${border};border-radius:${radius}px;background:${panel};padding:16px}.profile-form h2{font-size:1rem;margin:0}.profile-testimonial{border:1px solid ${border};border-radius:${radius}px;background:${panel};padding:16px}.profile-testimonial blockquote{margin:0 0 12px;line-height:1.6}.profile-testimonial span{color:${accent}}.profile-divider{margin:16px 0}.profile-divider hr{border:0;border-top:1px solid ${border}.profile-divider-spacer{height:24px}.profile-divider-sm{margin-block:8px}.profile-divider-lg{margin-block:24px}details{border-bottom:1px solid ${border};padding:14px 0}summary{cursor:pointer;font-weight:600}footer{text-align:center;margin-top:40px;color:${secondary};font-size:${captionSize}}footer a{color:inherit}</style>`;
 }
 
 function publicProfileSupplementalStyles(): string {
@@ -759,27 +826,29 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
   const writeScope = resource === 'blocks' ? 'blocks:write' : 'themes:write';
   const auth = await authenticateApiKey(request, env, request.method === 'GET' ? readScope : writeScope);
   if (auth instanceof Response) return auth;
-  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username,data`, env);
-  const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> }>;
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
+  const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = rows[0];
   if (!profile || (auth.allowedProfileIds && !auth.allowedProfileIds.includes(profile.id))) return apiError('NOT_FOUND', 'Profile not found.', 404);
+  const profileData = await hydrateProfileDesignSystem(env, auth.workspaceId, profile.id, profile.data, profile);
 
   if (resource === 'themes') {
-    if (request.method === 'GET') return json({ data: profile.data.theme || null, requestId: crypto.randomUUID() });
+    if (request.method === 'GET') return json({ data: profileData.standardTheme || null, requestId: crypto.randomUUID() });
     let input: { data?: Record<string, unknown> };
     try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
     if (!input.data || typeof input.data !== 'object' || Array.isArray(input.data)) return apiError('VALIDATION_ERROR', 'data must be an object.', 422);
     const requestHash = await sha256(JSON.stringify(input.data));
     const replay = await idempotentReplay(env, auth, request, requestHash);
     if (replay) return replay;
-    const currentTheme = (profile.data.standardTheme || normalizeTheme(profile.data.theme || {})) as unknown as Record<string, unknown>;
+    const currentTheme = (profileData.standardTheme || normalizeTheme(profileData.theme || {})) as unknown as Record<string, unknown>;
     const candidateTheme = mergeThemePatch(currentTheme, input.data);
     const schemaResult = validateThemeSchema(candidateTheme);
     if (!schemaResult.isValid) return apiError('VALIDATION_ERROR', schemaResult.errors[0]?.message || 'Theme schema validation failed.', 422);
     const nextTheme = normalizeTheme(candidateTheme);
-    const nextData = { ...profile.data, theme: nextTheme, standardTheme: nextTheme };
-    await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() }) });
-    const result = { data: nextData.theme, requestId: crypto.randomUUID() };
+    const nextData = { ...profileData, theme: nextTheme, standardTheme: nextTheme, updatedAt: new Date().toISOString() };
+    await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: new Date().toISOString() }) });
+    await persistDesignSystem(env, auth.workspaceId, profileId, nextTheme as unknown as Record<string, unknown>, nextData);
+    const result = { data: nextTheme, requestId: crypto.randomUUID() };
     await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
     return json(result);
   }
@@ -814,29 +883,30 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
 async function publishApiProfile(request: Request, env: Env, profileId: string): Promise<Response> {
   const auth = await authenticateApiKey(request, env, 'publish:write');
   if (auth instanceof Response) return auth;
-  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username,data`, env);
-  const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> }>;
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
+  const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = rows[0];
   if (!profile || (auth.allowedProfileIds && !auth.allowedProfileIds.includes(profile.id))) return apiError('NOT_FOUND', 'Profile not found.', 404);
-  const validationError = validatePublishData(profile.data);
+  const profileData = await hydrateProfileDesignSystem(env, auth.workspaceId, profile.id, profile.data, profile);
+  const validationError = validatePublishData(profileData);
   if (validationError) return apiError('VALIDATION_ERROR', validationError, 422);
   const requestHash = await sha256(`${profileId}:publish`);
   const replay = await idempotentReplay(env, auth, request, requestHash);
   if (replay) return replay;
-  const version = Number(profile.data.publishedVersion || 0) + 1;
+  const version = Number(profileData.publishedVersion || 0) + 1;
   const publishedAt = new Date().toISOString();
-  const snapshot = createPublicSnapshot(profile.data, profile.id, version, publishedAt, `api-key:${auth.keyId}`);
+  const snapshot = createPublicSnapshot(profileData, profile.id, version, publishedAt, `api-key:${auth.keyId}`);
   const themeSnapshot = createThemeSnapshot(snapshot, profileId, version, publishedAt, `api-key:${auth.keyId}`);
   const nextData = {
-    ...profile.data,
+    ...profileData,
     status: 'published',
     publishedVersion: version,
     publishedAt,
     publishedSnapshot: snapshot,
-    snapshotHistory: [snapshot, ...(Array.isArray(profile.data.snapshotHistory) ? profile.data.snapshotHistory : [])].slice(0, 50),
-    themeSnapshots: [themeSnapshot, ...(Array.isArray(profile.data.themeSnapshots) ? profile.data.themeSnapshots : []).slice(0, 49)],
+    snapshotHistory: [snapshot, ...(Array.isArray(profileData.snapshotHistory) ? profileData.snapshotHistory : [])].slice(0, 50),
+    themeSnapshots: [themeSnapshot, ...(Array.isArray(profileData.themeSnapshots) ? profileData.themeSnapshots : []).slice(0, 49)],
   };
-  await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: publishedAt }) });
+  await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: publishedAt }) });
   await supabaseRequest(`published_profiles?on_conflict=profile_id`, env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ profile_id: profileId, workspace_id: auth.workspaceId, username: profile.username, snapshot, published_version: version, published_at: publishedAt, updated_at: publishedAt }) });
   await dispatchWebhookEvent(env, auth.workspaceId, 'profile.published', { profileId, username: profile.username, publishedVersion: version, publishedAt });
   const result = { data: { profileId, status: 'published', publishedVersion: version, publishedAt }, requestId: crypto.randomUUID() };
@@ -877,6 +947,51 @@ function validateDraftData(data: Record<string, unknown>): string | null {
   return schemaResult.isValid ? null : (schemaResult.errors[0]?.message || 'Theme schema validation failed.');
 }
 
+type DesignSystemColumns = {
+  active_theme_id?: string | null;
+  active_layout_id?: string | null;
+  theme_overrides_json?: Record<string, unknown> | null;
+  layout_overrides_json?: Record<string, unknown> | null;
+  active_starter_site_id?: string | null;
+};
+
+/** Hydrate a draft from its normalized design resources before validation/rendering. */
+async function hydrateProfileDesignSystem(env: Env, workspaceId: string, profileId: string, data: Record<string, unknown>, columns?: DesignSystemColumns): Promise<Record<string, unknown>> {
+  let design = columns;
+  if (!design) {
+    const response = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&select=active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
+    const rows = await response.json() as DesignSystemColumns[];
+    design = rows[0];
+  }
+  const themeId = design?.active_theme_id;
+  const layoutId = design?.active_layout_id;
+  const themeOverride = design?.theme_overrides_json || {};
+  const layoutOverride = design?.layout_overrides_json || {};
+  if (!themeId && !layoutId && !Object.keys(themeOverride).length && !Object.keys(layoutOverride).length) {
+    return design?.active_starter_site_id ? { ...data, starterSiteId: design.active_starter_site_id } : data;
+  }
+  const [themeResponse, layoutResponse] = await Promise.all([
+    themeId ? supabaseRequest(`themes?id=eq.${encodeURIComponent(themeId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&select=definition_json`, env) : Promise.resolve(null),
+    layoutId ? supabaseRequest(`layouts?id=eq.${encodeURIComponent(layoutId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&select=definition_json`, env) : Promise.resolve(null),
+  ]);
+  const themeRows = themeResponse ? await themeResponse.json() as Array<{ definition_json?: Record<string, unknown> }> : [];
+  const layoutRows = layoutResponse ? await layoutResponse.json() as Array<{ definition_json?: Record<string, unknown> }> : [];
+  const baseTheme = (themeRows[0]?.definition_json || data.standardTheme || data.theme || {}) as Record<string, unknown>;
+  const resolvedTheme = mergeSparseOverride(baseTheme, themeOverride) as Record<string, unknown>;
+  const baseLayout = layoutRows[0]?.definition_json || (baseTheme.layout as Record<string, unknown> | undefined) || {};
+  const legacyLayoutOverride = (themeOverride.layout as Record<string, unknown> | undefined) || {};
+  const resolvedLayout = mergeSparseOverride(baseLayout, mergeSparseOverride(legacyLayoutOverride, layoutOverride)) as Record<string, unknown>;
+  const normalized = normalizeTheme({ ...resolvedTheme, layout: resolvedLayout });
+  return { ...data, starterSiteId: design?.active_starter_site_id || data.starterSiteId, standardTheme: normalized, theme: normalized };
+}
+
+function withoutDraftDesignTheme(data: Record<string, unknown>): Record<string, unknown> {
+  const persisted = { ...data };
+  delete persisted.standardTheme;
+  delete persisted.theme;
+  return persisted;
+}
+
 function createThemeSnapshot(snapshot: Record<string, unknown>, profileId: string, version: number, timestamp: string, publishedBy: string, changeNote?: string, versionName?: string, versionNotes?: string): Record<string, unknown> {
   const standardTheme = snapshot.standardTheme && typeof snapshot.standardTheme === 'object' ? snapshot.standardTheme as Record<string, unknown> : {};
   return {
@@ -905,6 +1020,7 @@ function createPublicSnapshot(data: Record<string, unknown>, profileId: string, 
     bio: String(data.bio || ''),
     avatarUrl: String(data.avatarUrl || ''),
     category: String(data.category || 'Creator'),
+    starterSiteId: typeof data.starterSiteId === 'string' ? data.starterSiteId : undefined,
     verified: Boolean(data.verified),
     socialPosition: data.socialPosition || 'top',
     socialLinks: Array.isArray(data.socialLinks) ? (data.socialLinks as Array<Record<string, unknown>>).filter(link => link.active && link.url) : [],
@@ -932,11 +1048,12 @@ async function publishDashboardProfile(request: Request, env: Env): Promise<Resp
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   const profileId = input.profileId?.trim();
   if (!profileId) return apiError('VALIDATION_ERROR', 'profileId is required.', 422);
-  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,username,data`, env);
-  const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> }>;
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
+  const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = rows[0];
   if (!profile) return apiError('NOT_FOUND', 'Profile not found.', 404);
-  const validationError = validatePublishData(profile.data);
+  const profileData = await hydrateProfileDesignSystem(env, user.id, profile.id, profile.data, profile);
+  const validationError = validatePublishData(profileData);
   if (validationError) return apiError('VALIDATION_ERROR', validationError, 422);
 
   const requestHash = await sha256(JSON.stringify({ profileId, changeNote: input.changeNote || '', versionName: input.versionName || '', versionNotes: input.versionNotes || '' }));
@@ -945,21 +1062,21 @@ async function publishDashboardProfile(request: Request, env: Env): Promise<Resp
   if (replay) return replay;
 
   const publishedAt = new Date().toISOString();
-  const version = Number(profile.data.publishedVersion || 0) + 1;
-  const snapshot = createPublicSnapshot(profile.data, profile.id, version, publishedAt, user.email);
+  const version = Number(profileData.publishedVersion || 0) + 1;
+  const snapshot = createPublicSnapshot(profileData, profile.id, version, publishedAt, user.email);
   const themeSnapshot = createThemeSnapshot(snapshot, profile.id, version, publishedAt, user.email, input.changeNote, input.versionName, input.versionNotes);
   const nextData = {
-    ...profile.data,
+    ...profileData,
     status: 'published',
     publishedVersion: version,
     publishedAt,
     publishedSnapshot: snapshot,
-    snapshotHistory: [snapshot, ...(Array.isArray(profile.data.snapshotHistory) ? profile.data.snapshotHistory : [])].slice(0, 50),
-    themeSnapshots: [themeSnapshot, ...(Array.isArray(profile.data.themeSnapshots) ? profile.data.themeSnapshots : []).slice(0, 49)],
+    snapshotHistory: [snapshot, ...(Array.isArray(profileData.snapshotHistory) ? profileData.snapshotHistory : [])].slice(0, 50),
+    themeSnapshots: [themeSnapshot, ...(Array.isArray(profileData.themeSnapshots) ? profileData.themeSnapshots : []).slice(0, 49)],
     updatedAt: publishedAt,
   };
   await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profile.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, {
-    method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: publishedAt })
+    method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: publishedAt })
   });
   await supabaseRequest('published_profiles?on_conflict=profile_id', env, {
     method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -999,15 +1116,17 @@ async function saveDashboardDraft(request: Request, env: Env): Promise<Response>
   if (validationError) return apiError('VALIDATION_ERROR', validationError, 422);
   const now = new Date().toISOString();
   const normalizedTheme = normalizeTheme(draft.standardTheme || draft.theme || {});
+  const designPersistence = createThemeDesignPersistence(normalizedTheme);
   const nextData = { ...draft, standardTheme: normalizedTheme, theme: normalizedTheme, updatedAt: now };
   await supabaseRequest('profiles?on_conflict=id', env, {
     method: 'POST',
     headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({
-      id: profileId, workspace_id: user.id, username, data: nextData,
-      active_theme_id: `${user.id}:${normalizedTheme.id}`,
+      id: profileId, workspace_id: user.id, username, data: withoutDraftDesignTheme(nextData),
+      active_theme_id: `${user.id}:${designPersistence.baseTheme.id}`,
       active_layout_id: `${user.id}:${profileId}:layout`,
-      theme_overrides_json: {}, layout_overrides_json: {},
+      active_starter_site_id: typeof draft.starterSiteId === 'string' ? draft.starterSiteId : null,
+      theme_overrides_json: designPersistence.themeOverride, layout_overrides_json: designPersistence.layoutOverride,
       published_snapshot_id: (draft.publishedSnapshot as Record<string, unknown> | undefined)?.snapshotId || null,
       updated_at: now,
     })
@@ -1016,23 +1135,65 @@ async function saveDashboardDraft(request: Request, env: Env): Promise<Response>
   return json({ data: { profile: { ...nextData, id: profileId, username } }, requestId: crypto.randomUUID() });
 }
 
+async function saveCustomThemes(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  let input: { themes?: unknown[] };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  if (!Array.isArray(input.themes) || input.themes.length > 50) return apiError('VALIDATION_ERROR', 'themes must be an array with at most 50 presets.', 422);
+  const now = new Date().toISOString();
+  const rows: Array<Record<string, unknown>> = [];
+  for (const rawTheme of input.themes) {
+    if (!rawTheme || typeof rawTheme !== 'object' || Array.isArray(rawTheme)) return apiError('VALIDATION_ERROR', 'Each preset must be a theme object.', 422);
+    const theme = rawTheme as Record<string, unknown>;
+    const schemaResult = validateThemeSchema(theme);
+    if (!schemaResult.isValid) return apiError('VALIDATION_ERROR', schemaResult.errors[0]?.message || 'Preset theme schema validation failed.', 422);
+    const normalized = normalizeTheme(theme);
+    const composition = normalized.presetComposition;
+    rows.push({
+      id: normalized.id,
+      workspace_id: user.id,
+      name: normalized.name,
+      data: normalized,
+      theme_id: composition?.themeId || normalized.id,
+      layout_id: composition?.layoutId || normalized.layout?.templateId || null,
+      brand_kit_id: composition?.brandKitId || null,
+      starter_site_id: composition?.starterSiteId || null,
+      selected_block_variants: composition?.selectedBlockVariants || {},
+      includes_starter_content: composition?.includesStarterContent === true,
+      changes_content: composition?.changesContent === true,
+      changes_layout: composition?.changesLayout !== false,
+      updated_at: now
+    });
+  }
+  if (rows.length) {
+    const response = await supabaseRequest('custom_themes?on_conflict=id', env, {
+      method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(rows)
+    });
+    if (!response.ok) throw new Error('Custom presets could not be persisted.');
+  }
+  return json({ data: { count: rows.length }, requestId: crypto.randomUUID() });
+}
+
 async function persistDesignSystem(env: Env, workspaceId: string, profileId: string, theme: Record<string, unknown>, profile: Record<string, unknown>, brandKit?: Record<string, unknown>): Promise<void> {
-  const themeId = `${workspaceId}:${String(theme.id)}`;
+  const persistence = createThemeDesignPersistence(theme as unknown as ReturnType<typeof normalizeTheme>);
+  const baseTheme = persistence.baseTheme as unknown as Record<string, unknown>;
+  const themeId = `${workspaceId}:${String(baseTheme.id)}`;
   const layoutId = `${workspaceId}:${profileId}:layout`;
   const now = new Date().toISOString();
   const themeResponse = await supabaseRequest('themes?on_conflict=id', env, {
     method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ id: themeId, workspace_id: workspaceId, name: theme.name, category: 'profile', definition_json: theme, preview_image_url: theme.previewImage || null, schema_version: Number(theme.schemaVersion || 1), is_active: true, updated_at: now })
+    body: JSON.stringify({ id: themeId, workspace_id: workspaceId, name: baseTheme.name, category: String(baseTheme.category || 'profile'), definition_json: baseTheme, preview_image_url: baseTheme.previewImage || null, schema_version: Number(baseTheme.schemaVersion || 1), is_active: true, updated_at: now })
   });
   if (!themeResponse.ok) throw new Error('Theme resource could not be persisted.');
   const layoutResponse = await supabaseRequest('layouts?on_conflict=id', env, {
     method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ id: layoutId, workspace_id: workspaceId, name: (theme.layout as Record<string, unknown> | undefined)?.templateId || 'Profile layout', definition_json: theme.layout || {}, schema_version: 1, is_active: true, updated_at: now })
+    body: JSON.stringify({ id: layoutId, workspace_id: workspaceId, name: (baseTheme.layout as Record<string, unknown> | undefined)?.templateId || 'Profile layout', definition_json: baseTheme.layout || {}, schema_version: 1, is_active: true, updated_at: now })
   });
   if (!layoutResponse.ok) throw new Error('Layout resource could not be persisted.');
   const versionResponse = await supabaseRequest('theme_versions?on_conflict=id', env, {
     method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ id: `draft:${profileId}`, workspace_id: workspaceId, profile_id: profileId, theme_id: themeId, layout_id: layoutId, overrides_json: { theme: {}, layout: {} }, status: profile.status === 'published' ? 'published' : 'draft', version_name: `Draft v${profile.publishedVersion || 0}`, version_notes: 'Autosaved design-system snapshot', created_by: workspaceId, published_at: profile.status === 'published' ? (profile.publishedAt || now) : null })
+    body: JSON.stringify({ id: `draft:${profileId}`, workspace_id: workspaceId, profile_id: profileId, theme_id: themeId, layout_id: layoutId, overrides_json: { theme: persistence.themeOverride, layout: persistence.layoutOverride }, status: profile.status === 'published' ? 'published' : 'draft', version_name: `Draft v${profile.publishedVersion || 0}`, version_notes: 'Autosaved design-system snapshot', created_by: workspaceId, published_at: profile.status === 'published' ? (profile.publishedAt || now) : null })
   });
   if (!versionResponse.ok) throw new Error('Theme version could not be persisted.');
   if (brandKit) {
@@ -1147,11 +1308,12 @@ async function resolvePreviewToken(request: Request, env: Env): Promise<Response
   const tokens = await tokenResponse.json() as Array<{ profile_id: string; expires_at: string }>;
   const preview = tokens[0];
   if (!preview || new Date(preview.expires_at).getTime() <= Date.now()) return apiError('NOT_FOUND', 'Preview link is invalid or expired.', 404);
-  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(preview.profile_id)}&select=id,username,data`, env);
-  const profiles = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> }>;
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(preview.profile_id)}&select=id,username,workspace_id,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
+  const profiles = await profileResponse.json() as Array<{ id: string; username: string; workspace_id: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = profiles[0];
   if (!profile || profile.username.toLowerCase() !== username) return apiError('NOT_FOUND', 'Preview link is invalid or expired.', 404);
-  return json({ data: { profile: { ...profile.data, id: profile.id, username: profile.username } }, requestId: crypto.randomUUID() });
+  const profileData = await hydrateProfileDesignSystem(env, profile.workspace_id, profile.id, profile.data, profile);
+  return json({ data: { profile: { ...profileData, id: profile.id, username: profile.username } }, requestId: crypto.randomUUID() });
 }
 
 function profileApiResource(profile: { id: string; username: string; data: Record<string, unknown> }): Record<string, unknown> {
@@ -1678,6 +1840,10 @@ export default {
     if (url.pathname === '/api/profile/draft') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await saveDashboardDraft(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to save draft.', 500); }
+    }
+    if (url.pathname === '/api/design/custom-themes') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await saveCustomThemes(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to save custom presets.', 500); }
     }
     if (url.pathname === '/api/profile/rollback') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

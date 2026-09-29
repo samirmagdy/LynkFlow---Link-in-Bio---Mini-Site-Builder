@@ -21,6 +21,23 @@ export type PersonaTemplate = {
   blocks: PersonaBlockTemplate[];
 };
 
+/**
+ * Keeps starter-site composition explicit when a content starter is applied.
+ * The starter catalog owns content; the theme remains an appearance resource.
+ */
+export const composeStarterSiteTheme = (template: PersonaTemplate): StandardTheme => ({
+  ...template.theme,
+  presetComposition: {
+    ...(template.theme.presetComposition || {}),
+    themeId: template.theme.id,
+    layoutId: template.theme.layout?.templateId,
+    starterSiteId: template.id,
+    includesStarterContent: true,
+    changesContent: true,
+    changesLayout: true,
+  },
+});
+
 const theme = (slug: string, defaultBackgroundImage?: string) => {
   const found = LIINKS_GALLERY_THEMES.find(item => item.id === `liinks-${slug}`);
   if (!found) throw new Error(`Missing persona theme: ${slug}`);

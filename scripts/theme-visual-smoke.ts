@@ -19,8 +19,12 @@ const failures: string[] = [];
 try {
   for (const viewport of viewports) {
     const page = await browser.newPage({ viewport });
-    const response = await page.goto(`${baseUrl}/@alexvance?demo=1`, { waitUntil: 'networkidle', timeout: 30_000 });
+    // The public page may keep media/font requests open; DOM readiness is the
+    // relevant gate for layout, while the explicit settle delay below lets the
+    // shared renderer mount before measurements and screenshots.
+    const response = await page.goto(`${baseUrl}/@alexvance?demo=1`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForTimeout(500);
+    await page.locator('[data-profile-theme]').waitFor({ state: 'attached', timeout: 10_000 }).catch(() => undefined);
     const essentialOnly = page.getByRole('button', { name: 'Essential Only' });
     if (await essentialOnly.isVisible().catch(() => false)) await essentialOnly.click();
 

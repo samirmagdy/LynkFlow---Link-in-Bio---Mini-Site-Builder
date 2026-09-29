@@ -22,6 +22,7 @@ import {
   FormBlockPayload,
   ContactBlockPayload,
   UserAccount,
+  BrandKit,
   StarterProfileBlueprint,
   OnboardingStep
 } from '../types';
@@ -36,6 +37,7 @@ import {
 import { SPEC_THEME_PRESETS } from '../data/themePresets';
 import { StandardTheme, PublishedThemeSnapshot } from '../types/themeSchema';
 import { calculateContrastRatio, normalizeTheme, validateThemeAccessibility } from '../utils/themeEngine';
+import { enforceBrandKitThemePolicy } from '../utils/brandKitPermissions';
 import { authService, AuthResponse, PasswordResetResponse } from '../services/authService';
 import { workspaceSyncService, SaveStatus, ConflictState } from '../services/workspaceSyncService';
 import { contentLifecycleService, ValidationIssue } from '../services/contentLifecycleService';
@@ -252,6 +254,7 @@ interface AppContextType {
 
   // Workspace Concurrency & Autosave (EDT-003, EDT-004)
   saveStatus: SaveStatus;
+  lastSavedAt: string | null;
   saveErrorMessage: string | null;
   retrySave: () => void;
   isConflictOpen: boolean;
@@ -405,10 +408,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   const defaultBrandKit = INITIAL_WORKSPACE.brandKit!;
   const updateBrandKit = (updater: (prev: NonNullable<Workspace['brandKit']>) => NonNullable<Workspace['brandKit']>) => {
-    setWorkspace(prev => ({
-      ...prev,
-      brandKit: updater(prev.brandKit || { ...defaultBrandKit, updatedAt: new Date().toISOString() })
-    }));
+    setWorkspace(prev => {
+      const current = prev.brandKit || { ...defaultBrandKit, updatedAt: new Date().toISOString() };
+      const requested = updater(current);
+      const locks = current.lockedFields || {};
+      const locked = new Set<keyof BrandKit>([
+        ...(locks.logo ? ['logoUrl', 'lightLogoUrl', 'darkLogoUrl', 'faviconUrl'] as const : []),
+        ...(locks.colors ? ['primaryColor', 'secondaryColor', 'accentColor'] as const : []),
+        ...(locks.fonts ? ['latinFont', 'arabicFont'] as const : []),
+        ...(locks.spacing ? [] as const : [])
+      ]);
+      const protectedValues = Array.from(locked).reduce<Record<string, unknown>>((values, key) => {
+        values[key] = current[key];
+        return values;
+      }, {});
+      return {
+        ...prev,
+        brandKit: { ...requested, ...protectedValues, updatedAt: new Date().toISOString() }
+      };
+    });
   };
 
   const [analytics, setAnalytics] = useState<AnalyticsEvent[]>(() => {
@@ -674,6 +692,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Autosave and Concurrency States (EDT-003, EDT-004)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(() => draftProfile.updatedAt || null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [isConflictOpen, setIsConflictOpen] = useState(false);
   const [forceSimulateNetworkError, setForceSimulateNetworkError] = useState(false);
@@ -731,6 +750,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         }
         clearOfflineDraft(draftProfile.id);
         setSaveStatus('saved');
+        setLastSavedAt(res.updatedProfile?.updatedAt || new Date().toISOString());
         setSaveErrorMessage(null);
       } else if (res.isConflict) {
         setSaveStatus('conflict');
@@ -776,6 +796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       }
       clearOfflineDraft(draftProfile.id);
       setSaveStatus('saved');
+      setLastSavedAt(res.updatedProfile?.updatedAt || new Date().toISOString());
       setSaveErrorMessage(null);
       showToast('Changes saved successfully.');
     } else {
@@ -834,6 +855,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       setProfiles(prev => prev.map(p => (p.id === savedDraft.id ? savedDraft : p)));
       setIsConflictOpen(false);
       setSaveStatus('saved');
+      setLastSavedAt(savedDraft.updatedAt || new Date().toISOString());
       setSaveErrorMessage(null);
       workspaceSyncService.broadcastProfileUpdate(savedDraft.id, savedDraft.publishedVersion);
       showToast('Overwrote the server draft with your local changes.');
@@ -873,6 +895,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       }
       clearOfflineDraft(draftProfile.id);
       setSaveStatus('saved');
+      setLastSavedAt(res.updatedProfile?.updatedAt || new Date().toISOString());
       setSaveErrorMessage(null);
       if (res.updatedProfile) {
         setDraftProfile(res.updatedProfile);
@@ -906,6 +929,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         setProfiles(prev => prev.map(profile => profile.id === published.id ? published : profile));
         setDraftProfile(published);
         setSaveStatus('saved');
+        setLastSavedAt(published.updatedAt || new Date().toISOString());
         showToast(`Published @${published.username} live (v${published.publishedVersion})!`);
         return true;
       } catch (error) {
@@ -950,6 +974,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
 
     setSaveStatus('saved');
+    setLastSavedAt(new Date().toISOString());
     showToast(`Published @${draftProfile.username} live (v${result.publishedVersion})!`);
     return true;
   };
@@ -1532,59 +1557,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   // Current active standard theme
   const standardTheme = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
 
-  // Themes
-  const enforceBrandKitLocks = (current: StandardTheme, next: StandardTheme): StandardTheme => {
-    const locks = workspace.brandKit?.lockedFields;
-    if (!locks) return next;
-
-    const guarded = { ...next };
-    if (locks.colors) {
-      const kit = workspace.brandKit || defaultBrandKit;
-      const accentText = calculateContrastRatio('#FFFFFF', kit.accentColor) >= calculateContrastRatio('#000000', kit.accentColor) ? '#FFFFFF' : '#000000';
-      guarded.tokens = {
-        ...guarded.tokens,
-        colors: {
-          ...guarded.tokens.colors,
-          primaryText: kit.primaryColor,
-          textPrimary: kit.primaryColor,
-          secondaryText: kit.secondaryColor,
-          textSecondary: kit.secondaryColor,
-          accent: kit.accentColor,
-          accentPrimary: kit.accentColor,
-          accentText,
-          ctaText: accentText,
-        },
-      };
-      guarded.buttons = { ...current.buttons!, ...guarded.buttons, background: kit.accentColor, text: accentText };
-      guarded.socialIcons = { ...current.socialIcons!, ...guarded.socialIcons, color: kit.primaryColor };
-    }
-    if (locks.fonts) {
-      const kit = workspace.brandKit || defaultBrandKit;
-      guarded.tokens = {
-        ...guarded.tokens,
-        typography: {
-          ...guarded.tokens.typography,
-          bodyFamily: kit.latinFont,
-          displayFamily: kit.latinFont,
-          arabicFamily: kit.arabicFont,
-        },
-      };
-    }
-    if (locks.spacing) {
-      guarded.tokens = { ...guarded.tokens, spacing: current.tokens.spacing };
-      guarded.responsive = current.responsive;
-      guarded.layout = current.layout;
-    }
-    return guarded;
-  };
-
   const applyTheme = (newTheme: ThemeConfig | StandardTheme) => {
     const currentStd = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
     // Push current to undo stack
     setThemeUndoStack(prev => [JSON.parse(JSON.stringify(currentStd)), ...prev.slice(0, 30)]);
     setThemeRedoStack([]);
 
-    const norm = enforceBrandKitLocks(currentStd, normalizeTheme(newTheme));
+    const norm = enforceBrandKitThemePolicy(currentStd, normalizeTheme(newTheme), workspace.brandKit || defaultBrandKit, defaultBrandKit);
     const legacyCompat: ThemeConfig = {
       id: norm.id,
       name: norm.name,
@@ -1625,7 +1604,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     setThemeRedoStack([]);
 
     const updated = updater(currentStd);
-    const norm = enforceBrandKitLocks(currentStd, normalizeTheme(updated));
+    const norm = enforceBrandKitThemePolicy(currentStd, normalizeTheme(updated), workspace.brandKit || defaultBrandKit, defaultBrandKit);
 
     const legacyCompat: ThemeConfig = {
       id: norm.id,
@@ -2669,6 +2648,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
         // Workspace Concurrency & Autosave (EDT-003, EDT-004)
         saveStatus,
+        lastSavedAt,
         saveErrorMessage,
         retrySave,
         isConflictOpen,
@@ -2685,6 +2665,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
 export const useApp = () => {
   const context = useContext(AppContext);
+  if (!context && typeof window === 'undefined') {
+    // The edge renderer uses the same profile component without mounting the
+    // browser-only application provider. Interactive actions are intentionally
+    // inert in static HTML; the browser hydrates the real provider afterward.
+    return {
+      trackEvent: () => undefined,
+      submitForm: async () => ({ success: false, error: 'Interactive form actions require the browser.' }),
+      setCurrentView: () => undefined,
+      animationTrigger: 0,
+      triggerReplayAnimation: () => undefined,
+    } as unknown as AppContextType;
+  }
   if (!context) {
     throw new Error('useApp must be used within an AppProvider');
   }

@@ -206,6 +206,13 @@ export interface ViewportResponsiveRule {
   pageX: number;
   pageY: number;
   blockGap: number;
+  /** Optional viewport-specific composition overrides. */
+  avatarSize?: number;
+  headingScale?: number;
+  imageHeight?: number;
+  textAlign?: 'left' | 'center' | 'right';
+  navigationPosition?: 'top' | 'below-header' | 'bottom';
+  blockVisibility?: 'all' | 'hide-media' | 'hide-socials';
 }
 
 export interface ResponsiveThemeRules {
@@ -236,6 +243,7 @@ export interface SavedPresetComposition {
   themeId: string;
   layoutId?: string;
   brandKitId?: string;
+  starterSiteId?: string;
   selectedBlockVariants?: Record<string, string>;
   includesStarterContent: boolean;
   changesContent: boolean;

@@ -39,10 +39,43 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, pro
   const isMobileViewport = effectiveDevice === 'mobile' || effectiveDevice === 'mobile-small';
   const isSmallMobile = effectiveDevice === 'mobile-small';
   const sourceProfile = activeSource === 'draft' ? profileOverride || activeProfile : publishedProfile;
-  const profileToRender = effectiveLocale === 'theme' ? sourceProfile : {
-    ...sourceProfile,
-    standardTheme: normalizeTheme({ ...(sourceProfile.standardTheme || sourceProfile.theme), language: effectiveLocale, direction: effectiveLocale === 'ar' ? 'rtl' : 'ltr' })
-  };
+  const profileToRender = (() => {
+    if (effectiveLocale === 'theme') return sourceProfile;
+    const localizedTheme = normalizeTheme({ ...(sourceProfile.standardTheme || sourceProfile.theme), language: effectiveLocale, direction: effectiveLocale === 'ar' ? 'rtl' : 'ltr' });
+    if (effectiveLocale !== 'ar') return { ...sourceProfile, standardTheme: localizedTheme };
+
+    // Arabic comparison mode intentionally exercises mixed-language and long
+    // content when the real profile is English. It never persists changes; it
+    // only makes RTL typography, wrapping and CTA labels observable in the
+    // preview before publishing.
+    const containsArabic = (value: unknown) => typeof value === 'string' && /[\u0600-\u06FF]/.test(value);
+    const sourceName = sourceProfile.displayName || sourceProfile.username || 'Creator';
+    const sourceBio = sourceProfile.bio || '';
+    const arabicBio = containsArabic(sourceBio)
+      ? sourceBio
+      : `مصمم ومبدع مستقل يشارك أعماله وخدماته مع العملاء والعلامات التجارية — ${sourceBio}`;
+    const localizedTabs = sourceProfile.tabs.map(tab => ({
+      ...tab,
+      title: containsArabic(tab.title) ? tab.title : `الأعمال والروابط · ${tab.title}`,
+      blocks: tab.blocks.map(block => ({
+        ...block,
+        title: containsArabic(block.title) ? block.title : `رابط · ${block.title}`,
+        payload: {
+          ...block.payload,
+          ...(typeof (block.payload as any)?.subtitle === 'string' && !containsArabic((block.payload as any).subtitle) ? { subtitle: `معلومات إضافية — ${(block.payload as any).subtitle}` } : {}),
+          ...(typeof (block.payload as any)?.description === 'string' && !containsArabic((block.payload as any).description) ? { description: `وصف الخدمة والمعلومات المهمة — ${(block.payload as any).description}` } : {}),
+          ...(block.type === 'link' && !containsArabic((block.payload as any)?.buttonLabel) ? { buttonLabel: 'تواصل معي' } : {})
+        }
+      }))
+    }));
+    return {
+      ...sourceProfile,
+      displayName: containsArabic(sourceName) ? sourceName : `سمير مجدي — ${sourceName}`,
+      bio: arabicBio,
+      tabs: localizedTabs,
+      standardTheme: localizedTheme
+    };
+  })();
 
   const handleOpenLiveTab = () => {
     setPublicViewingUsername(activeProfile.username);

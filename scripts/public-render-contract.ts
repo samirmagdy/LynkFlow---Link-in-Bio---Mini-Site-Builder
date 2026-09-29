@@ -1,7 +1,7 @@
 import { publicProfileStyles, renderPublicProfileBody } from '../src/worker';
 
 const snapshot = {
-  username: 'contract-test', displayName: 'Contract Test', bio: 'English and العربية content', avatarUrl: 'https://images.example/avatar.webp', socialLinks: [],
+  username: 'contract-test', displayName: 'Contract Test', bio: 'English and العربية content', avatarUrl: 'https://images.example/avatar.webp', socialLinks: [{ id: 'social-1', platform: 'instagram', url: 'https://instagram.com/contract', active: true }],
   standardTheme: { language: 'ar', direction: 'rtl', profile: { showAvatar: true } },
   tabs: [{ blocks: [
     { type: 'link', title: 'Link', payload: { url: 'https://example.com' } },
@@ -21,11 +21,37 @@ const snapshot = {
   ] }]
 };
 
+snapshot.tabs[0].blocks = snapshot.tabs[0].blocks.map((block, index) => ({ ...block, id: `contract-${index}` }));
+
 const html = renderPublicProfileBody(snapshot, 'https://lynkflow.me/@contract-test');
-const backgroundStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', focalPoint: { x: 30, y: 70 } } } });
-const requiredMarkers = ['profile-link', 'profile-gallery', 'profile-product', 'profile-form', 'profile-folder', 'profile-divider', 'profile-testimonial', '<video', '<track', 'dir="rtl"'];
+const tabHtml = renderPublicProfileBody({
+  ...snapshot,
+  standardTheme: { ...snapshot.standardTheme, layout: { navigationStyle: 'pills' }, conversion: { primaryBlockId: 'primary' } },
+  tabs: [
+    { id: 'first', slug: 'first', title: 'First', blocks: [{ id: 'secondary', type: 'link', title: 'Secondary', position: 0, payload: { url: 'https://example.com/secondary' } }, { id: 'primary', type: 'link', title: 'Primary', position: 1, payload: { url: 'https://example.com/primary' } }] },
+    { id: 'second', slug: 'second', title: 'Second', blocks: [{ id: 'hidden-tab', type: 'text', title: 'Must not render', position: 0, payload: { content: 'Hidden from initial tab' } }] }
+  ]
+}, 'https://lynkflow.me/@contract-test');
+
+const footerHiddenHtml = renderPublicProfileBody({
+  ...snapshot,
+  standardTheme: { ...(snapshot.standardTheme as any), layout: { ...((snapshot.standardTheme as any).layout || {}), showFooter: false } },
+}, 'https://lynkflow.me/@contract-test');
+if (footerHiddenHtml.includes('on LynkFlow')) throw new Error('Public renderer must honor layout.showFooter=false.');
+
+const footerSocialHtml = renderPublicProfileBody({
+  ...snapshot,
+  standardTheme: { ...(snapshot.standardTheme as any), layout: { ...((snapshot.standardTheme as any).layout || {}), socialIconPlacement: 'footer' } },
+}, 'https://lynkflow.me/@contract-test');
+const socialHeaderIndex = footerSocialHtml.indexOf('class="profile-header"');
+const socialFooterIndex = footerSocialHtml.indexOf('class="profile-social"');
+if (socialFooterIndex < socialHeaderIndex) throw new Error('Public renderer social placement contract could not locate footer socials.');
+const backgroundStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', focalPoint: { x: 30, y: 70 } }, responsive: { mobile: { maxWidth: 680, pageX: 12, pageY: 16, blockGap: 10, avatarSize: 72, headingScale: .9, imageHeight: 240, textAlign: 'left', blockVisibility: 'all' } } } });
+const requiredMarkers = ['data-block-id="contract-0"', 'data-block-id="contract-1"', 'data-block-id="contract-2"', 'data-block-id="contract-3"', 'data-block-id="contract-4"', 'data-block-id="contract-5"', 'data-block-id="contract-6"', 'data-block-id="contract-7"', 'data-block-id="contract-8"', 'data-block-id="contract-9"', 'data-block-id="contract-10"', 'data-block-id="contract-11"', 'data-block-id="contract-12"', 'data-block-id="contract-13"', '<video', '<track', 'dir="rtl"'];
 const failures = requiredMarkers.filter(marker => !html.includes(marker));
+if (!tabHtml.includes('role="tablist"') || !tabHtml.includes('aria-selected="true"') || tabHtml.indexOf('Primary') > tabHtml.indexOf('Secondary') || tabHtml.includes('Must not render')) failures.push('server tab navigation, active-tab isolation or CTA ordering');
 if (!backgroundStyles.includes('contract-background.jpg') || !backgroundStyles.includes('background-position:30% 70%')) failures.push('server background image/focal point');
+if (!backgroundStyles.includes('--theme-avatar-size:72px') || !backgroundStyles.includes('--theme-heading-scale:0.9') || !backgroundStyles.includes('@media (min-width:375px) and (max-width:639px)')) failures.push('server responsive theme tokens');
 console.log(`Public renderer contract: ${requiredMarkers.length} block/layout markers checked`);
 if (failures.length) {
   failures.forEach(marker => console.error(`[public-render] missing ${marker}`));

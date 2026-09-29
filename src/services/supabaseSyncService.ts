@@ -3,6 +3,7 @@ import {
   Profile, Subscriber, StandardTheme, WebhookSubscription, Workspace, UserAccount, BrandKit
 } from '../types';
 import { normalizeTheme, validateThemeSchema } from '../utils/themeEngine';
+import { mergeSparseOverride } from '../utils/designSystemPersistence';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 interface CloudProfileRow {
@@ -13,6 +14,7 @@ interface CloudProfileRow {
   active_layout_id?: string | null;
   theme_overrides_json?: Record<string, unknown> | null;
   layout_overrides_json?: Record<string, unknown> | null;
+  active_starter_site_id?: string | null;
 }
 interface CloudWorkspaceRow {
   id: string;
@@ -82,7 +84,7 @@ export async function loadCloudState(): Promise<CloudState | null> {
     { data: subscriberRows, error: subscribersError },
   ] = await Promise.all([
     supabase.from('workspaces').select('id,name,plan,settings,billing_cycle,subscription_status,current_period_start,current_period_end,cancel_at_period_end,trial_ends_at,provider_customer_id,provider_subscription_id').eq('id', authData.user.id).single(),
-    supabase.from('profiles').select('id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json').eq('workspace_id', authData.user.id).order('created_at'),
+    supabase.from('profiles').select('id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id').eq('workspace_id', authData.user.id).order('created_at'),
     supabase.from('analytics_events').select('*').eq('workspace_id', authData.user.id),
     supabase.from('form_submissions').select('*').eq('workspace_id', authData.user.id),
     supabase.from('audit_logs').select('*').eq('workspace_id', authData.user.id).order('occurred_at', { ascending: false }).limit(500),
@@ -134,26 +136,28 @@ export async function loadCloudState(): Promise<CloudState | null> {
     const layoutId = version?.layout_id || row.active_layout_id;
     const themeOverride = version?.overrides_json?.theme;
     const layoutOverride = version?.overrides_json?.layout;
-    const storedTheme = themeOverride && Object.keys(themeOverride).length > 0 ? themeOverride : (themeId ? designThemes.get(themeId) : undefined);
-    const storedLayout = layoutOverride && Object.keys(layoutOverride).length > 0 ? layoutOverride : (layoutId ? layouts.get(layoutId) : undefined);
-    if (!storedTheme && !storedLayout) return base;
+    const storedThemeBase = themeId ? designThemes.get(themeId) : undefined;
+    const storedLayoutBase = layoutId ? layouts.get(layoutId) : undefined;
+    if (!storedThemeBase && !storedLayoutBase && !themeOverride && !layoutOverride) {
+      return row.active_starter_site_id ? { ...base, starterSiteId: row.active_starter_site_id } : base;
+    }
     const profileThemeOverride = row.theme_overrides_json || {};
     const profileLayoutOverride = row.layout_overrides_json || {};
-    const baseResolvedTheme = storedTheme || base.standardTheme || base.theme || {};
+    const baseResolvedTheme = storedThemeBase || base.standardTheme || base.theme || {};
+    const versionTheme = mergeSparseOverride(baseResolvedTheme, themeOverride || {});
+    const mergedTheme = mergeSparseOverride(versionTheme, profileThemeOverride);
+    const mergedLayout = mergeSparseOverride(storedLayoutBase || (baseResolvedTheme as { layout?: Record<string, unknown> }).layout || {}, mergeSparseOverride(layoutOverride || {}, profileLayoutOverride));
     const resolvedTheme = normalizeTheme({
-      ...baseResolvedTheme,
-      ...profileThemeOverride,
+      ...mergedTheme,
       tokens: {
-        ...(baseResolvedTheme as { tokens?: Record<string, unknown> }).tokens,
-        ...(profileThemeOverride.tokens as Record<string, unknown> | undefined),
+        ...(mergedTheme as { tokens?: Record<string, unknown> }).tokens,
         colors: {
-          ...((baseResolvedTheme as { tokens?: { colors?: Record<string, unknown> } }).tokens?.colors || {}),
-          ...((profileThemeOverride.tokens as { colors?: Record<string, unknown> } | undefined)?.colors || {}),
+          ...((mergedTheme as { tokens?: { colors?: Record<string, unknown> } }).tokens?.colors || {}),
         },
       },
-      layout: { ...((baseResolvedTheme as { layout?: Record<string, unknown> }).layout || {}), ...(storedLayout || {}), ...profileLayoutOverride },
+      layout: mergedLayout,
     });
-    return { ...base, standardTheme: resolvedTheme };
+    return { ...base, starterSiteId: row.active_starter_site_id || base.starterSiteId, standardTheme: resolvedTheme };
   });
   return {
     user: mapUser(authData.user, (profileRows || []).length > 0),
@@ -417,12 +421,20 @@ export async function saveCloudReports(reports: AbuseReport[], workspaceId: stri
 }
 
 export async function saveCloudThemes(themes: StandardTheme[], workspaceId: string): Promise<void> {
-  if (!supabase || !themes.length) return;
-  const { error } = await supabase.from('custom_themes').upsert(themes.map(theme => ({
-    id: theme.id, workspace_id: workspaceId, name: theme.name, data: theme,
-    updated_at: new Date().toISOString(),
-  })));
-  if (error) throw error;
+  if (!isSupabaseConfigured || !supabase || !themes.length) return;
+  void workspaceId;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in before saving custom presets.');
+  const response = await fetch('/api/design/custom-themes', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ themes }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string | { message?: string } };
+    const message = typeof body.error === 'string' ? body.error : body.error?.message;
+    throw new Error(message || 'Custom presets could not be saved.');
+  }
 }
 
 export async function saveCloudApiKeys(keys: ApiKey[], workspaceId: string): Promise<void> {

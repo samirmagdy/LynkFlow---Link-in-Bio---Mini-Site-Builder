@@ -69,6 +69,18 @@ if (unsafeTypography.isValid) {
   console.error('[security] unsafe typography bounds or enum was accepted');
 }
 
+const unsafeNestedToken = validateThemeSchema({ ...normalizeTheme({}), layout: { ...normalizeTheme({}).layout, arbitraryCss: 'color:red' } });
+if (unsafeNestedToken.isValid) {
+  schemaFailures += 1;
+  console.error('[security] unknown nested layout property was accepted');
+}
+
+const unsafeFocalPoint = validateThemeSchema({ ...normalizeTheme({}), background: { ...normalizeTheme({}).background, focalPoint: { x: 50, y: 50, arbitrary: true } } });
+if (unsafeFocalPoint.isValid) {
+  schemaFailures += 1;
+  console.error('[security] unknown focal-point property was accepted');
+}
+
 const unsafeMedia = validateThemeSchema({ ...normalizeTheme({}), background: { ...normalizeTheme({}).background, type: 'image', assetUrl: 'https://unapproved.example/background.jpg' } });
 if (unsafeMedia.isValid) {
   schemaFailures += 1;

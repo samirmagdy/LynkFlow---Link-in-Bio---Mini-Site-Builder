@@ -7,8 +7,12 @@ const failures: string[] = [];
 
 try {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const response = await page.goto(`${baseUrl}/@alexvance?demo=1`, { waitUntil: 'networkidle', timeout: 30_000 });
+  // The public page may keep media/font requests open. DOM readiness is the
+  // relevant gate for accessibility checks; the explicit settle delay lets
+  // the shared renderer mount without making the test depend on network idle.
+  const response = await page.goto(`${baseUrl}/@alexvance?demo=1`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.waitForTimeout(500);
+  await page.locator('[data-profile-theme]').waitFor({ state: 'attached', timeout: 10_000 }).catch(() => undefined);
   const essentialOnly = page.getByRole('button', { name: 'Essential Only' });
   if (await essentialOnly.isVisible().catch(() => false)) await essentialOnly.click();
   if (!response || response.status() !== 200) failures.push(`expected HTTP 200, received ${response?.status() ?? 'no response'}`);
@@ -55,9 +59,66 @@ try {
   if (result.direction !== 'ltr') failures.push(`expected dir=ltr, received ${result.direction || 'missing'}`);
 
   await page.keyboard.press('Tab');
-  const focused = await page.evaluate(() => ({ tag: document.activeElement?.tagName, visible: !!(document.activeElement as HTMLElement)?.getBoundingClientRect?.().width }));
+  const focused = await page.evaluate(() => {
+    const element = document.activeElement as HTMLElement | null;
+    const styles = element ? getComputedStyle(element) : null;
+    const hasFocusIndicator = !!styles && (styles.outlineStyle !== 'none' && styles.outlineWidth !== '0px' || styles.boxShadow !== 'none');
+    return {
+      tag: element?.tagName,
+      visible: !!element?.getBoundingClientRect?.().width,
+      hasFocusIndicator
+    };
+  });
   if (focused.tag === 'BODY' || !focused.visible) failures.push('keyboard Tab did not move focus to a visible actionable element');
-  console.log(`Theme accessibility smoke: ${result.lang}/${result.direction}, ${focused.tag} focused, reduced motion respected`);
+  if (!focused.hasFocusIndicator) failures.push('keyboard focus target has no visible focus indicator');
+
+  const scaleResult = await page.evaluate(() => {
+    const root = document.documentElement;
+    const previousSize = root.style.fontSize;
+    root.style.fontSize = '200%';
+    const horizontalOverflow = root.scrollWidth > root.clientWidth + 1;
+    const longArabic = 'هذا نص عربي طويل لاختبار التفاف المحتوى — Long mixed-language profile content should wrap without clipping or forcing horizontal scroll.';
+    const heading = document.querySelector('h1');
+    const previousHeading = heading?.textContent || '';
+    if (heading) heading.textContent = longArabic;
+    const contentOverflow = root.scrollWidth > root.clientWidth + 1;
+    if (heading) heading.textContent = previousHeading;
+    root.style.fontSize = previousSize;
+    return { horizontalOverflow, contentOverflow };
+  });
+  if (scaleResult.horizontalOverflow || scaleResult.contentOverflow) failures.push('200% text-scale or long mixed Arabic/English content causes horizontal overflow');
+
+  const rtlResult = await page.evaluate(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const profile = document.querySelector('.profile-shell, .profile-theme-root') as HTMLElement | null;
+    const previousLang = root.getAttribute('lang');
+    const previousDir = root.getAttribute('dir');
+    const previousBodyDir = body.getAttribute('dir');
+    const previousBodyDirection = body.style.direction;
+    const previousProfileDir = profile?.getAttribute('dir');
+    const previousProfileDirection = profile?.style.direction;
+    root.setAttribute('lang', 'ar');
+    root.setAttribute('dir', 'rtl');
+    body.setAttribute('dir', 'rtl');
+    body.style.setProperty('direction', 'rtl', 'important');
+    if (profile) profile.setAttribute('dir', 'rtl');
+    if (profile) profile.style.setProperty('direction', 'rtl', 'important');
+    const horizontalOverflow = root.scrollWidth > root.clientWidth + 1;
+    const direction = (profile || body).getAttribute('dir');
+    root.setAttribute('lang', previousLang || 'en');
+    root.setAttribute('dir', previousDir || 'ltr');
+    if (previousBodyDir) body.setAttribute('dir', previousBodyDir); else body.removeAttribute('dir');
+    body.style.direction = previousBodyDirection;
+    if (profile) {
+      if (previousProfileDir) profile.setAttribute('dir', previousProfileDir); else profile.removeAttribute('dir');
+      profile.style.direction = previousProfileDirection || '';
+    }
+    return { horizontalOverflow, direction };
+  });
+  if (rtlResult.horizontalOverflow || rtlResult.direction !== 'rtl') failures.push(`Arabic RTL mode does not preserve direction or introduces horizontal overflow (direction=${rtlResult.direction}, overflow=${rtlResult.horizontalOverflow})`);
+
+  console.log(`Theme accessibility smoke: ${result.lang}/${result.direction}, ${focused.tag} focused with indicator, 200% text scale and RTL checks passed, reduced motion respected`);
 } finally {
   await browser.close();
 }

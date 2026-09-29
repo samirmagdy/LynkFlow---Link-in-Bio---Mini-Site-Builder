@@ -165,6 +165,7 @@ export interface MediaBlockPayload {
   alt?: string;
   altText?: string;
   captionsUrl?: string;
+  poster?: string;
   aspectRatio?: '16:9' | '4:3' | '1:1';
 }
 
@@ -393,6 +394,7 @@ export interface PublishedProfileSnapshot {
   bio: string;
   avatarUrl: string;
   category: string;
+  starterSiteId?: string;
   verified: boolean;
   socialPosition: 'top' | 'bottom';
   socialLinks: SocialLink[];
@@ -458,6 +460,8 @@ export interface Profile {
   socialLinks: SocialLink[];
   theme: ThemeConfig;
   standardTheme?: import('./themeSchema').StandardTheme;
+  /** Built-in or workspace starter-site catalog entry used to seed this profile. */
+  starterSiteId?: string;
   themeSnapshots?: import('./themeSchema').PublishedThemeSnapshot[];
   tabs: Tab[];
   customDomain?: CustomDomainConfig;
@@ -517,6 +521,9 @@ export interface BrandKit {
   buttonStyle: 'filled' | 'outline' | 'soft' | 'pill';
   imageStyle: 'rounded' | 'full-bleed' | 'polaroid';
   socialIconStyle: 'line' | 'filled' | 'minimal';
+  /** Controls what collaborators may change while using this kit. */
+  editingMode?: 'full' | 'content-only' | 'selected-overrides';
+  allowedThemeOverrides?: Array<'colors' | 'fonts' | 'spacing' | 'background' | 'layout' | 'components'>;
   lockedFields?: {
     logo?: boolean;
     colors?: boolean;

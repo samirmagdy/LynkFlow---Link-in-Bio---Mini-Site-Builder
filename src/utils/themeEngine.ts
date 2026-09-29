@@ -1,4 +1,4 @@
-import { StandardTheme, ThemeValidationResult, ThemeAccessibilityIssue, PublishedThemeSnapshot } from '../types/themeSchema';
+import { StandardTheme, ThemeValidationResult, ThemeAccessibilityIssue, PublishedThemeSnapshot, ViewportResponsiveRule } from '../types/themeSchema';
 
 export const APPROVED_FONT_FAMILIES = [
   'Plus Jakarta Sans', 'Inter', 'Syne', 'DM Sans', 'Manrope', 'Space Grotesk',
@@ -98,6 +98,25 @@ const THEME_KEYS = new Set(['id', 'profileId', 'schemaVersion', 'name', 'categor
 const THEME_COLOR_KEYS = new Set(['pageBackground', 'panelBackground', 'primaryText', 'secondaryText', 'accent', 'accentText', 'border', 'focusRing', 'cardBg', 'cardTextColor', 'cardSubtitleColor', 'cardBorder', 'surfaceBase', 'surfaceRaised', 'surfaceMuted', 'textPrimary', 'textSecondary', 'textDisabled', 'borderSubtle', 'borderStrong', 'accentPrimary', 'accentHover', 'accentPressed', 'accentDisabled', 'ctaText', 'success', 'warning', 'danger', 'overlay']);
 const THEME_TYPOGRAPHY_KEYS = new Set(['bodyFamily', 'displayFamily', 'arabicFamily', 'bodySize', 'bodyWeight', 'headingWeight', 'bodyLineHeight', 'headingLineHeight', 'letterSpacing', 'headingScale', 'bodyScale', 'captionSize', 'buttonTextSize', 'maxLineLength', 'textTransform']);
 const THEME_BACKGROUND_KEYS = new Set(['type', 'assetId', 'mobileAssetId', 'assetUrl', 'mobileAssetUrl', 'placeholderUrl', 'posterUrl', 'position', 'fit', 'focalPoint', 'scale', 'blur', 'autoplay', 'loop', 'muted', 'reducedMotionFallback', 'overlay', 'overlayColor', 'fallbackColor', 'gradientStops']);
+const RESPONSIVE_VIEWPORT_KEYS = new Set(['maxWidth', 'pageX', 'pageY', 'blockGap', 'avatarSize', 'headingScale', 'imageHeight', 'textAlign', 'navigationPosition', 'blockVisibility']);
+const TOKEN_GROUP_KEYS = new Set(['colors', 'typography', 'shape', 'spacing', 'elevation', 'motion']);
+const SHAPE_KEYS = new Set(['pageRadius', 'cardRadius', 'buttonRadius', 'avatarRadius']);
+const SPACING_KEYS = new Set(['pageX', 'pageY', 'blockGap', 'sectionGap']);
+const ELEVATION_KEYS = new Set(['card', 'button']);
+const MOTION_KEYS = new Set(['durationMs', 'easing', 'enabled', 'hoverEffect']);
+const LAYOUT_KEYS = new Set(['templateId', 'maxWidth', 'alignment', 'headerStyle', 'blockWidth', 'navigationStyle', 'navigationPosition', 'sectionGrouping', 'sectionBackground', 'sectionDivider', 'imagePlacement', 'socialIconPlacement', 'ctaPosition', 'showFooter']);
+const HEADER_KEYS = new Set(['alignment', 'avatarSize', 'showShare', 'showSocials']);
+const VARIANT_KEYS = new Set(['link', 'image', 'socialIcons', 'form']);
+const PROFILE_KEYS = new Set(['showAvatar', 'avatarShape']);
+const BUTTON_KEYS = new Set(['background', 'text', 'border', 'shadow', 'height', 'blur']);
+const CARD_KEYS = new Set(['background', 'text', 'border', 'radius', 'shadow', 'blur']);
+const SOCIAL_ICON_KEYS = new Set(['color', 'size', 'style']);
+const EFFECT_KEYS = new Set(['grain', 'blur', 'glow']);
+const BLOCK_DEFAULT_KEYS = new Set(['link', 'text', 'media', 'folder']);
+const ACCESSIBILITY_KEYS = new Set(['reducedMotion', 'minimumContrast']);
+const CONVERSION_KEYS = new Set(['goal', 'primaryBlockId', 'secondaryBlockId', 'whatsappCountryCode', 'whatsappMessage', 'whatsappTrackingParameter', 'businessHours']);
+const FOCAL_POINT_KEYS = new Set(['x', 'y']);
+const PRESET_COMPOSITION_KEYS = new Set(['themeId', 'layoutId', 'brandKitId', 'starterSiteId', 'selectedBlockVariants', 'includesStarterContent', 'changesContent', 'changesLayout']);
 
 const addSchemaIssue = (issues: ThemeAccessibilityIssue[], tokenKey: string, message: string) => {
   issues.push({ type: 'error', tokenKey, message });
@@ -117,6 +136,8 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
   if (theme.mode !== undefined && !['light', 'dark', 'system'].includes(theme.mode)) addSchemaIssue(errors, 'mode', 'Theme mode must be light, dark, or system.');
   if (theme.category !== undefined && (typeof theme.category !== 'string' || theme.category.length > 80)) addSchemaIssue(errors, 'category', 'Theme category must be a short label.');
   if (theme.supportedGoals !== undefined && (!Array.isArray(theme.supportedGoals) || theme.supportedGoals.some((goal: unknown) => !['contact', 'book', 'buy', 'portfolio', 'newsletter', 'whatsapp', 'download', 'social'].includes(String(goal))))) addSchemaIssue(errors, 'supportedGoals', 'Theme goals must use supported conversion goal identifiers.');
+  const tokens = theme.tokens;
+  if (tokens && typeof tokens === 'object') Object.keys(tokens).filter(key => !TOKEN_GROUP_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `tokens.${key}`, 'Unknown token group is not allowed.'));
   const colors = theme.tokens?.colors;
   if (colors && typeof colors === 'object') {
     Object.keys(colors).filter(key => !THEME_COLOR_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `tokens.colors.${key}`, 'Unknown color token is not allowed.'));
@@ -142,7 +163,10 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
     if (typography.textTransform !== undefined && !['none', 'uppercase', 'capitalize'].includes(typography.textTransform)) addSchemaIssue(errors, 'tokens.typography.textTransform', 'Unsupported text transform.');
   }
   const background = theme.background;
-  if (background && typeof background === 'object') Object.keys(background).filter(key => !THEME_BACKGROUND_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `background.${key}`, 'Unknown background property is not allowed.'));
+  if (background && typeof background === 'object') {
+    Object.keys(background).filter(key => !THEME_BACKGROUND_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `background.${key}`, 'Unknown background property is not allowed.'));
+    if (background.focalPoint && typeof background.focalPoint === 'object') Object.keys(background.focalPoint).filter(key => !FOCAL_POINT_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `background.focalPoint.${key}`, 'Unknown focal-point property is not allowed.'));
+  }
   if (background?.gradientStops && safeCssFragment(background.gradientStops, '') === '') addSchemaIssue(errors, 'background.gradientStops', 'Background gradients cannot contain unsafe CSS or external URLs.');
   for (const key of ['assetUrl', 'mobileAssetUrl', 'posterUrl']) {
     const value = background?.[key];
@@ -150,7 +174,33 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
   }
   if (background?.placeholderUrl && !isSafePlaceholder(background.placeholderUrl)) addSchemaIssue(errors, 'background.placeholderUrl', 'Background placeholders must be small inline image data.');
   if (theme.previewImage && !isApprovedMediaSource(theme.previewImage)) addSchemaIssue(errors, 'previewImage', 'Theme preview media must use an approved HTTPS source.');
+  if (theme.presetComposition && typeof theme.presetComposition === 'object') Object.keys(theme.presetComposition).filter(key => !PRESET_COMPOSITION_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `presetComposition.${key}`, 'Unknown preset composition property is not allowed.'));
+  const nestedGroups: Array<[string, unknown, Set<string>]> = [
+    ['tokens.shape', tokens?.shape, SHAPE_KEYS], ['tokens.spacing', tokens?.spacing, SPACING_KEYS], ['tokens.elevation', tokens?.elevation, ELEVATION_KEYS], ['tokens.motion', tokens?.motion, MOTION_KEYS],
+    ['layout', theme.layout, LAYOUT_KEYS], ['header', theme.header, HEADER_KEYS], ['componentVariants', theme.componentVariants, VARIANT_KEYS], ['profile', theme.profile, PROFILE_KEYS],
+    ['buttons', theme.buttons, BUTTON_KEYS], ['cards', theme.cards, CARD_KEYS], ['socialIcons', theme.socialIcons, SOCIAL_ICON_KEYS], ['effects', theme.effects, EFFECT_KEYS],
+    ['blockDefaults', theme.blockDefaults, BLOCK_DEFAULT_KEYS], ['accessibility', theme.accessibility, ACCESSIBILITY_KEYS], ['conversion', theme.conversion, CONVERSION_KEYS]
+  ];
+  for (const [path, value, allowedKeys] of nestedGroups) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) Object.keys(value).filter(key => !allowedKeys.has(key)).forEach(key => addSchemaIssue(errors, `${path}.${key}`, 'Unknown theme property is not allowed.'));
+  }
   if (theme.layout?.maxWidth !== undefined && safeLength(theme.layout.maxWidth, '') === '') addSchemaIssue(errors, 'layout.maxWidth', 'Layout width must be a bounded CSS length.');
+  if (theme.responsive && typeof theme.responsive === 'object') {
+    Object.entries(theme.responsive).forEach(([viewport, rule]) => {
+      if (!['smallMobile', 'mobile', 'tablet', 'desktop'].includes(viewport) || !rule || typeof rule !== 'object') {
+        addSchemaIssue(errors, `responsive.${viewport}`, 'Responsive overrides must use an approved viewport key.');
+        return;
+      }
+      Object.keys(rule as Record<string, unknown>).filter(key => !RESPONSIVE_VIEWPORT_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `responsive.${viewport}.${key}`, 'Unknown responsive override is not allowed.'));
+      const responsiveRule = rule as Record<string, unknown>;
+      for (const key of ['maxWidth', 'pageX', 'pageY', 'blockGap', 'avatarSize', 'headingScale', 'imageHeight']) {
+        if (responsiveRule[key] !== undefined && !Number.isFinite(Number(responsiveRule[key]))) addSchemaIssue(errors, `responsive.${viewport}.${key}`, 'Responsive numeric values must be finite numbers.');
+      }
+      if (responsiveRule.textAlign !== undefined && !['left', 'center', 'right'].includes(String(responsiveRule.textAlign))) addSchemaIssue(errors, `responsive.${viewport}.textAlign`, 'Unsupported responsive text alignment.');
+      if (responsiveRule.navigationPosition !== undefined && !['top', 'below-header', 'bottom'].includes(String(responsiveRule.navigationPosition))) addSchemaIssue(errors, `responsive.${viewport}.navigationPosition`, 'Unsupported responsive navigation position.');
+      if (responsiveRule.blockVisibility !== undefined && !['all', 'hide-media', 'hide-socials'].includes(String(responsiveRule.blockVisibility))) addSchemaIssue(errors, `responsive.${viewport}.blockVisibility`, 'Unsupported responsive block visibility mode.');
+    });
+  }
   return { isValid: errors.length === 0, canPublish: errors.length === 0, errors, warnings };
 }
 
@@ -350,6 +400,18 @@ export function normalizeTheme(raw: any): StandardTheme {
   const blockDefaults = raw?.blockDefaults || {};
   const responsive = raw?.responsive || {};
   const accessibility = raw?.accessibility || {};
+  const normalizeResponsiveRule = (value: any, fallback: ViewportResponsiveRule): ViewportResponsiveRule => ({
+    maxWidth: Math.max(280, Math.min(1600, Number(value?.maxWidth ?? fallback.maxWidth))),
+    pageX: Math.max(8, Math.min(48, Number(value?.pageX ?? fallback.pageX))),
+    pageY: Math.max(8, Math.min(64, Number(value?.pageY ?? fallback.pageY))),
+    blockGap: Math.max(6, Math.min(36, Number(value?.blockGap ?? fallback.blockGap))),
+    avatarSize: Math.max(48, Math.min(140, Number(value?.avatarSize ?? fallback.avatarSize ?? 88))),
+    headingScale: Math.max(0.75, Math.min(1.6, Number(value?.headingScale ?? fallback.headingScale ?? 1))),
+    imageHeight: Math.max(120, Math.min(720, Number(value?.imageHeight ?? fallback.imageHeight ?? 320))),
+    textAlign: ['left', 'center', 'right'].includes(value?.textAlign) ? value.textAlign : (fallback.textAlign || 'center'),
+    navigationPosition: ['top', 'below-header', 'bottom'].includes(value?.navigationPosition) ? value.navigationPosition : (fallback.navigationPosition || 'below-header'),
+    blockVisibility: ['all', 'hide-media', 'hide-socials'].includes(value?.blockVisibility) ? value.blockVisibility : (fallback.blockVisibility || 'all')
+  });
 
   // Normalize colors
   const pageBg = safeColor(colors.pageBackground || colors.surfaceBase || raw.bgColor, '#0B0F19');
@@ -581,30 +643,10 @@ export function normalizeTheme(raw: any): StandardTheme {
       }
     },
     responsive: {
-      smallMobile: {
-        maxWidth: 374,
-        pageX: Number(responsive?.smallMobile?.pageX ?? responsive?.mobile?.pageX ?? 12),
-        pageY: Number(responsive?.smallMobile?.pageY ?? responsive?.mobile?.pageY ?? 14),
-        blockGap: Number(responsive?.smallMobile?.blockGap ?? responsive?.mobile?.blockGap ?? 10)
-      },
-      mobile: {
-        maxWidth: 680,
-        pageX: Number(responsive?.mobile?.pageX ?? 16),
-        pageY: Number(responsive?.mobile?.pageY ?? 16),
-        blockGap: Number(responsive?.mobile?.blockGap ?? 12)
-      },
-      tablet: {
-        maxWidth: 760,
-        pageX: Number(responsive?.tablet?.pageX ?? 24),
-        pageY: Number(responsive?.tablet?.pageY ?? 24),
-        blockGap: Number(responsive?.tablet?.blockGap ?? 14)
-      },
-      desktop: {
-        maxWidth: 860,
-        pageX: Number(responsive?.desktop?.pageX ?? 28),
-        pageY: Number(responsive?.desktop?.pageY ?? 28),
-        blockGap: Number(responsive?.desktop?.blockGap ?? 16)
-      }
+      smallMobile: normalizeResponsiveRule(responsive?.smallMobile, { maxWidth: 374, pageX: 12, pageY: 14, blockGap: 10, avatarSize: 72, headingScale: .9, imageHeight: 220, textAlign: 'center', navigationPosition: 'below-header', blockVisibility: 'all' }),
+      mobile: normalizeResponsiveRule(responsive?.mobile, { maxWidth: 680, pageX: 16, pageY: 16, blockGap: 12, avatarSize: 80, headingScale: .96, imageHeight: 280, textAlign: 'center', navigationPosition: 'below-header', blockVisibility: 'all' }),
+      tablet: normalizeResponsiveRule(responsive?.tablet, { maxWidth: 760, pageX: 24, pageY: 24, blockGap: 14, avatarSize: 88, headingScale: 1, imageHeight: 320, textAlign: 'center', navigationPosition: 'below-header', blockVisibility: 'all' }),
+      desktop: normalizeResponsiveRule(responsive?.desktop, { maxWidth: 860, pageX: 28, pageY: 28, blockGap: 16, avatarSize: 96, headingScale: 1.05, imageHeight: 380, textAlign: 'center', navigationPosition: 'below-header', blockVisibility: 'all' })
     },
     accessibility: {
       reducedMotion: accessibility?.reducedMotion || 'respectUserPreference',
@@ -623,6 +665,7 @@ export function normalizeTheme(raw: any): StandardTheme {
       themeId: typeof raw.presetComposition.themeId === 'string' ? raw.presetComposition.themeId.slice(0, 120) : (raw.id || 'theme'),
       layoutId: typeof raw.presetComposition.layoutId === 'string' ? raw.presetComposition.layoutId.slice(0, 120) : undefined,
       brandKitId: typeof raw.presetComposition.brandKitId === 'string' ? raw.presetComposition.brandKitId.slice(0, 120) : undefined,
+      starterSiteId: typeof raw.presetComposition.starterSiteId === 'string' ? raw.presetComposition.starterSiteId.slice(0, 120) : undefined,
       selectedBlockVariants: raw.presetComposition.selectedBlockVariants && typeof raw.presetComposition.selectedBlockVariants === 'object' ? raw.presetComposition.selectedBlockVariants : undefined,
       includesStarterContent: raw.presetComposition.includesStarterContent === true,
       changesContent: raw.presetComposition.changesContent === true,
@@ -640,11 +683,38 @@ export function normalizeTheme(raw: any): StandardTheme {
  */
 export function migrateTheme(oldTheme: any): StandardTheme {
   if (!oldTheme) return normalizeTheme({});
-  if (oldTheme.schemaVersion === 1 && oldTheme.tokens && oldTheme.tokens.colors) {
-    return normalizeTheme(oldTheme);
+  const fromVersion = Number.isFinite(Number(oldTheme.schemaVersion)) ? Number(oldTheme.schemaVersion) : 0;
+  return upgradeTheme(oldTheme, fromVersion, 1);
+}
+
+/**
+ * Upgrade a theme through explicit schema versions before normalization.
+ *
+ * Version 0 represents the pre-standard-theme legacy shape. Version 1 is the
+ * current contract. Keeping this as a real migration boundary prevents future
+ * schema changes from being hidden inside UI code or silently accepted by an
+ * API endpoint.
+ */
+export function upgradeTheme(rawTheme: unknown, fromVersion: number, toVersion: number): StandardTheme {
+  if (!Number.isInteger(fromVersion) || fromVersion < 0) {
+    throw new Error('Theme source schema version must be a non-negative integer.');
   }
-  // Migrating legacy theme object
-  return normalizeTheme(oldTheme);
+  if (!Number.isInteger(toVersion) || toVersion < 1) {
+    throw new Error('Theme target schema version must be a positive integer.');
+  }
+  if (fromVersion > toVersion) {
+    throw new Error(`Theme schema cannot be downgraded from v${fromVersion} to v${toVersion}.`);
+  }
+  if (toVersion > 1 || fromVersion > 1) {
+    throw new Error(`No migration path exists for theme schema v${fromVersion} → v${toVersion}.`);
+  }
+
+  // v0 had legacy flat keys (bgColor, cardBg, fontBody, etc.). normalizeTheme
+  // is the authoritative v0 → v1 migration and also clamps unsafe values.
+  const candidate = rawTheme && typeof rawTheme === 'object' && !Array.isArray(rawTheme)
+    ? { ...(rawTheme as Record<string, unknown>), schemaVersion: 1 }
+    : {};
+  return normalizeTheme(candidate);
 }
 
 /**
