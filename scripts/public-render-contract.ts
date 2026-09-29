@@ -46,6 +46,15 @@ const footerSocialHtml = renderPublicProfileBody({
 const socialHeaderIndex = footerSocialHtml.indexOf('class="profile-header"');
 const socialFooterIndex = footerSocialHtml.indexOf('class="profile-social"');
 if (socialFooterIndex < socialHeaderIndex) throw new Error('Public renderer social placement contract could not locate footer socials.');
+const unsafeHtml = renderPublicProfileBody({
+  ...snapshot,
+  socialLinks: [{ id: 'unsafe-social', platform: 'x', url: 'javascript:alert(1)', active: true }],
+  tabs: [{ blocks: [
+    { id: 'unsafe-link', type: 'link', title: 'Unsafe', payload: { url: 'javascript:alert(1)' } },
+    { id: 'unsafe-image', type: 'media', title: 'Unsafe image', payload: { mediaType: 'image', url: 'javascript:alert(1)' } }
+  ] }]
+}, 'https://lynkflow.me/@contract-test');
+if (/href="javascript:|src="javascript:/.test(unsafeHtml)) throw new Error('Public renderer must reject unsafe persisted URLs.');
 const backgroundStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', focalPoint: { x: 30, y: 70 } }, responsive: { mobile: { maxWidth: 680, pageX: 12, pageY: 16, blockGap: 10, avatarSize: 72, headingScale: .9, imageHeight: 240, textAlign: 'left', blockVisibility: 'all' } } } });
 const requiredMarkers = ['data-block-id="contract-0"', 'data-block-id="contract-1"', 'data-block-id="contract-2"', 'data-block-id="contract-3"', 'data-block-id="contract-4"', 'data-block-id="contract-5"', 'data-block-id="contract-6"', 'data-block-id="contract-7"', 'data-block-id="contract-8"', 'data-block-id="contract-9"', 'data-block-id="contract-10"', 'data-block-id="contract-11"', 'data-block-id="contract-12"', 'data-block-id="contract-13"', '<video', '<track', 'dir="rtl"'];
 const failures = requiredMarkers.filter(marker => !html.includes(marker));

@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server.edge';
 import { PublicProfileView } from './components/preview/PublicProfileView';
 import type { Profile } from './types';
 import { normalizeTheme, validateThemeAccessibility, validateThemeSchema, validateProfileAccessibility } from './utils/themeEngine';
+import { validateBlockPayload, validateUrl } from './utils/blockValidator';
 import { createThemeDesignPersistence, mergeSparseOverride } from './utils/designSystemPersistence';
-import { resolveProfileRenderModel } from './utils/profileRenderModel';
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -179,107 +179,6 @@ function xmlEscape(value: unknown): string {
 
 function publicProfileUrl(origin: string, username: string): string {
   return `${origin.replace(/\/$/, '')}/@${encodeURIComponent(username.toLowerCase())}`;
-}
-
-function renderLegacyPublicProfileBody(snapshot: Record<string, any>, canonicalUrl: string): string {
-  const renderModel = resolveProfileRenderModel(snapshot);
-  const theme = renderModel.theme;
-  const themeColors = theme.tokens?.colors || {};
-  const themeShape = theme.tokens?.shape || {};
-  const themeLayout = theme.layout || {};
-  const themeProfile = theme.profile || {};
-  const displayName = escapeHtml(snapshot.displayName || `@${snapshot.username}`);
-  const username = escapeHtml(snapshot.username || 'creator');
-  const bio = escapeHtml(snapshot.bio || '');
-  const avatar = safePublicHref(snapshot.avatarUrl);
-  const socialLinks = renderModel.socialLinks.filter((link: any) => safePublicHref(link.url));
-  const tabs = renderModel.tabs;
-  const currentTab = renderModel.currentTab || null;
-  const blocks = renderModel.blocks;
-  const blockHtml = blocks.map((block: any) => {
-    const payload = block?.payload || {};
-    const title = escapeHtml(block?.title || '');
-    if (block?.type === 'link') {
-      const href = safePublicHref(payload.url || payload.href);
-      return href ? `<li><a class="profile-link" href="${escapeHtml(href)}" rel="noopener noreferrer">${title || escapeHtml(href)}</a>${payload.subtitle ? `<p>${escapeHtml(payload.subtitle)}</p>` : ''}</li>` : '';
-    }
-    if (block?.type === 'text') {
-      const content = escapeHtml(payload.content || '');
-      if (payload.textType === 'h1') return `<h2>${title || content}</h2>`;
-      if (payload.textType === 'h2' || payload.textType === 'h3') return `<h3>${title || content}</h3>`;
-      return `<p>${content || title}</p>`;
-    }
-    if (block?.type === 'media' && payload.mediaType === 'image') {
-      const src = safePublicHref(payload.url);
-      return src ? `<figure class="profile-media-block"><img src="${escapeHtml(src)}" alt="${title || 'Profile image'}" loading="lazy" width="1200" height="800"><figcaption>${title}</figcaption></figure>` : '';
-    }
-    if (block?.type === 'media' && payload.mediaType === 'video') {
-      const src = safePublicHref(payload.url);
-      const captions = safePublicHref(payload.captionsUrl);
-      return src ? `<figure class="profile-media-block"><video controls preload="metadata" width="1200" height="675"${safePublicHref(payload.poster) ? ` poster="${escapeHtml(safePublicHref(payload.poster))}"` : ''}><source src="${escapeHtml(src)}">${captions ? `<track kind="captions" label="English captions" src="${escapeHtml(captions)}">` : ''}</video><figcaption>${title}</figcaption></figure>` : '';
-    }
-    if (block?.type === 'gallery' || block?.type === 'carousel') {
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      const images = items.map((item: any) => {
-        const src = safePublicHref(item.image);
-        if (!src) return '';
-        const image = `<img src="${escapeHtml(src)}" alt="${escapeHtml(item.alt || item.title || title || 'Gallery image')}" loading="lazy" width="1200" height="900">`;
-        return item.url && safePublicHref(item.url) ? `<a href="${escapeHtml(safePublicHref(item.url))}" rel="noopener noreferrer">${image}</a>` : image;
-      }).join('');
-      return `<div class="profile-media-block profile-gallery ${block.type === 'carousel' ? 'is-carousel' : ''}">${images}</div><h2 class="profile-block-title">${title}</h2>`;
-    }
-    if (block?.type === 'product') {
-      const image = safePublicHref(payload.image);
-      const href = safePublicHref(payload.url);
-      if (!href) return '';
-      return `<article class="profile-product">${image ? `<img src="${escapeHtml(image)}" alt="${title}" loading="lazy" width="1200" height="900">` : ''}<div><h2>${title}</h2>${payload.description ? `<p>${escapeHtml(payload.description)}</p>` : ''}${payload.price ? `<strong>${escapeHtml(payload.currency || '$')} ${escapeHtml(payload.price)}</strong>` : ''}<a class="profile-product-link" href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(payload.buttonLabel || 'View product')}</a></div></article>`;
-    }
-    if (block?.type === 'file') {
-      const href = safePublicHref(payload.fileUrl);
-      return href ? `<li><a class="profile-link" href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(payload.fileName || block.title || 'Download file')}</a>${payload.description ? `<p>${escapeHtml(payload.description)}</p>` : ''}</li>` : '';
-    }
-    if (block?.type === 'contact') {
-      const href = safePublicHref(`${payload.contactType === 'email' ? 'mailto:' : payload.contactType === 'phone' ? 'tel:' : 'https://wa.me/'}${payload.value || ''}`);
-      return href ? `<li><a class="profile-link" href="${escapeHtml(href)}">${title || escapeHtml(payload.value)}</a></li>` : '';
-    }
-    if (block?.type === 'folder') {
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      const links = items.map((item: any) => {
-        const href = safePublicHref(item?.url);
-        return href ? `<li><a class="profile-link" href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(item.title || href)}</a></li>` : '';
-      }).join('');
-      return `<section class="profile-folder"><h2 class="profile-block-title">${title}</h2>${payload.description ? `<p>${escapeHtml(payload.description)}</p>` : ''}<ul>${links}</ul></section>`;
-    }
-    if (block?.type === 'divider') {
-      if (payload.style === 'spacer') return `<div class="profile-divider profile-divider-spacer" aria-hidden="true"></div>`;
-      const borderStyle = ['dashed', 'dotted'].includes(payload.style) ? payload.style : 'solid';
-      return `<div class="profile-divider profile-divider-${escapeHtml(payload.height || 'md')}" aria-hidden="true"><hr style="border-top-style:${borderStyle}"></div>`;
-    }
-    if (block?.type === 'testimonial') {
-      const rating = Number(payload.rating || 0);
-      return `<article class="profile-testimonial"><blockquote>${escapeHtml(payload.quote || '')}</blockquote><p><strong>${escapeHtml(payload.authorName || '')}</strong>${payload.authorRole || payload.company ? ` · ${escapeHtml([payload.authorRole, payload.company].filter(Boolean).join(' '))}` : ''}${rating > 0 ? ` <span aria-label="${rating} out of 5 stars">${'★'.repeat(Math.min(5, rating))}</span>` : ''}</p></article>`;
-    }
-    if (block?.type === 'faq' && Array.isArray(payload.items)) {
-      return payload.items.map((item: any) => `<details><summary>${escapeHtml(item.question || '')}</summary><p>${escapeHtml(item.answer || '')}</p></details>`).join('');
-    }
-    if (block?.type === 'emailSignup' || block?.type === 'form') {
-      return `<div class="profile-form"><h2>${title}</h2>${payload.description ? `<p>${escapeHtml(payload.description)}</p>` : ''}<p>Use the form on the interactive page to subscribe or send a message.</p></div>`;
-    }
-    return '';
-  }).join('');
-  const socialHtml = socialLinks.map((link: any) => `<a href="${escapeHtml(safePublicHref(link.url))}" aria-label="${escapeHtml(link.platform || 'Social link')}" rel="me noopener noreferrer">${escapeHtml(link.platform || 'Social link')}</a>`).join('');
-  const socialPlacement = ['header', 'footer', 'inline'].includes(String(themeLayout.socialIconPlacement)) ? String(themeLayout.socialIconPlacement) : 'header';
-  const headerSocialHtml = socialPlacement === 'header' && socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : '';
-  const inlineSocialHtml = socialPlacement === 'inline' && socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : '';
-  const footerSocialHtml = socialPlacement === 'footer' && socialHtml ? `<nav aria-label="Social links" class="profile-social">${socialHtml}</nav>` : '';
-  const tabNavigation = tabs.length > 1 && theme.layout?.navigationStyle !== 'none'
-    ? `<nav class="profile-tabs" aria-label="Profile sections" role="tablist">${tabs.map((tab: any, index: number) => `<a role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" href="#${escapeHtml(String(tab?.slug || tab?.id || ''))}">${escapeHtml(tab?.title || `Section ${index + 1}`)}</a>`).join('')}</nav>`
-    : '';
-  const video = theme.background?.type === 'video' && safePublicHref(theme.background?.assetUrl) ? `<video class="profile-background-video" src="${escapeHtml(safePublicHref(theme.background.assetUrl))}"${safePublicHref(theme.background?.posterUrl) ? ` poster="${escapeHtml(safePublicHref(theme.background.posterUrl))}"` : ''}${theme.background?.autoplay === false ? '' : ' autoplay'}${theme.background?.muted === false ? '' : ' muted'}${theme.background?.loop === false ? '' : ' loop'} playsinline aria-hidden="true"></video>` : '';
-  const language = renderModel.language;
-  const direction = renderModel.direction;
-  const footer = themeLayout.showFooter === false ? '' : `<footer><a href="${escapeHtml(canonicalUrl)}">${displayName} on LynkFlow</a></footer>`;
-  return `${video}<main class="profile-shell" lang="${language}" dir="${direction}"><header class="profile-header">${avatar && themeProfile.showAvatar !== false ? `<img class="profile-avatar" src="${escapeHtml(avatar)}" alt="${displayName}" width="112" height="112">` : ''}<h1>${displayName}</h1><p class="profile-handle">@${username}</p>${bio ? `<p class="profile-bio">${bio}</p>` : ''}${headerSocialHtml}${tabNavigation}</header>${inlineSocialHtml}<section aria-label="${escapeHtml(currentTab?.title || 'Profile links')}" class="profile-content"${currentTab && tabs.length > 1 ? ` data-tab-id="${escapeHtml(String(currentTab.id || ''))}"` : ''}><ul>${blockHtml}</ul></section>${footerSocialHtml}${footer}</main>`;
 }
 
 /**
@@ -925,9 +824,8 @@ function validatePublishData(data: Record<string, unknown>): string | null {
     if (!Array.isArray(tab.blocks)) return 'Every tab must contain a valid block list.';
     for (const block of tab.blocks as Array<Record<string, unknown>>) {
       const payload = block.payload && typeof block.payload === 'object' ? block.payload as Record<string, unknown> : {};
-      if (block.type === 'link' && typeof payload.url !== 'string' && typeof payload.href !== 'string') {
-        return `Link block ${String(block.title || 'untitled')} is missing a destination URL.`;
-      }
+      const blockValidation = validateBlockPayload(String(block.type || '') as never, payload);
+      if (!blockValidation.isValid) return blockValidation.errors[0] || `Block ${String(block.title || 'untitled')} is invalid.`;
     }
   }
   const rawTheme = data.standardTheme || normalizeTheme(data.theme || {});
@@ -944,7 +842,42 @@ function validatePublishData(data: Record<string, unknown>): string | null {
 function validateDraftData(data: Record<string, unknown>): string | null {
   const rawTheme = data.standardTheme || normalizeTheme(data.theme || {});
   const schemaResult = validateThemeSchema(rawTheme);
-  return schemaResult.isValid ? null : (schemaResult.errors[0]?.message || 'Theme schema validation failed.');
+  if (!schemaResult.isValid) return schemaResult.errors[0]?.message || 'Theme schema validation failed.';
+
+  const checkUrl = (value: unknown, label: string): string | null => {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    return validateUrl(value).isValid ? null : `${label} contains an unsafe or invalid URL.`;
+  };
+  const tabs = Array.isArray(data.tabs) ? data.tabs as Array<Record<string, unknown>> : [];
+  for (const tab of tabs) {
+    const blocks = Array.isArray(tab.blocks) ? tab.blocks as Array<Record<string, unknown>> : [];
+    for (const block of blocks) {
+      const payload = block.payload && typeof block.payload === 'object' ? block.payload as Record<string, unknown> : {};
+      const directUrls: Array<[unknown, string]> = [
+        [payload.url, 'Block URL'], [payload.href, 'Block URL'], [payload.image, 'Block image'],
+        [payload.fileUrl, 'File URL'], [payload.poster, 'Media poster'], [payload.captionsUrl, 'Media captions']
+      ];
+      for (const [value, label] of directUrls) {
+        const error = checkUrl(value, label);
+        if (error) return error;
+      }
+      if (Array.isArray(payload.items)) {
+        for (const item of payload.items as Array<Record<string, unknown>>) {
+          for (const [value, label] of [[item?.url, 'Nested block URL'], [item?.image, 'Nested block image']] as Array<[unknown, string]>) {
+            const error = checkUrl(value, label);
+            if (error) return error;
+          }
+        }
+      }
+    }
+  }
+  if (Array.isArray(data.socialLinks)) {
+    for (const link of data.socialLinks as Array<Record<string, unknown>>) {
+      const error = checkUrl(link.url, 'Social link');
+      if (error) return error;
+    }
+  }
+  return null;
 }
 
 type DesignSystemColumns = {

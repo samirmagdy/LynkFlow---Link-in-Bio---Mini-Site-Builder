@@ -24,7 +24,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { sanitizeMediaEmbed } from '../../utils/blockValidator';
+import { sanitizeMediaEmbed, validateUrl } from '../../utils/blockValidator';
 import { 
   AnimeBlockEffect, 
   AnimeHoverEffect, 
@@ -50,6 +50,12 @@ import {
   triggerBlockTextAnimation,
   stopBlockAnimation
 } from '../../utils/animeAnimations';
+
+const safePublicHref = (value: unknown, allowRelative = false): string | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const result = validateUrl(value, allowRelative);
+  return result.isValid ? result.sanitizedValue || value.trim() : null;
+};
 
 interface AnimatedBlockItemProps {
   block: Block;
@@ -372,6 +378,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   }, [profile.id, hasUserConsented]);
 
   const handleLinkClick = (blockId: string, url: string, e?: React.MouseEvent<HTMLElement>) => {
+    const safeUrl = safePublicHref(url);
     e?.preventDefault();
     if (e && legacyTheme.animeMicroInteractions !== false) {
       triggerAnimeRipple(e, e.currentTarget, colors.accent ? `${colors.accent}33` : 'rgba(255, 255, 255, 0.2)');
@@ -399,9 +406,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       consentGranted: hasUserConsented
     });
 
-    if (url && url !== '#') {
+    if (safeUrl && safeUrl !== '#') {
       setTimeout(() => {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(safeUrl, '_blank', 'noopener,noreferrer');
       }, 140);
     }
   };
@@ -616,12 +623,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           )}
 
           {/* Social Icons Bar (Top Position) */}
-          {socialIconPlacement === 'header' && profile.socialLinks.some(s => s.active) && (
+          {socialIconPlacement === 'header' && profile.socialLinks.some(s => s.active && safePublicHref(s.url)) && (
             <div className="profile-social flex items-center justify-center gap-2 flex-wrap mb-4 anime-profile-item">
-              {profile.socialLinks.filter(s => s.active).map((link, linkIdx) => (
+              {profile.socialLinks.filter(s => s.active && safePublicHref(s.url)).map((link, linkIdx) => (
                 <a
                   key={link.id || `header-social-${linkIdx}`}
-                  href={link.url}
+                  href={safePublicHref(link.url) || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={link.platform}
@@ -679,10 +686,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           )}
         </header>
 
-        {socialIconPlacement === 'inline' && profile.socialLinks.some(s => s.active) && (
+        {socialIconPlacement === 'inline' && profile.socialLinks.some(s => s.active && safePublicHref(s.url)) && (
           <div className="profile-social flex items-center justify-center gap-2 flex-wrap mb-5" aria-label="Social links">
-            {profile.socialLinks.filter(s => s.active).map((link, linkIdx) => (
-              <a key={link.id || `inline-social-${linkIdx}`} href={link.url} target="_blank" rel="noopener noreferrer" aria-label={link.platform} className="touch-target rounded-full flex items-center justify-center transition-all hover:scale-110" style={{ width: 'var(--theme-social-size, 36px)', height: 'var(--theme-social-size, 36px)', backgroundColor: variants.socialIcons === 'filled' ? 'var(--theme-accent, #6366F1)' : variants.socialIcons === 'minimal' ? 'transparent' : 'var(--theme-panel-bg, #151B2A)', border: '1px solid var(--theme-border, #30394D)', color: variants.socialIcons === 'filled' ? 'var(--theme-accent-text, #FFFFFF)' : 'var(--theme-social-color, var(--theme-text-primary, #F8FAFC))' }}>
+            {profile.socialLinks.filter(s => s.active && safePublicHref(s.url)).map((link, linkIdx) => (
+              <a key={link.id || `inline-social-${linkIdx}`} href={safePublicHref(link.url) || '#'} target="_blank" rel="noopener noreferrer" aria-label={link.platform} className="touch-target rounded-full flex items-center justify-center transition-all hover:scale-110" style={{ width: 'var(--theme-social-size, 36px)', height: 'var(--theme-social-size, 36px)', backgroundColor: variants.socialIcons === 'filled' ? 'var(--theme-accent, #6366F1)' : variants.socialIcons === 'minimal' ? 'transparent' : 'var(--theme-panel-bg, #151B2A)', border: '1px solid var(--theme-border, #30394D)', color: variants.socialIcons === 'filled' ? 'var(--theme-accent-text, #FFFFFF)' : 'var(--theme-social-color, var(--theme-text-primary, #F8FAFC))' }}>
                 {renderSocialIcon(link.platform)}
               </a>
             ))}
@@ -719,6 +726,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               switch (block.type) {
                 case 'link': {
                   const payload = block.payload as LinkBlockPayload;
+                  const linkHref = safePublicHref(payload.url);
                   const linkDefaults = standardTheme.blockDefaults?.link;
                   const defaultVariant = linkDefaults?.variant === 'outline' ? 'outline' : linkDefaults?.variant === 'soft' ? 'soft-card' : linkDefaults?.variant === 'glass' ? 'glass' : 'solid';
                   const linkVariant = resolveLinkVariant(variants.link, defaultVariant);
@@ -727,10 +735,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   return (
                     <a
                       key={block.id}
-                      href={payload.url || '#'}
+                      href={linkHref || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(e) => handleLinkClick(block.id, payload.url, e)}
+                      onClick={(e) => handleLinkClick(block.id, linkHref || '', e)}
                       onMouseEnter={(e) => legacyTheme.animeMicroInteractions !== false && animateHoverEnter(e.currentTarget)}
                       onMouseLeave={(e) => legacyTheme.animeMicroInteractions !== false && animateHoverLeave(e.currentTarget)}
                       className="p-4 cursor-pointer flex items-center justify-between group relative transition-all duration-200 overflow-hidden outline-none focus-visible:ring-3 focus-visible:ring-[var(--theme-focus-ring)]"
@@ -789,7 +797,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               case 'media': {
                 const payload = block.payload as MediaBlockPayload;
                 const embedInfo = sanitizeMediaEmbed(payload.url || '');
-                const isDirectVideo = payload.mediaType === 'video' && /\.(?:mp4|webm|mov)(?:$|[?#])/i.test(payload.url || '');
+                const mediaHref = safePublicHref(payload.url);
+                const posterHref = safePublicHref(payload.poster);
+                const captionsHref = safePublicHref(payload.captionsUrl);
+                const isDirectVideo = payload.mediaType === 'video' && !!mediaHref && /\.(?:mp4|webm|mov)(?:$|[?#])/i.test(mediaHref);
 
                 return (
                   <div
@@ -807,12 +818,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                         <video
                           controls
                           preload="metadata"
-                          poster={payload.poster || undefined}
+                          poster={posterHref || undefined}
                           className="h-full w-full object-contain"
                           aria-label={block.title}
                         >
-                          <source src={payload.url} />
-                          {payload.captionsUrl && <track kind="captions" src={payload.captionsUrl} srcLang="en" label="English captions" />}
+                          <source src={mediaHref || undefined} />
+                          {captionsHref && <track kind="captions" src={captionsHref} srcLang="en" label="English captions" />}
                         </video>
                       </div>
                     ) : payload.mediaType === 'video' && embedInfo.isValid ? (
@@ -826,10 +837,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                           allowFullScreen
                         />
                       </div>
-                    ) : payload.mediaType === 'image' && payload.url ? (
+                ) : payload.mediaType === 'image' && mediaHref ? (
                       <div className="w-full relative overflow-hidden bg-surface">
                         <img 
-                          src={payload.url} 
+                          src={mediaHref}
                           alt={block.title} 
                           width={1200}
                           height={800}
@@ -873,9 +884,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   <div key={block.id} className={`${cardClasses} p-2`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))' }}>
                     <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
                       {payload.items.map((item, itemIdx) => {
-                        const image = <img src={item.image} alt={item.alt || item.title || block.title} loading="lazy" className="aspect-square w-full object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
+                        const imageHref = safePublicHref(item.image);
+                        if (!imageHref) return null;
+                        const itemHref = safePublicHref(item.url);
+                        const image = <img src={imageHref} alt={item.alt || item.title || block.title} loading="lazy" className="aspect-square w-full object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
                         const itemKey = item.id || `${block.id}-gallery-${itemIdx}`;
-                        return item.url ? <a key={itemKey} href={item.url} target="_blank" rel="noopener noreferrer">{image}</a> : <div key={itemKey}>{image}</div>;
+                        return itemHref ? <a key={itemKey} href={itemHref} target="_blank" rel="noopener noreferrer">{image}</a> : <div key={itemKey}>{image}</div>;
                       })}
                     </div>
                     <h4 className="px-2 pt-2 pb-1 text-xs font-semibold">{block.title}</h4>
@@ -888,8 +902,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 return (
                   <div key={block.id} className={`${cardClasses} overflow-x-auto snap-x snap-mandatory flex gap-2 p-2`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))' }}>
                     {payload.items.map((item, itemIdx) => {
-                      const image = <img src={item.image} alt={item.alt || item.title || block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
-                      return <div key={item.id || `${block.id}-carousel-${itemIdx}`} className="min-w-[82%] snap-center">{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">{image}</a> : image}{item.title && <p className="text-xs mt-2" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{item.title}</p>}</div>;
+                      const imageHref = safePublicHref(item.image);
+                      if (!imageHref) return null;
+                      const itemHref = safePublicHref(item.url);
+                      const image = <img src={imageHref} alt={item.alt || item.title || block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
+                      return <div key={item.id || `${block.id}-carousel-${itemIdx}`} className="min-w-[82%] snap-center">{itemHref ? <a href={itemHref} target="_blank" rel="noopener noreferrer">{image}</a> : image}{item.title && <p className="text-xs mt-2" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{item.title}</p>}</div>;
                     })}
                   </div>
                 );
@@ -897,9 +914,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
               case 'product': {
                 const payload = block.payload as ProductBlockPayload;
+                const productHref = safePublicHref(payload.url);
+                const productImageHref = safePublicHref(payload.image);
                 return (
-                  <a key={block.id} href={payload.url || '#'} target="_blank" rel="noopener noreferrer" className={`${cardClasses} overflow-hidden block`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
-                    {payload.image && <img src={payload.image} alt={block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px) var(--theme-card-radius, 16px) 0 0' }} />}
+                  <a key={block.id} href={productHref || '#'} target="_blank" rel="noopener noreferrer" className={`${cardClasses} overflow-hidden block`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
+                    {productImageHref && <img src={productImageHref} alt={block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px) var(--theme-card-radius, 16px) 0 0' }} />}
                     <div className="p-4"><div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-sm">{block.title}</h4>{payload.price && <span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || '$'} {payload.price}</span>}</div>{payload.description && <p className="text-xs mt-1" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{payload.description}</p>}<span className="inline-flex mt-3 text-xs font-semibold" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.buttonLabel || 'View product'} <ExternalLink className="w-3 h-3 ml-1" /></span></div>
                   </a>
                 );
@@ -1002,10 +1021,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                         {payload.items.map((item, itemIdx) => (
                           <a
                             key={item.id || `${block.id}-folder-${itemIdx}`}
-                            href={item.url || '#'}
+                            href={safePublicHref(item.url) || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
-                            onClick={(e) => handleLinkClick(block.id, item.url, e)}
+                            onClick={(e) => handleLinkClick(block.id, safePublicHref(item.url) || '', e)}
                             className="p-2.5 rounded-lg flex items-center justify-between text-xs cursor-pointer hover:opacity-90 transition-opacity"
                             style={{
                               backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -1114,13 +1133,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
               case 'file': {
                 const payload = block.payload as FileBlockPayload;
+                const fileHref = safePublicHref(payload.fileUrl);
                 return (
                   <a
                     key={block.id}
-                    href={payload.fileUrl || '#'}
+                    href={fileHref || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => handleLinkClick(block.id, payload.fileUrl, e)}
+                    onClick={(e) => handleLinkClick(block.id, fileHref || '', e)}
                     className={`${cardClasses} p-4 cursor-pointer flex items-center justify-between group`}
                     style={{
                       backgroundColor: 'var(--theme-panel-bg, #151B2A)',
@@ -1347,11 +1367,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 const href = isEmail 
                   ? `mailto:${payload.value}?subject=${encodeURIComponent(payload.presetSubject || '')}`
                   : `tel:${payload.value}`;
+                const safeHref = safePublicHref(href);
 
                 return (
                   <a
                     key={block.id}
-                    href={href}
+                    href={safeHref || '#'}
                     onClick={() => trackEvent({
                       profileId: profile.id,
                       blockId: block.id,
@@ -1403,12 +1424,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         </main>
 
         {/* Social Icons Bar (Bottom Position) */}
-        {socialIconPlacement === 'footer' && profile.socialLinks.some(s => s.active) && (
+        {socialIconPlacement === 'footer' && profile.socialLinks.some(s => s.active && safePublicHref(s.url)) && (
           <div className="profile-social flex items-center justify-center gap-2 flex-wrap mt-8 mb-4">
-            {profile.socialLinks.filter(s => s.active).map((link, linkIdx) => (
+            {profile.socialLinks.filter(s => s.active && safePublicHref(s.url)).map((link, linkIdx) => (
               <a
                 key={link.id || `footer-social-${linkIdx}`}
-                href={link.url}
+                href={safePublicHref(link.url) || '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={link.platform}

@@ -131,6 +131,8 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
         const check = validateUrl(payload.url);
         if (!check.isValid) errors.push(`Media URL error: ${check.error}`);
       }
+      if (payload.poster && !validateUrl(payload.poster).isValid) errors.push('Media poster URL is invalid.');
+      if (payload.captionsUrl && !validateUrl(payload.captionsUrl).isValid) errors.push('Media captions URL is invalid.');
       break;
     }
 
@@ -140,6 +142,10 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
         errors.push(`${type} block requires at least one image item.`);
       } else {
         payload.items.forEach((item: any, idx: number) => {
+          if (!item || typeof item !== 'object') {
+            errors.push(`Image item #${idx + 1} is invalid.`);
+            return;
+          }
           if (!item.image) errors.push(`Image item #${idx + 1} requires an image URL.`);
           else if (!validateUrl(item.image).isValid) errors.push(`Image item #${idx + 1} has an invalid image URL.`);
           if (item.url && !validateUrl(item.url).isValid) errors.push(`Image item #${idx + 1} has an invalid link URL.`);
@@ -169,8 +175,13 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
         errors.push('Folder block items must be an array.');
       } else {
         payload.items.forEach((item: any, idx: number) => {
+          if (!item || typeof item !== 'object') {
+            errors.push(`Folder item #${idx + 1} is invalid.`);
+            return;
+          }
           if (!item.title) errors.push(`Folder item #${idx + 1} requires a title.`);
           if (!item.url) errors.push(`Folder item #${idx + 1} requires a destination URL.`);
+          else if (!validateUrl(item.url).isValid) errors.push(`Folder item #${idx + 1} has an invalid destination URL.`);
         });
       }
       break;
@@ -181,6 +192,10 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
         errors.push('FAQ block items must be an array.');
       } else {
         payload.items.forEach((item: any, idx: number) => {
+          if (!item || typeof item !== 'object') {
+            errors.push(`FAQ item #${idx + 1} is invalid.`);
+            return;
+          }
           if (!item.question) errors.push(`FAQ item #${idx + 1} requires a question.`);
           if (!item.answer) errors.push(`FAQ item #${idx + 1} requires an answer.`);
         });
@@ -197,8 +212,11 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
     }
 
     case 'contact': {
-      if (!payload.value || !payload.value.trim()) {
+      if (typeof payload.value !== 'string' || !payload.value.trim()) {
         errors.push('Contact block requires an email or phone number.');
+      } else {
+        const prefix = payload.contactType === 'email' ? 'mailto:' : payload.contactType === 'phone' ? 'tel:' : 'https://wa.me/';
+        if (!validateUrl(`${prefix}${payload.value}`).isValid) errors.push('Contact destination is invalid.');
       }
       break;
     }
@@ -206,6 +224,8 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
     case 'file': {
       if (!payload.fileUrl) {
         errors.push('File block requires a download URL.');
+      } else if (!validateUrl(payload.fileUrl).isValid) {
+        errors.push('File download URL is invalid.');
       }
       break;
     }
@@ -216,6 +236,9 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
       }
       break;
     }
+
+    default:
+      errors.push('Unsupported block type.');
   }
 
   return {

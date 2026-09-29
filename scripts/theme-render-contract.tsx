@@ -5,11 +5,19 @@ import { PublicProfileView } from '../src/components/preview/PublicProfileView';
 import { PhoneMockup } from '../src/components/preview/PhoneMockup';
 import { INITIAL_PROFILES } from '../src/data/mockData';
 import { SPEC_THEME_PRESETS } from '../src/data/themePresets';
+import { IMPORTED_THEME_PRESETS } from '../src/data/importedThemePresets';
+import { LIINKS_GALLERY_THEMES } from '../src/data/liinksGalleryThemes';
+import { PERSONA_TEMPLATES } from '../src/data/personaTemplates';
 import { normalizeTheme, compileThemeToCssVariables } from '../src/utils/themeEngine';
 import type { Profile } from '../src/types';
 
 const baseProfile = INITIAL_PROFILES[0];
-const representativeThemes = SPEC_THEME_PRESETS.slice(0, 3);
+const representativeThemes = Array.from(new Map([
+  ...SPEC_THEME_PRESETS,
+  ...IMPORTED_THEME_PRESETS,
+  ...LIINKS_GALLERY_THEMES,
+  ...PERSONA_TEMPLATES.map(persona => persona.theme),
+].map(theme => [theme.id, theme])).values());
 const failures: string[] = [];
 
 const renderProfile = (theme: ReturnType<typeof normalizeTheme>, locale: 'en' | 'ar') => {
