@@ -1,0 +1,1313 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useApp } from '../../context/AppContext';
+import { 
+  ArrowRight, 
+  Check, 
+  Layers, 
+  Palette, 
+  BarChart2, 
+  QrCode, 
+  ShieldCheck, 
+  Globe, 
+  Zap, 
+  ChevronDown, 
+  ChevronUp, 
+  Sparkles,
+  Smartphone,
+  ExternalLink,
+  Play,
+  Flame,
+  CheckCircle2
+} from 'lucide-react';
+import { 
+  ANIME_ENTRANCE_PRESETS, 
+  AnimeEntrancePreset, 
+  runStaggeredEntrance, 
+  animateCounter, 
+  triggerAnimeRipple, 
+  animateHoverEnter, 
+  animateHoverLeave,
+  triggerSuccessBurst,
+  animateIconBounce,
+  animateTableRowCascade,
+  animateAccordionExpand,
+  animateHeroEntrance,
+  prefersReducedMotion
+} from '../../utils/animeAnimations';
+import { 
+  PRICING_PLANS, 
+  CAPABILITY_COMPARISON_MATRIX, 
+  formatPlanPrice 
+} from '../../data/pricingPlans';
+import { BillingCycle, PlanType } from '../../types';
+import { SPEC_THEME_PRESETS } from '../../data/themePresets';
+import { animate, stagger } from 'animejs';
+import { ProductIllustration } from '../illustration/ProductIllustration';
+import { LandingMotionBackground } from './LandingMotionBackground';
+
+interface MarketingPageProps {
+  onOpenAuth?: (mode: 'create' | 'login') => void;
+}
+
+export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
+  const { setCurrentView, switchActiveProfile, profiles, setPublicViewingUsername, setPublicDemo, workspace, upgradePlan } = useApp();
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [demoPreset, setDemoPreset] = useState<AnimeEntrancePreset>('springPop');
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
+  const [selectedThemeId, setSelectedThemeId] = useState(SPEC_THEME_PRESETS[0]?.id || 'preset-ayre-coat');
+  const [showAllPresets, setShowAllPresets] = useState(false);
+
+  // Component refs for Anime.js animations
+  const heroContainerRef = useRef<HTMLDivElement>(null);
+  const stat1Ref = useRef<HTMLSpanElement>(null);
+  const stat2Ref = useRef<HTMLSpanElement>(null);
+  const stat3Ref = useRef<HTMLSpanElement>(null);
+
+  const featuredSectionRef = useRef<HTMLDivElement>(null);
+  const featuresSectionRef = useRef<HTMLDivElement>(null);
+  const playgroundSectionRef = useRef<HTMLDivElement>(null);
+  const demoCardsRef = useRef<HTMLDivElement>(null);
+  const comparisonSectionRef = useRef<HTMLDivElement>(null);
+  const faqSectionRef = useRef<HTMLDivElement>(null);
+  const ctaSectionRef = useRef<HTMLDivElement>(null);
+  const faqAnswerRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Setup Anime.js entrance and scroll animations
+  useEffect(() => {
+    const activeAnimations: Array<{ pause?: () => void; cancel?: () => void }> = [];
+    if (prefersReducedMotion()) return;
+
+    // 1. Hero elements orchestrally staggered
+    if (heroContainerRef.current) {
+      const heroAnimation = animateHeroEntrance(heroContainerRef.current);
+      if (heroAnimation) activeAnimations.push(heroAnimation as { pause?: () => void; cancel?: () => void });
+    }
+
+    // 2. Hero rolling metric counters
+    [
+      animateCounter(stat1Ref.current, 0, 140, { prefix: '+', suffix: '%', duration: 1200 }),
+      animateCounter(stat2Ref.current, 0, 99.9, { decimals: 1, suffix: '%', duration: 1200 }),
+      animateCounter(stat3Ref.current, 0, 300, { prefix: '<', suffix: 'ms', duration: 1200 })
+    ].forEach(animation => {
+      if (animation) activeAnimations.push(animation as { pause?: () => void; cancel?: () => void });
+    });
+
+    // 3. Initial demo cards cascade in playground
+    triggerDemoAnimation();
+
+    // 4. Scroll-triggered IntersectionObserver for all landing page components
+    const animatedSections = new Set<string>();
+
+    const observerCallback: IntersectionObserverCallback = (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+
+        const target = entry.target as HTMLElement;
+        const sectionKey = target.dataset.sectionKey;
+        if (!sectionKey || animatedSections.has(sectionKey)) return;
+        animatedSections.add(sectionKey);
+
+        // Run section-specific Anime.js stagger animations
+        if (sectionKey === 'featured') {
+          const cards = target.querySelectorAll<HTMLElement>('.featured-anime-card');
+          const header = target.querySelectorAll<HTMLElement>('.featured-anime-header');
+          runStaggeredEntrance(header, 'cinematicGlide');
+          runStaggeredEntrance(cards, 'springPop');
+        } else if (sectionKey === 'features') {
+          const cards = target.querySelectorAll<HTMLElement>('.feature-anime-card');
+          const header = target.querySelectorAll<HTMLElement>('.feature-anime-header');
+          runStaggeredEntrance(header, 'cinematicGlide');
+          runStaggeredEntrance(cards, 'springPop');
+        } else if (sectionKey === 'playground') {
+          const header = target.querySelectorAll<HTMLElement>('.playground-anime-header');
+          runStaggeredEntrance(header, 'cinematicGlide');
+        } else if (sectionKey === 'comparison') {
+          const header = target.querySelectorAll<HTMLElement>('.comparison-anime-header');
+          const rows = target.querySelectorAll<HTMLElement>('.comparison-table-row');
+          runStaggeredEntrance(header, 'cinematicGlide');
+          animateTableRowCascade(rows);
+        } else if (sectionKey === 'faq') {
+          const header = target.querySelectorAll<HTMLElement>('.faq-anime-header');
+          const items = target.querySelectorAll<HTMLElement>('.faq-anime-item');
+          runStaggeredEntrance(header, 'cinematicGlide');
+          runStaggeredEntrance(items, 'elasticWave');
+        } else if (sectionKey === 'cta') {
+          const items = target.querySelectorAll<HTMLElement>('.cta-anime-item');
+          runStaggeredEntrance(items, 'backZoom');
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(observerCallback, {
+      threshold: 0.12,
+      rootMargin: '0px 0px -40px 0px'
+    });
+
+    const sectionsToObserve = [
+      featuredSectionRef.current,
+      featuresSectionRef.current,
+      playgroundSectionRef.current,
+      comparisonSectionRef.current,
+      faqSectionRef.current,
+      ctaSectionRef.current,
+    ];
+
+    sectionsToObserve.forEach((sec) => {
+      if (sec) observer.observe(sec);
+    });
+
+    // Fallback: trigger first two sections in case viewport is high resolution
+    const timer = setTimeout(() => {
+      if (featuredSectionRef.current && !animatedSections.has('featured')) {
+        const cards = featuredSectionRef.current.querySelectorAll<HTMLElement>('.featured-anime-card');
+        runStaggeredEntrance(cards, 'springPop');
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+      activeAnimations.forEach(animation => {
+        animation.pause?.();
+        animation.cancel?.();
+      });
+    };
+  }, []);
+
+  const triggerDemoAnimation = (presetOverride?: AnimeEntrancePreset) => {
+    if (prefersReducedMotion()) return;
+    const cards = demoCardsRef.current?.querySelectorAll<HTMLElement>('.demo-anime-card');
+    if (cards?.length) runStaggeredEntrance(cards, presetOverride || demoPreset);
+  };
+
+  const handleSelectPreset = (preset: AnimeEntrancePreset, e: React.MouseEvent<HTMLButtonElement>) => {
+    triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.4)');
+    setDemoPreset(preset);
+    triggerDemoAnimation(preset);
+  };
+
+  const handleReplayClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    triggerAnimeRipple(e, e.currentTarget, 'rgba(255, 255, 255, 0.3)');
+    triggerSuccessBurst(e.currentTarget);
+    triggerDemoAnimation();
+  };
+
+  const toggleFaq = (idx: number) => {
+    const willOpen = openFaq !== idx;
+    setOpenFaq(willOpen ? idx : null);
+
+    if (willOpen) {
+      setTimeout(() => {
+        const answerEl = faqAnswerRefs.current[idx];
+        if (answerEl) {
+          animateAccordionExpand(answerEl);
+        }
+      }, 20);
+    }
+  };
+
+  const handleInspectProfile = (username: string, e?: React.MouseEvent<HTMLElement>) => {
+    if (e) {
+      triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.35)');
+    }
+    const prof = profiles.find(p => p.username === username);
+    if (prof) {
+      switchActiveProfile(prof.id);
+    }
+    setPublicViewingUsername(username);
+    setPublicDemo(true);
+    window.history.replaceState({}, '', `/@${encodeURIComponent(username)}?demo=1`);
+    setCurrentView('public_standalone');
+  };
+
+  const handleCardMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    animateHoverEnter(e.currentTarget);
+    const icon = e.currentTarget.querySelector<HTMLElement>('.anime-icon-target');
+    if (icon) {
+      animateIconBounce(icon);
+    }
+  };
+
+  const handleCardMouseLeave = (e: React.MouseEvent<HTMLElement>) => {
+    animateHoverLeave(e.currentTarget);
+  };
+
+  const faqs = [
+    {
+      q: 'How is LynkFlow different from basic link-in-bio tools?',
+      a: 'Basic link tools only allow a flat list of URL buttons. LynkFlow gives you complete modular block control — embed YouTube video reels, client inquiry forms, downloadable media kits, collapsible folders, FAQ accordions, and custom domain mapping with zero coding.'
+    },
+    {
+      q: 'Can I connect my own custom domain?',
+      a: 'Yes. With Creator Pro and Agency tiers, you can map any custom domain or subdomain (like links.yourbrand.com) with automated, high-performance SSL certificate provisioning.'
+    },
+    {
+      q: 'How does dynamic QR code retargeting work?',
+      a: 'When you print your QR code onto physical business cards, merchandise, or flyers, the QR code points to a permanent dynamic redirect. You can change your profile URL or campaign destination at any time without reprinting.'
+    },
+    {
+      q: 'Are page views and link clicks privacy-compliant?',
+      a: 'LynkFlow analytics are designed to be cookie-less and privacy-first. We aggregate device classes, referrers, and country distributions without intrusive third-party fingerprinting. Review our privacy documentation for implementation details.'
+    },
+    {
+      q: 'Can multiple team members or clients manage profiles?',
+      a: 'Agency Studio plans support multi-profile workspace management, allowing you to create, duplicate, and operate isolated profiles for different brands and clients from a single login.'
+    }
+  ];
+
+  const selectedTheme = SPEC_THEME_PRESETS.find(theme => theme.id === selectedThemeId) || SPEC_THEME_PRESETS[0]!;
+
+  return (
+    <div className="relative isolate w-full bg-canvas text-ink overflow-x-hidden">
+      <LandingMotionBackground />
+      {/* Hero Section (MKT-001 & Flow 1/2) */}
+      <section 
+        id="overview"
+        tabIndex={-1}
+        ref={heroContainerRef}
+        className="relative pt-16 pb-20 sm:pt-24 sm:pb-32 px-4 sm:px-6 max-w-7xl mx-auto focus:outline-none"
+      >
+        <div className="text-center max-w-3xl mx-auto space-y-6">
+          {/* Eyebrow Pill */}
+          <div className="anime-hero-item inline-flex items-center gap-2 text-xs text-muted font-medium px-4 py-1.5 rounded-full bg-surface/80 border border-line shadow-sm backdrop-blur-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Next-Generation Link-in-Bio</span>
+            <span aria-hidden="true" className="text-subtle">·</span>
+            <span>Zero Slop Architecture</span>
+            <span aria-hidden="true" className="text-subtle">·</span>
+            <span>Powered by Anime.js Physics</span>
+          </div>
+
+          {/* Main Headline */}
+          <h1 className="anime-hero-item text-4xl sm:text-6xl font-extrabold tracking-tight text-ink font-['Syne'] leading-[1.1] text-balance">
+            Turn your social traffic into a branded, high-converting destination.
+          </h1>
+
+          {/* Subtitle */}
+          <p className="anime-hero-item text-base sm:text-lg text-muted max-w-2xl mx-auto leading-relaxed">
+            Consolidate links, video reels, client intake forms, and digital downloads in minutes. Fast, beautiful, and measurable.
+          </p>
+
+          {/* Primary CTA Cluster (MKT-001 & Primary Flow 3) */}
+          <div className="anime-hero-item flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-4">
+            <button
+              onClick={(e) => {
+                triggerAnimeRipple(e, e.currentTarget, 'rgba(0, 0, 0, 0.25)');
+                triggerSuccessBurst(e.currentTarget);
+                if (onOpenAuth) {
+                  onOpenAuth('create');
+                } else {
+                  setTimeout(() => setCurrentView('editor'), 220);
+                }
+              }}
+              onMouseEnter={(e) => {
+                animateHoverEnter(e.currentTarget);
+                const icon = e.currentTarget.querySelector<HTMLElement>('.hero-arrow-icon');
+                if (icon) animateIconBounce(icon);
+              }}
+              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+              className="touch-target relative overflow-hidden w-full sm:w-auto px-7 py-3 text-sm font-bold text-inverse-text bg-inverse hover:bg-inverse-hover transition-colors rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer group focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            >
+              <span>Create your page</span>
+              <ArrowRight className="hero-arrow-icon w-4 h-4 transition-transform group-hover:translate-x-1" />
+            </button>
+
+            <button
+              onClick={() => onOpenAuth ? onOpenAuth('login') : setCurrentView('editor')}
+              className="touch-target relative overflow-hidden w-full sm:w-auto px-6 py-3 text-sm font-semibold text-body hover:text-ink bg-surface hover:bg-surface-2 border border-line hover:border-line-strong rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            >
+              <span>Log in to Studio</span>
+            </button>
+
+            <button
+              onClick={(e) => handleInspectProfile('alexvance', e)}
+              onMouseEnter={(e) => {
+                animateHoverEnter(e.currentTarget);
+                const icon = e.currentTarget.querySelector<HTMLElement>('.hero-phone-icon');
+                if (icon) animateIconBounce(icon);
+              }}
+              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+              className="relative overflow-hidden w-full sm:w-auto px-5 py-3 text-sm font-medium text-muted hover:text-ink-strong transition-colors flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            >
+              <Smartphone className="hero-phone-icon w-4 h-4 text-subtle" />
+              <span>Live Demo</span>
+            </button>
+          </div>
+
+          <div className="anime-hero-item mx-auto mt-8 w-full max-w-2xl rounded-3xl border border-indigo-500/20 bg-indigo-500/5 p-3 shadow-2xl shadow-indigo-950/20">
+            <ProductIllustration variant="assembly" />
+          </div>
+
+          {/* Product proof: the authoring system becoming a published page. */}
+          <div className="anime-hero-item relative mx-auto mt-10 w-full max-w-4xl rounded-[2rem] border border-line bg-surface/80 p-2 shadow-2xl shadow-indigo-950/20 backdrop-blur-xl text-left">
+            <div className="flex items-center justify-between border-b border-line px-3 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-subtle">
+              <span>Live composition</span>
+              <span className="flex items-center gap-1.5 text-success normal-case tracking-normal">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Published preview
+              </span>
+            </div>
+            <div className="grid gap-2 p-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)_minmax(0,0.8fr)]">
+              <div className="hidden rounded-2xl border border-line bg-canvas/80 p-3 sm:block">
+                <div className="mb-4 flex items-center justify-between text-[10px] font-mono text-subtle">
+                  <span>Blocks</span><Layers className="h-3.5 w-3.5 text-accent" />
+                </div>
+                <div className="space-y-2">
+                  {['Hero link', 'Video reel', 'Inquiry form', 'Download'].map((label, index) => (
+                    <div key={label} className={`rounded-lg border px-2.5 py-2 text-[10px] ${index === 0 ? 'border-indigo-500/50 bg-indigo-500/10 text-accent-soft' : 'border-line bg-surface/70 text-subtle'}`}>
+                      <span className="mr-1.5 text-subtle">0{index + 1}</span>{label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-line bg-canvas p-4 sm:p-5">
+                <div className="mx-auto max-w-[240px] space-y-3 text-center">
+                  <div className="mx-auto h-12 w-12 rounded-full bg-linear-to-br from-indigo-400 via-purple-500 to-emerald-300 ring-4 ring-line" />
+                  <div>
+                    <div className="text-sm font-bold text-ink">Alex Vance</div>
+                    <div className="mt-1 text-[10px] leading-relaxed text-subtle">Visual director, photographer and storyteller.</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="rounded-xl bg-inverse px-3 py-2 text-[10px] font-semibold text-inverse-text">Watch the cinema reel</div>
+                    <div className="rounded-xl border border-line-strong bg-surface px-3 py-2 text-[10px] text-body">Download the media kit</div>
+                    <div className="rounded-xl border border-line bg-surface/70 px-3 py-2 text-[10px] text-subtle">Start a collaboration</div>
+                  </div>
+                </div>
+              </div>
+              <div className="hidden rounded-2xl border border-line bg-canvas/80 p-3 sm:block">
+                <div className="mb-4 flex items-center justify-between text-[10px] font-mono text-subtle">
+                  <span>Signals</span><BarChart2 className="h-3.5 w-3.5 text-success" />
+                </div>
+                <div className="space-y-3">
+                  <div><div className="mb-1 flex justify-between text-[10px] text-subtle"><span>Visitors</span><span className="text-body">8.4k</span></div><div className="h-1 rounded-full bg-surface-2"><div className="h-1 w-4/5 rounded-full bg-indigo-400" /></div></div>
+                  <div><div className="mb-1 flex justify-between text-[10px] text-subtle"><span>Clicks</span><span className="text-body">2.1k</span></div><div className="h-1 rounded-full bg-surface-2"><div className="h-1 w-3/5 rounded-full bg-emerald-400" /></div></div>
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 text-[10px] leading-relaxed text-success">One source of truth from draft to live.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Social Proof Text Row with Animated Counters */}
+          <div className="anime-hero-item pt-8 flex flex-wrap items-center justify-center gap-4 text-xs text-muted font-mono">
+            <div 
+              onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+              className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-emerald-500/40 transition-colors"
+            >
+              <span ref={stat1Ref} className="font-bold text-success tabular-nums">Higher</span>
+              <span>Qualified Inbound Focus</span>
+            </div>
+            <div 
+              onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+              className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-indigo-500/40 transition-colors"
+            >
+              <span ref={stat2Ref} className="font-bold text-accent tabular-nums">Edge</span>
+              <span>Ready Delivery</span>
+            </div>
+            <div 
+              onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+              className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-cyan-500/40 transition-colors"
+            >
+              <span ref={stat3Ref} className="font-bold text-info tabular-nums">Fast</span>
+              <span>Global Edge Delivery</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Profiles Live Showcase Section */}
+      <section 
+        ref={featuredSectionRef}
+        data-section-key="featured"
+        className="py-16 px-4 sm:px-6 border-y border-line bg-surface/20"
+      >
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="featured-anime-header text-center max-w-2xl mx-auto space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
+              Crafted for creators, studios & modern brands.
+            </h2>
+            <p className="text-xs sm:text-sm text-muted">
+              Click any profile below to experience full standalone performance and conversion tools.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Alex Vance */}
+            <a
+              href="/@alexvance"
+              onClick={(e) => handleInspectProfile('alexvance', e)}
+              onMouseEnter={handleCardMouseEnter}
+              onMouseLeave={handleCardMouseLeave}
+              className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
+            >
+              <ProductIllustration variant="assembly" className="mb-2 max-h-24" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-ink group-hover:text-accent-soft transition-colors">Alex Vance</h3>
+                  <p className="text-xs text-muted">Visual Director & Photographer</p>
+                </div>
+                <span className="text-[11px] font-mono text-subtle">@alexvance</span>
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                Features YouTube cinema reel, Lightroom preset sales, PDF media kit download, and newsletter signup.
+              </p>
+              <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
+                <span className="flex items-center gap-1">
+                  View Live Page 
+                  <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </span>
+                <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Onyx Minimal</span>
+              </div>
+            </a>
+
+            {/* Studio Nova */}
+            <a
+              href="/@studionova_agency"
+              onClick={(e) => handleInspectProfile('studionova_agency', e)}
+              onMouseEnter={handleCardMouseEnter}
+              onMouseLeave={handleCardMouseLeave}
+              className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
+            >
+              <ProductIllustration variant="theme" className="mb-2 max-h-24" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-ink group-hover:text-accent-soft transition-colors">Studio Nova</h3>
+                  <p className="text-xs text-muted">Brand Identity & Type Design</p>
+                </div>
+                <span className="text-[11px] font-mono text-subtle">@studionova_agency</span>
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                Features custom lead qualification intake form, typography license sales, and case study monograph.
+              </p>
+              <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
+                <span className="flex items-center gap-1">
+                  View Live Page 
+                  <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </span>
+                <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Nordic Clean</span>
+              </div>
+            </a>
+
+            {/* Chef Maya Lin */}
+            <a
+              href="/@mayakitchen"
+              onClick={(e) => handleInspectProfile('mayakitchen', e)}
+              onMouseEnter={handleCardMouseEnter}
+              onMouseLeave={handleCardMouseLeave}
+              className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
+            >
+              <ProductIllustration variant="onboarding" className="mb-2 max-h-24" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-ink group-hover:text-accent-soft transition-colors">Chef Maya Lin</h3>
+                  <p className="text-xs text-muted">Pastry Chef & Cookbook Author</p>
+                </div>
+                <span className="text-[11px] font-mono text-subtle">@mayakitchen</span>
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                Features cookbook pre-orders, sourdough troubleshooting PDF guide, and workshop inquiries.
+              </p>
+              <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
+                <span className="flex items-center gap-1">
+                  View Live Page 
+                  <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </span>
+                <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Editorial Cream</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Capabilities Breakdown (MKT-002: Themes, Blocks, Org, Analytics) */}
+      <section 
+        id="features"
+        tabIndex={-1}
+        ref={featuresSectionRef}
+        data-section-key="features"
+        className="py-20 px-4 sm:px-6 max-w-7xl mx-auto space-y-12 focus:outline-none"
+      >
+        <div className="feature-anime-header text-center max-w-2xl mx-auto space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
+            Engineered for conversion, not just navigation.
+          </h2>
+          <p className="text-xs sm:text-sm text-muted">
+            Everything you need to turn visitors into followers, clients, and revenue.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div 
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.25)')}
+            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/40 transition-colors space-y-3 cursor-default"
+          >
+            <ProductIllustration variant="assembly" className="mb-3 max-h-32" />
+            <div className="anime-icon-target p-2.5 rounded-xl bg-indigo-500/10 text-accent w-fit">
+              <Layers className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-ink">Modular Block Architecture</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Combine video embeds, links with animation badges, collapsible folders, FAQ accordions, and downloadable resources with drag-and-drop ease.
+            </p>
+          </div>
+
+          <div 
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(16, 185, 129, 0.25)')}
+            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-emerald-500/40 transition-colors space-y-3 cursor-default"
+          >
+            <ProductIllustration variant="theme" className="mb-3 max-h-32" />
+            <div className="anime-icon-target p-2.5 rounded-xl bg-emerald-500/10 text-success w-fit">
+              <Palette className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-ink">Deep Token Theme Engine</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Customize fonts, border radii, shadows, background meshes, and color palettes. Your link-in-bio looks like an editorial mini-site, not a template clone.
+            </p>
+          </div>
+
+          <div 
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(6, 182, 212, 0.25)')}
+            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-cyan-500/40 transition-colors space-y-3 cursor-default"
+          >
+            <ProductIllustration variant="privacy" className="mb-3 max-h-32" />
+            <div className="anime-icon-target p-2.5 rounded-xl bg-cyan-500/10 text-info w-fit">
+              <BarChart2 className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-ink">Privacy-First Analytics</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Real-time page views, unique visitors, link-level click counts, and CTR calculation with zero invasive cookies or tracking bloat.
+            </p>
+          </div>
+
+          <div 
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(245, 158, 11, 0.25)')}
+            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-amber-500/40 transition-colors space-y-3 cursor-default"
+          >
+            <ProductIllustration variant="qr" className="mb-3 max-h-32" />
+            <div className="anime-icon-target p-2.5 rounded-xl bg-amber-500/10 text-warning w-fit">
+              <QrCode className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-ink">Dynamic QR Code Studio</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Generate styled vector QR codes with custom dots and colors. Update destination URLs anytime without reprinting packaging or physical cards.
+            </p>
+          </div>
+
+          <div 
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(244, 63, 94, 0.25)')}
+            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-rose-500/40 transition-colors space-y-3 cursor-default"
+          >
+            <ProductIllustration variant="route" className="mb-3 max-h-32" />
+            <div className="anime-icon-target p-2.5 rounded-xl bg-rose-500/10 text-danger w-fit">
+              <Globe className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-ink">Custom Domains & Free SSL</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Point your domain or subdomain directly with automatic CNAME diagnostics, verification checks, and automated TLS certificate issuance.
+            </p>
+          </div>
+
+          <div 
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(139, 92, 246, 0.25)')}
+            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-violet-500/40 transition-colors space-y-3 cursor-default"
+          >
+            <ProductIllustration variant="profiles" className="mb-3 max-h-32" />
+            <div className="anime-icon-target p-2.5 rounded-xl bg-violet-500/10 text-accent-soft w-fit">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-ink">Multi-Profile Agency Workspaces</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Isolate client profiles, duplicate structures, export CSV form submissions, and manage permissions from a centralized console.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Theme samples: show the actual design systems instead of animation presets. */}
+      <section id="themes" tabIndex={-1} ref={playgroundSectionRef} data-section-key="playground" className="py-20 px-4 sm:px-6 border-t border-line bg-linear-to-b from-surface/40 via-canvas to-surface/30 focus:outline-none">
+        <div className="max-w-6xl mx-auto space-y-10">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-accent text-xs font-mono border border-indigo-500/20">
+              <Palette className="w-3.5 h-3.5 text-warning" />
+              <span>Theme Studio</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-['Syne'] tracking-tight text-balance">
+              Start with a visual system, not a template.
+            </h2>
+            <p className="text-sm text-muted leading-relaxed">
+              Explore the same profile across distinct palettes, typography, surfaces, and button treatments before you build.
+            </p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] lg:items-stretch">
+            <div className="rounded-3xl border border-line bg-surface/90 p-4 sm:p-5 shadow-xl">
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-ink">Theme samples</div>
+                  <div className="mt-1 text-[11px] text-muted">Select a direction to preview it.</div>
+                </div>
+                <span className="text-[10px] font-mono text-muted">{SPEC_THEME_PRESETS.length} systems</span>
+              </div>
+              <div className="grid max-h-[34rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-2">
+                {SPEC_THEME_PRESETS.map((theme) => {
+                  const isSelected = theme.id === selectedTheme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedThemeId(theme.id)}
+                      className={`group rounded-2xl border p-2 text-left transition-all cursor-pointer ${isSelected ? 'border-accent ring-2 ring-indigo-500/20' : 'border-line hover:border-line-strong'}`}
+                    >
+                      <div className="h-20 rounded-xl p-2" style={{ background: theme.background.type === 'gradient' && theme.background.gradientStops ? theme.background.gradientStops : theme.tokens.colors.pageBackground }}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-4 w-4 rounded-full" style={{ backgroundColor: theme.tokens.colors.accent }} />
+                          <span className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.tokens.colors.primaryText, opacity: 0.8 }} />
+                        </div>
+                        <div className="mt-3 space-y-1.5">
+                          <div className="h-2 rounded-full" style={{ backgroundColor: theme.tokens.colors.panelBackground }} />
+                          <div className="h-2 w-4/5 rounded-full" style={{ backgroundColor: theme.tokens.colors.panelBackground, opacity: 0.72 }} />
+                        </div>
+                      </div>
+                      <div className="truncate px-1 pb-1 pt-2 text-[11px] font-semibold text-ink">{theme.name}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="relative overflow-hidden rounded-3xl border border-line p-5 sm:p-7 shadow-xl" style={{ background: selectedTheme.background.type === 'gradient' && selectedTheme.background.gradientStops ? selectedTheme.background.gradientStops : selectedTheme.tokens.colors.pageBackground, color: selectedTheme.tokens.colors.primaryText }}>
+              <div className="absolute inset-0 bg-white/5 pointer-events-none" />
+              <div className="relative mx-auto max-w-md">
+                <div className="mb-6 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] opacity-70">
+                  <span>Live theme preview</span>
+                  <span>{selectedTheme.name}</span>
+                </div>
+                <div className="text-center">
+                  <div className="mx-auto mb-3 h-16 w-16 rounded-full ring-4 ring-black/10" style={{ backgroundColor: selectedTheme.tokens.colors.accent }} />
+                  <div className="text-lg font-bold" style={{ fontFamily: selectedTheme.tokens.typography.displayFamily }}>Alex Vance</div>
+                  <p className="mx-auto mt-1 max-w-xs text-xs opacity-70">Visual director, photographer and storyteller.</p>
+                </div>
+                <div className="mt-6 space-y-3">
+                  {['Watch the cinema reel', 'Download the media kit', 'Start a collaboration'].map((label, index) => (
+                    <div key={label} className="flex items-center justify-between rounded-xl px-4 py-3 text-xs font-semibold" style={{ backgroundColor: index === 0 ? selectedTheme.tokens.colors.accent : selectedTheme.tokens.colors.panelBackground, color: index === 0 ? selectedTheme.tokens.colors.accentText : selectedTheme.tokens.colors.primaryText, border: `1px solid ${selectedTheme.tokens.colors.border}` }}>
+                      <span>{label}</span><ArrowRight className="h-3.5 w-3.5 opacity-70" />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex items-center justify-between text-[10px] opacity-65">
+                  <span>{selectedTheme.tokens.typography.displayFamily.split(',')[0]}</span>
+                  <span>Radius {selectedTheme.tokens.shape.cardRadius}px</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Legacy motion playground retained below for internal animation testing. */}
+      <section className="hidden" aria-hidden="true">
+      <section 
+        id="themes-legacy"
+        tabIndex={-1}
+        className="py-20 px-4 sm:px-6 border-t border-line bg-linear-to-b from-surface/40 via-canvas to-surface/30 focus:outline-none"
+      >
+        <div className="max-w-5xl mx-auto space-y-8">
+          <div className="playground-anime-header text-center max-w-2xl mx-auto space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-accent text-xs font-mono border border-indigo-500/20 shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-warning" />
+              <span>animejs.com Integration Engine</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-['Syne'] tracking-tight">
+              Fluid Physics. High-Impact Motion.
+            </h2>
+            <p className="text-xs sm:text-sm text-muted leading-relaxed">
+              LynkFlow replaces sluggish CSS transitions with spring dynamics and elastic easing powered by Anime.js. Select any animation preset below and test the cascade interactively.
+            </p>
+          </div>
+
+          {/* Interactive Playground Control & Stage */}
+          <div className="p-4 sm:p-6 rounded-3xl bg-surface/90 border border-line shadow-2xl space-y-4">
+            <div className="grid gap-4 rounded-2xl border border-line bg-canvas/60 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div>
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted font-mono">
+                  <span>Selected personality</span>
+                  <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-accent normal-case tracking-normal">
+                    {ANIME_ENTRANCE_PRESETS[demoPreset]?.name}
+                  </span>
+                </div>
+                <div className="max-w-2xl text-xs leading-relaxed text-muted">
+                  {ANIME_ENTRANCE_PRESETS[demoPreset]?.description}
+                </div>
+              </div>
+
+              <div className="flex sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleReplayClick}
+                  onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+                  onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+                  className="touch-target relative w-full overflow-hidden rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500 cursor-pointer sm:w-auto"
+                >
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>Replay Cascade</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Curated preset shelf; the full library remains one click away. */}
+            <div className="rounded-2xl border border-line bg-surface-2/40 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-ink">Choose an entrance</div>
+                  <div className="text-[11px] text-muted">Preview the same blocks with a different motion personality.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAllPresets((visible) => !visible)}
+                  className="min-h-10 rounded-lg px-2.5 text-[11px] font-semibold text-accent transition-colors hover:bg-indigo-500/10 cursor-pointer"
+                >
+                  {showAllPresets ? 'Show fewer' : `Show all ${Object.keys(ANIME_ENTRANCE_PRESETS).length}`}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              {(Object.keys(ANIME_ENTRANCE_PRESETS) as AnimeEntrancePreset[])
+                .slice(0, showAllPresets ? undefined : 5)
+                .map((key) => {
+                const isSelected = demoPreset === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={(e) => handleSelectPreset(key, e)}
+                    aria-pressed={isSelected}
+                    onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+                    onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+                    className={`touch-target relative min-w-0 overflow-hidden rounded-xl px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/20'
+                        : 'bg-canvas text-body hover:text-ink border border-line hover:border-line-strong'
+                    }`}
+                  >
+                    <span className="block truncate">{ANIME_ENTRANCE_PRESETS[key].name}</span>
+                  </button>
+                );
+              })}
+              </div>
+            </div>
+
+            {/* Interactive Animated Cards Stage */}
+            <div
+              ref={demoCardsRef}
+              className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-3"
+            >
+              <div 
+                onMouseEnter={handleCardMouseEnter}
+                onMouseLeave={handleCardMouseLeave}
+                onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.3)')}
+                className="demo-anime-card p-4 rounded-2xl bg-canvas border border-line hover:border-indigo-500/50 transition-colors cursor-pointer space-y-2 relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-ink">
+                  <span>✨ Interactive Link Block</span>
+                  <ExternalLink className="anime-icon-target w-3.5 h-3.5 text-accent" />
+                </div>
+                <p className="text-[11px] text-muted">
+                  Click to trigger Anime.js ripple wave or hover for magnetic spring physics.
+                </p>
+                <div className="text-[10px] font-mono text-success font-medium pt-1">
+                  ease: {ANIME_ENTRANCE_PRESETS[demoPreset]?.ease}
+                </div>
+              </div>
+
+              <div 
+                onMouseEnter={handleCardMouseEnter}
+                onMouseLeave={handleCardMouseLeave}
+                onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(16, 185, 129, 0.3)')}
+                className="demo-anime-card p-4 rounded-2xl bg-canvas border border-line hover:border-emerald-500/50 transition-colors cursor-pointer space-y-2 relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-ink">
+                  <span>📹 Video & Media Hub</span>
+                  <ExternalLink className="anime-icon-target w-3.5 h-3.5 text-success" />
+                </div>
+                <p className="text-[11px] text-muted">
+                  Spring arrival with stagger delay of {ANIME_ENTRANCE_PRESETS[demoPreset]?.staggerDelay}ms.
+                </p>
+                <div className="text-[10px] font-mono text-info font-medium pt-1">
+                  duration: {ANIME_ENTRANCE_PRESETS[demoPreset]?.duration}ms
+                </div>
+              </div>
+
+              <div 
+                onMouseEnter={handleCardMouseEnter}
+                onMouseLeave={handleCardMouseLeave}
+                onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(236, 72, 153, 0.3)')}
+                className="demo-anime-card p-4 rounded-2xl bg-canvas border border-line hover:border-pink-500/50 transition-colors cursor-pointer space-y-2 relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-ink">
+                  <span>📨 Client Inquiry Form</span>
+                  <ExternalLink className="anime-icon-target w-3.5 h-3.5 text-danger" />
+                </div>
+                <p className="text-[11px] text-muted">
+                  Real-time physics calculation running on animejs.com v4 engine.
+                </p>
+                <div className="text-[10px] font-mono text-danger font-medium pt-1">
+                  Click card for Anime.js ripple
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive Block Animation Library Showcase */}
+            <div className="pt-6 border-t border-line space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-ink flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-accent" />
+                    <span>Per-Block Anime.js Animation Studio</span>
+                  </div>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    Assign any Anime.js animation choice to individual blocks — continuous ambient loops, spring entrance reveals, hacker cipher text scrambling, 3D perspective turns, and tactile micro-physics.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-accent-soft border border-indigo-500/30">
+                    23 Animation Choices
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-success border border-emerald-500/30">
+                    5 Hover Physics
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-pink-500/20 text-danger border border-pink-500/30">
+                    4 Click FX
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      </section>
+
+      {/* Pricing & Plan Comparison Section (MKT-003: Configuration-Driven Plans) */}
+      <section 
+        id="pricing"
+        tabIndex={-1}
+        ref={comparisonSectionRef}
+        data-section-key="comparison"
+        className="py-20 px-4 sm:px-6 border-t border-line bg-surface/30 focus:outline-none"
+      >
+        <div className="max-w-6xl mx-auto space-y-12">
+          <div className="comparison-anime-header text-center max-w-2xl mx-auto space-y-3">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-['Syne'] tracking-tight">
+              Simple, transparent pricing for every creator.
+            </h2>
+            <p className="text-xs sm:text-sm text-muted">
+              No hidden add-ons or fake feature gates. All plans include unlimited block creation and our shared design token engine.
+            </p>
+
+            {/* Monthly / Annual Toggle */}
+            <div className="pt-2 inline-flex items-center gap-2 bg-canvas p-1.5 rounded-2xl border border-line text-xs">
+              <button
+                type="button"
+                onClick={() => setBillingCycle('monthly')}
+                aria-pressed={billingCycle === 'monthly'}
+                className={`touch-target px-4 py-1.5 rounded-xl font-medium transition-colors cursor-pointer ${
+                  billingCycle === 'monthly' ? 'bg-surface-2 text-ink shadow-xs' : 'text-muted hover:text-ink'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle('annual')}
+                aria-pressed={billingCycle === 'annual'}
+                className={`touch-target px-4 py-1.5 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  billingCycle === 'annual' ? 'bg-surface-2 text-ink shadow-xs' : 'text-muted hover:text-ink'
+                }`}
+              >
+                <span>Annual</span>
+                <span className="text-[10px] font-bold text-success bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  Save ~20%
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Configuration-Driven Pricing Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+            {PRICING_PLANS.map((plan) => {
+              const isCurrent = workspace.plan === plan.id;
+              const isPopular = plan.badge === 'Most Popular';
+
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative p-6 sm:p-7 rounded-3xl border flex flex-col justify-between transition-all ${
+                    isPopular 
+                      ? 'bg-surface/90 border-indigo-500/60 shadow-xl shadow-indigo-500/10' 
+                      : 'bg-surface/50 border-line hover:border-line-strong'
+                  }`}
+                >
+                  {plan.badge && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-indigo-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                      {plan.badge}
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-ink tracking-tight">{plan.name}</h3>
+                      <p className="text-xs text-muted mt-1">{plan.tagline}</p>
+                    </div>
+
+                    <div className="flex items-baseline gap-1 py-1">
+                      <span className="text-3xl sm:text-4xl font-extrabold text-ink tracking-tight font-mono">
+                        {formatPlanPrice(plan, billingCycle)}
+                      </span>
+                      <span className="text-xs text-muted font-medium">/ month</span>
+                    </div>
+
+                    {billingCycle === 'annual' && plan.annualBilledTotal > 0 && (
+                      <div className="text-[11px] text-subtle">
+                        ${plan.annualBilledTotal} billed annually
+                      </div>
+                    )}
+
+                    <p className="text-xs text-body leading-relaxed pt-1">
+                      {plan.description}
+                    </p>
+
+                    <div className="pt-3 border-t border-line/80 space-y-2.5">
+                      <div className="text-[11px] font-bold text-muted uppercase tracking-wider">
+                        Included Features
+                      </div>
+                      <ul className="space-y-2 text-xs text-body">
+                        {plan.features.map((feature, fIdx) => (
+                          <li key={fIdx} className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 mt-6 border-t border-line">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        triggerAnimeRipple(e, e.currentTarget, 'rgba(255, 255, 255, 0.2)');
+                        if (isCurrent) {
+                          setCurrentView('billing');
+                        } else if (plan.id === 'free') {
+                          if (onOpenAuth) onOpenAuth('create');
+                          else setCurrentView('editor');
+                        } else {
+                          upgradePlan(plan.id, billingCycle);
+                          setCurrentView('billing');
+                        }
+                      }}
+                      className={`touch-target w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none ${
+                        isPopular
+                          ? 'bg-inverse hover:bg-inverse-hover text-inverse-text shadow-md'
+                          : 'bg-surface-2 hover:bg-surface-3 text-ink border border-line-strong'
+                      }`}
+                    >
+                      <span>{isCurrent ? 'Current Plan' : plan.ctaText}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Deep Feature Entitlement Comparison Table */}
+          <div className="pt-8 space-y-4">
+            <div className="text-center space-y-1">
+              <h3 className="text-xl font-bold text-ink font-['Syne']">Detailed Plan Capability Comparison</h3>
+              <p className="text-xs text-muted">Concrete limits without ambiguous or misleading promises.</p>
+            </div>
+
+            <div className="rounded-2xl border border-line bg-surface overflow-x-auto shadow-xl">
+              <table className="w-full text-left text-xs min-w-[600px]">
+                <thead className="bg-canvas border-b border-line text-muted">
+                  <tr>
+                    <th className="py-3 px-4 font-semibold">Capability</th>
+                    <th className="py-3 px-4 font-medium text-center">Starter ($0)</th>
+                    <th className="py-3 px-4 font-bold text-ink bg-accent-surface text-center">Creator Pro ($7/mo)</th>
+                    <th className="py-3 px-4 font-medium text-center">Agency ($19/mo)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line/60">
+                  {CAPABILITY_COMPARISON_MATRIX.map((row, rIdx) => (
+                    <tr 
+                      key={rIdx}
+                      className="comparison-table-row transition-colors hover:bg-surface-2/40 cursor-default"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-ink">{row.capability}</div>
+                        <div className="text-[11px] text-muted">{row.description}</div>
+                      </td>
+                      <td className="py-3 px-4 text-center text-body">
+                        {typeof row.starter === 'boolean' ? (
+                          row.starter ? (
+                            <CheckCircle2 className="w-4 h-4 text-success mx-auto" />
+                          ) : (
+                            <span className="text-subtle">—</span>
+                          )
+                        ) : (
+                          row.starter
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center font-semibold text-accent-soft bg-accent-surface">
+                        {typeof row.pro === 'boolean' ? (
+                          row.pro ? (
+                            <CheckCircle2 className="w-4 h-4 text-success mx-auto" />
+                          ) : (
+                            <span className="text-subtle">—</span>
+                          )
+                        ) : (
+                          row.pro
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center text-body font-medium">
+                        {typeof row.agency === 'boolean' ? (
+                          row.agency ? (
+                            <CheckCircle2 className="w-4 h-4 text-success mx-auto" />
+                          ) : (
+                            <span className="text-subtle">—</span>
+                          )
+                        ) : (
+                          row.agency
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Accordion Section */}
+      <section 
+        id="faq"
+        tabIndex={-1}
+        ref={faqSectionRef}
+        data-section-key="faq"
+        className="py-20 px-4 sm:px-6 max-w-4xl mx-auto space-y-8 focus:outline-none"
+      >
+        <div className="faq-anime-header text-center space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
+            Frequently Answered Questions
+          </h2>
+          <p className="text-xs text-muted">Everything you need to know before publishing.</p>
+        </div>
+
+        <div className="space-y-3">
+          {faqs.map((faq, idx) => {
+            const isOpen = openFaq === idx;
+            return (
+              <div 
+                key={idx} 
+                className="faq-anime-item rounded-2xl border border-line bg-surface overflow-hidden transition-colors hover:border-line-strong"
+              >
+                <button
+                  id={`faq-question-${idx}`}
+                  aria-expanded={isOpen}
+                  aria-controls={`faq-answer-${idx}`}
+                  onClick={(e) => {
+                    triggerAnimeRipple(e, e.currentTarget, 'rgba(100, 100, 100, 0.18)');
+                    toggleFaq(idx);
+                  }}
+                  onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+                  onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+                  className="relative overflow-hidden w-full p-4 sm:p-5 flex items-center justify-between text-left text-sm font-semibold text-ink cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+                >
+                  <span>{faq.q}</span>
+                  <div className="w-6 h-6 rounded-full bg-surface-2/80 flex items-center justify-center shrink-0 ml-3 transition-transform">
+                    {isOpen ? (
+                      <ChevronUp className="w-4 h-4 text-accent" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-muted" />
+                    )}
+                  </div>
+                </button>
+                {isOpen && (
+                  <div 
+                    id={`faq-answer-${idx}`}
+                    role="region"
+                    aria-labelledby={`faq-question-${idx}`}
+                    ref={(el) => { faqAnswerRefs.current[idx] = el; }}
+                    className="px-4 sm:px-5 pb-5 pt-1 text-xs text-muted leading-relaxed border-t border-line/60"
+                  >
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* CTA Footer Banner (MKT-001 & Flow 3) */}
+      <section 
+        ref={ctaSectionRef}
+        data-section-key="cta"
+        className="py-20 px-4 sm:px-6 border-t border-line bg-gradient-to-b from-canvas via-surface/60 to-canvas text-center"
+      >
+        <div className="max-w-3xl mx-auto space-y-6">
+          <div className="cta-anime-item inline-flex items-center gap-2 text-xs font-mono text-accent bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
+            <Flame className="w-3.5 h-3.5 text-warning" />
+            <span>Start Building in 60 Seconds</span>
+          </div>
+
+          <h2 className="cta-anime-item text-3xl sm:text-5xl font-extrabold text-ink font-['Syne'] tracking-tight">
+            Ready to build your link-in-bio page?
+          </h2>
+          <p className="cta-anime-item text-sm text-muted max-w-xl mx-auto">
+            Get started in under 3 minutes. Test out all block types, themes, dynamic QR codes, and Anime.js physics with a 14-day free trial.
+          </p>
+          <div className="cta-anime-item mx-auto max-w-xl rounded-3xl border border-indigo-500/15 bg-indigo-500/5 p-3">
+            <ProductIllustration variant="assembly" />
+          </div>
+          <div className="cta-anime-item pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={(e) => {
+                triggerAnimeRipple(e, e.currentTarget, 'rgba(0, 0, 0, 0.25)');
+                triggerSuccessBurst(e.currentTarget);
+                if (onOpenAuth) {
+                  onOpenAuth('create');
+                } else {
+                  setTimeout(() => setCurrentView('editor'), 220);
+                }
+              }}
+              onMouseEnter={(e) => {
+                animateHoverEnter(e.currentTarget);
+                const icon = e.currentTarget.querySelector<HTMLElement>('.cta-arrow-icon');
+                if (icon) animateIconBounce(icon);
+              }}
+              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+              className="touch-target relative overflow-hidden w-full sm:w-auto px-8 py-3.5 text-sm font-bold text-inverse-text bg-inverse hover:bg-inverse-hover rounded-xl transition-all shadow-xl inline-flex items-center justify-center gap-2 cursor-pointer group focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            >
+              <span>Create your page</span>
+              <ArrowRight className="cta-arrow-icon w-4 h-4 transition-transform group-hover:translate-x-1" />
+            </button>
+
+            <button
+              onClick={() => onOpenAuth ? onOpenAuth('login') : setCurrentView('editor')}
+              className="touch-target relative overflow-hidden w-full sm:w-auto px-6 py-3.5 text-sm font-semibold text-body hover:text-ink bg-surface hover:bg-surface-2 border border-line rounded-xl transition-colors inline-flex items-center justify-center gap-2 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            >
+              <span>Log in to your account</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Clean Brand Footer with Legal & Help Entry Points */}
+      <footer className="py-12 px-4 sm:px-6 border-t border-line text-muted text-xs">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="space-y-3">
+              <div className="font-['Syne'] font-bold text-ink text-base">
+                LynkFlow
+              </div>
+              <p className="text-subtle leading-relaxed text-[11px]">
+                The modular, production-ready link-in-bio & mini-site platform with zero visual hacks and validated design tokens.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-semibold text-ink uppercase text-[10px] tracking-wider">Product</div>
+              <ul className="space-y-1.5 text-muted text-xs">
+                <li>
+                  <a href="#features" className="hover:text-ink transition-colors">Features & Blocks</a>
+                </li>
+                <li>
+                  <a href="#themes" className="hover:text-ink transition-colors">Design Token Studio</a>
+                </li>
+                <li>
+                  <a href="#pricing" className="hover:text-ink transition-colors">Pricing & Plans</a>
+                </li>
+                <li>
+                  <button onClick={() => setCurrentView('editor')} className="hover:text-ink transition-colors cursor-pointer">
+                    Studio Builder
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-semibold text-ink uppercase text-[10px] tracking-wider">Platform & Dev</div>
+              <ul className="space-y-1.5 text-muted text-xs">
+                <li>
+                  <button onClick={() => setCurrentView('api')} className="hover:text-ink transition-colors cursor-pointer">
+                    Developer REST API
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setCurrentView('analytics')} className="hover:text-ink transition-colors cursor-pointer">
+                    Privacy-First Analytics
+                  </button>
+                </li>
+                <li>
+                  <span className="text-subtle">Privacy-first analytics</span>
+                </li>
+                <li>
+                  <span className="text-subtle">Automated SSL Edge DNS</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-semibold text-ink uppercase text-[10px] tracking-wider">Help & Legal</div>
+              <ul className="space-y-1.5 text-muted text-xs">
+                <li>
+                  <a href="#faq" className="hover:text-ink transition-colors">Help Center & FAQ</a>
+                </li>
+                <li>
+                  <button 
+                    onClick={() => onOpenAuth ? onOpenAuth('login') : setCurrentView('editor')}
+                    className="hover:text-ink transition-colors cursor-pointer"
+                  >
+                    Account Recovery
+                  </button>
+                </li>
+                <li>
+                  <a href="/privacy" className="hover:text-ink transition-colors">Privacy Policy</a>
+                </li>
+                <li>
+                  <a href="/terms" className="hover:text-ink transition-colors">Terms of Service</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-line flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-subtle">
+            <div>
+              © 2026 LynkFlow Technologies. Production-ready link in bio platform with Anime.js.
+            </div>
+            <div className="flex items-center gap-4">
+              <span>Status: All Systems Operational</span>
+              <span>·</span>
+                  <span>Accessibility foundations in place</span>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};

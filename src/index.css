@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-serif: 'Fraunces', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Appearance tokens. Every utility below resolves through these variables so a
+   single [data-theme] switch on <html> re-skins the whole app. Dark values
+   mirror the original neutral ramp; light values are tuned for AA contrast on
+   white surfaces. */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --lf-canvas: #0a0a0b;
+  --lf-surface: #171717;
+  --lf-surface-2: #262626;
+  --lf-surface-3: #404040;
+  --lf-line: #262626;
+  --lf-line-strong: #404040;
+  --lf-ink: #fafafa;
+  --lf-ink-strong: #e5e5e5;
+  --lf-body: #d4d4d4;
+  --lf-muted: #a3a3a3;
+  --lf-subtle: #737373;
+  --lf-inverse: #ffffff;
+  --lf-inverse-hover: #e5e5e5;
+  --lf-inverse-text: #0a0a0a;
+  --lf-accent: #818cf8;
+  --lf-accent-soft: #a5b4fc;
+  --lf-success: #34d399;
+  --lf-warning: #fbbf24;
+  --lf-danger: #fb7185;
+  --lf-info: #38bdf8;
+  --lf-accent-surface: #1e1b4b;
+  --lf-success-surface: #022c22;
+  --lf-warning-surface: #451a03;
+  --lf-danger-surface: #450a0a;
+  --lf-info-surface: #164e63;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --lf-canvas: #f4f4f5;
+  --lf-surface: #ffffff;
+  --lf-surface-2: #f1f1f1;
+  --lf-surface-3: #e4e4e7;
+  --lf-line: #e4e4e7;
+  --lf-line-strong: #d1d1d6;
+  --lf-ink: #18181b;
+  --lf-ink-strong: #27272a;
+  --lf-body: #3f3f46;
+  --lf-muted: #52525b;
+  --lf-subtle: #6b7280;
+  --lf-inverse: #18181b;
+  --lf-inverse-hover: #303036;
+  --lf-inverse-text: #fafafa;
+  --lf-accent: #4f46e5;
+  --lf-accent-soft: #4338ca;
+  --lf-success: #047857;
+  --lf-warning: #a35c07;
+  --lf-danger: #be123c;
+  --lf-info: #0369a1;
+  --lf-accent-surface: #eef2ff;
+  --lf-success-surface: #ecfdf5;
+  --lf-warning-surface: #fffbeb;
+  --lf-danger-surface: #fff1f2;
+  --lf-info-surface: #ecfeff;
+}
+
+@theme inline {
+  --color-canvas: var(--lf-canvas);
+  --color-surface: var(--lf-surface);
+  --color-surface-2: var(--lf-surface-2);
+  --color-surface-3: var(--lf-surface-3);
+  --color-line: var(--lf-line);
+  --color-line-strong: var(--lf-line-strong);
+  --color-ink: var(--lf-ink);
+  --color-ink-strong: var(--lf-ink-strong);
+  --color-body: var(--lf-body);
+  --color-muted: var(--lf-muted);
+  --color-subtle: var(--lf-subtle);
+  --color-inverse: var(--lf-inverse);
+  --color-inverse-hover: var(--lf-inverse-hover);
+  --color-inverse-text: var(--lf-inverse-text);
+  --color-accent: var(--lf-accent);
+  --color-accent-soft: var(--lf-accent-soft);
+  --color-success: var(--lf-success);
+  --color-warning: var(--lf-warning);
+  --color-danger: var(--lf-danger);
+  --color-info: var(--lf-info);
+  --color-accent-surface: var(--lf-accent-surface);
+  --color-success-surface: var(--lf-success-surface);
+  --color-warning-surface: var(--lf-warning-surface);
+  --color-danger-surface: var(--lf-danger-surface);
+  --color-info-surface: var(--lf-info-surface);
+}
+
+/* Shared interaction foundations. Keep focus visible across every surface,
+   including dense dashboard controls that do not use a component library. */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--lf-accent);
+  outline-offset: 3px;
+}
+
+:where(button, a, input, textarea, select):disabled {
+  cursor: not-allowed;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Keep anchored sections visible beneath the sticky top navigation. */
+section[id] {
+  scroll-margin-top: 5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Used for compact icon controls where preserving the visual footprint matters. */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Custom scrollbars for dashboard and editor panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--lf-line-strong);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--lf-muted);
+}

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LynkFlow – Link-in-Bio & Mini-Site Builder</title>
+    <meta name="description" content="Create high-converting, branded link-in-bio pages with custom blocks, themes, forms, dynamic QR codes, and real-time analytics." />
+    <link rel="canonical" href="https://lynkflow.me/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.svg" />
+    <meta property="og:title" content="LynkFlow – Link-in-Bio & Mini-Site Builder" />
+    <meta property="og:description" content="Create high-converting, branded link-in-bio pages with custom blocks, themes, forms, dynamic QR codes, and real-time analytics." />
+    <meta property="og:url" content="https://lynkflow.me/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LynkFlow" />
+    <meta property="og:image" content="https://lynkflow.me/og-default.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="LynkFlow – Link-in-Bio & Mini-Site Builder" />
+    <meta name="twitter:description" content="Create high-converting, branded link-in-bio pages with custom blocks, themes, forms, dynamic QR codes, and real-time analytics." />
+    <meta name="twitter:image" content="https://lynkflow.me/og-default.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://lynkflow.me/#organization",
+          "name": "LynkFlow",
+          "url": "https://lynkflow.me/",
+          "logo": "https://lynkflow.me/og-default.svg"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://lynkflow.me/#website",
+          "name": "LynkFlow",
+          "url": "https://lynkflow.me/",
+          "publisher": { "@id": "https://lynkflow.me/#organization" }
+        },
+        {
+          "@type": "WebApplication",
+          "name": "LynkFlow",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "All",
+          "description": "Create high-converting, branded link-in-bio pages with custom blocks, themes, forms, dynamic QR codes, and real-time analytics."
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            { "@type": "Question", "name": "How is LynkFlow different from basic link-in-bio tools?", "acceptedAnswer": { "@type": "Answer", "text": "LynkFlow provides modular blocks for links, video, forms, downloads, FAQs, themes, analytics, and custom domains." } },
+            { "@type": "Question", "name": "Can I connect my own custom domain?", "acceptedAnswer": { "@type": "Answer", "text": "Creator Pro and Agency plans support custom domain or subdomain mapping with SSL provisioning." } },
+            { "@type": "Question", "name": "How does dynamic QR code retargeting work?", "acceptedAnswer": { "@type": "Answer", "text": "A permanent QR destination can be updated without reprinting the physical QR code." } },
+            { "@type": "Question", "name": "Are page views and link clicks privacy-compliant?", "acceptedAnswer": { "@type": "Answer", "text": "LynkFlow analytics are designed to be cookie-less and minimize third-party tracking." } },
+            { "@type": "Question", "name": "Can multiple team members or clients manage profiles?", "acceptedAnswer": { "@type": "Answer", "text": "Agency Studio plans support multi-profile workspace management." } }
+          ]
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body class="bg-canvas text-ink antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div id="root"></div>
+    <script>
+      // Resolve the appearance before first paint so a light-theme visitor never
+      // sees a dark flash. Mirrors the storage key used by src/context/ThemeContext.tsx.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('lynkflow:appearance');
+          var appearance = stored === 'light' || stored === 'dark'
+            ? stored
+            : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.dataset.theme = appearance;
+          document.documentElement.style.colorScheme = appearance;
+        } catch (error) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

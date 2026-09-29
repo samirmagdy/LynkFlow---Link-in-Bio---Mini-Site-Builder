@@ -1,0 +1,2692 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  Profile, 
+  Workspace, 
+  AnalyticsEvent, 
+  FormSubmission, 
+  AuditLog, 
+  AbuseReport, 
+  ThemeConfig, 
+  BlockType, 
+  Block, 
+  PlanType, 
+  BillingCycle,
+  LinkBlockPayload,
+  MediaBlockPayload,
+  TextBlockPayload,
+  DividerBlockPayload,
+  FolderBlockPayload,
+  FaqBlockPayload,
+  TestimonialBlockPayload,
+  FileBlockPayload,
+  FormBlockPayload,
+  ContactBlockPayload,
+  UserAccount,
+  StarterProfileBlueprint,
+  OnboardingStep
+} from '../types';
+import { 
+  INITIAL_PROFILES, 
+  INITIAL_WORKSPACE, 
+  INITIAL_ANALYTICS, 
+  INITIAL_SUBMISSIONS, 
+  INITIAL_AUDIT_LOGS,
+  THEME_PRESETS
+} from '../data/mockData';
+import { SPEC_THEME_PRESETS } from '../data/themePresets';
+import { StandardTheme, PublishedThemeSnapshot } from '../types/themeSchema';
+import { calculateContrastRatio, normalizeTheme, validateThemeAccessibility } from '../utils/themeEngine';
+import { authService, AuthResponse, PasswordResetResponse } from '../services/authService';
+import { workspaceSyncService, SaveStatus, ConflictState } from '../services/workspaceSyncService';
+import { contentLifecycleService, ValidationIssue } from '../services/contentLifecycleService';
+import { formSubmissionService } from '../services/formSubmissionService';
+import { analyticsEngineService } from '../services/analyticsEngineService';
+import { billingService } from '../services/billingService';
+import { domainService } from '../services/domainService';
+import { apiKeyService, ApiGatewayResult } from '../services/apiKeyService';
+import { ProfileMember, ProfileRole, ApiKey, ApiKeyScope, WebhookSubscription, WebhookEventTopic, ApiAuditEntry } from '../types';
+import { isSupabaseConfigured } from '../lib/supabaseConfig';
+import { createPublishedSnapshot } from '../utils/publishedSnapshot';
+
+let supabase: any = null;
+type CloudSyncModule = typeof import('../services/supabaseSyncService');
+let cloudSyncPromise: Promise<CloudSyncModule> | null = null;
+const getCloudSync = () => cloudSyncPromise || (cloudSyncPromise = import('../services/supabaseSyncService'));
+const cloudSync = (name: keyof CloudSyncModule) => (...args: any[]) => getCloudSync().then(module => (module[name] as any)(...args));
+const loadCloudState = cloudSync('loadCloudState');
+const saveCloudAnalytics = cloudSync('saveCloudAnalytics');
+const saveCloudAuditLogs = cloudSync('saveCloudAuditLogs');
+const saveCloudProfile = cloudSync('saveCloudProfile');
+const saveCloudReports = cloudSync('saveCloudReports');
+const saveCloudSubmissions = cloudSync('saveCloudSubmissions');
+const saveCloudThemes = cloudSync('saveCloudThemes');
+const saveCloudWebhooks = cloudSync('saveCloudWebhooks');
+const saveCloudApiKeys = cloudSync('saveCloudApiKeys');
+const saveCloudSubscribers = cloudSync('saveCloudSubscribers');
+const saveCloudWorkspace = cloudSync('saveCloudWorkspace');
+const deleteCloudRecord = cloudSync('deleteCloudRecord');
+const publishCloudProfile = cloudSync('publishCloudProfile');
+const rollbackCloudProfile = cloudSync('rollbackCloudProfile');
+const createCloudPreviewToken = cloudSync('createCloudPreviewToken');
+
+const dynamicService = <T extends Record<string, (...args: any[]) => any>>(loader: () => Promise<T>, name: keyof T) => (...args: any[]) => loader().then(module => module[name](...args));
+const stripeService = () => import('../services/stripeService');
+const createStripeCheckoutSession = dynamicService(stripeService, 'createStripeCheckoutSession');
+const cancelStripeSubscription = dynamicService(stripeService, 'cancelStripeSubscription');
+const submitPublicForm = dynamicService(() => import('../services/publicFormService'), 'submitPublicForm');
+const submitPublicAbuseReport = dynamicService(() => import('../services/publicAbuseReportService'), 'submitPublicAbuseReport');
+const createManagedApiKey = dynamicService(() => import('../services/apiManagementService'), 'createManagedApiKey');
+const revokeManagedApiKey = dynamicService(() => import('../services/apiManagementService'), 'revokeManagedApiKey');
+const rotateManagedApiKey = dynamicService(() => import('../services/apiManagementService'), 'rotateManagedApiKey');
+const createManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'createManagedWebhook');
+const deleteManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'deleteManagedWebhook');
+const testManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'testManagedWebhook');
+const updateManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'updateManagedWebhook');
+const removeManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'removeManagedDomain');
+const recheckManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'recheckManagedDomain');
+const verifyManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'verifyManagedDomain');
+
+export type AppView = 
+  | 'marketing' 
+  | 'editor' 
+  | 'themes' 
+  | 'analytics' 
+  | 'forms' 
+  | 'growth' 
+  | 'profiles'
+  | 'settings' 
+  | 'billing' 
+  | 'api' 
+  | 'admin' 
+  | 'public_standalone';
+
+const APP_VIEW_PATHS: Partial<Record<AppView, string>> = {
+  marketing: '/',
+  editor: '/studio',
+  themes: '/studio/themes',
+  analytics: '/studio/analytics',
+  forms: '/studio/forms',
+  growth: '/studio/growth',
+  profiles: '/studio/profiles',
+  settings: '/studio/settings',
+  billing: '/studio/billing',
+  api: '/studio/api',
+  admin: '/studio/admin'
+};
+
+const viewFromLocation = (): AppView => {
+  if (typeof window === 'undefined') return 'marketing';
+  const pathname = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+  if (pathname.startsWith('/@') || params.has('customDomain') || params.get('view') === 'public_standalone') return 'public_standalone';
+  const route = Object.entries(APP_VIEW_PATHS).find(([, path]) => path === pathname)?.[0] as AppView | undefined;
+  return route || 'marketing';
+};
+
+interface AppContextType {
+  user: UserAccount;
+  workspace: Workspace;
+  profiles: Profile[];
+  activeProfile: Profile;
+  publishedProfile: Profile;
+  hasUnpublishedChanges: boolean;
+  currentView: AppView;
+  setCurrentView: (view: AppView) => void;
+  previewDevice: 'mobile-small' | 'mobile' | 'tablet' | 'desktop' | 'wide';
+  setPreviewDevice: (device: 'mobile-small' | 'mobile' | 'tablet' | 'desktop' | 'wide') => void;
+  previewSource: 'draft' | 'published';
+  setPreviewSource: (source: 'draft' | 'published') => void;
+  publicViewingUsername: string | null;
+  setPublicViewingUsername: (username: string | null) => void;
+  publicDemo: boolean;
+  setPublicDemo: (enabled: boolean) => void;
+  updateBrandKit: (updater: (prev: NonNullable<Workspace['brandKit']>) => NonNullable<Workspace['brandKit']>) => void;
+  applyBrandKitToTheme: () => void;
+  
+  // Auth & Identity Actions (ACC-001)
+  signUp: (email: string, password: string, name?: string) => Promise<AuthResponse>;
+  logIn: (email: string, password: string) => Promise<AuthResponse>;
+  logOut: () => void;
+  verifyEmail: (token: string) => AuthResponse;
+  resendVerificationEmail: () => Promise<{ success: boolean; error?: string; debugToken?: string }>;
+  requestPasswordReset: (email: string) => Promise<PasswordResetResponse>;
+  resetPassword: (token: string, newPass: string) => Promise<AuthResponse>;
+  completeOnboarding: (starter?: StarterProfileBlueprint) => Promise<void>;
+  skipOnboarding: () => void;
+  isOnboardingOpen: boolean;
+  setIsOnboardingOpen: (open: boolean) => void;
+
+  // Profile Actions
+  updateDraftProfile: (updater: (prev: Profile) => Profile) => void;
+  saveDraftNow: () => Promise<void>;
+  publishProfile: (changeNote?: string, idempotencyKey?: string, versionName?: string, versionNotes?: string) => Promise<boolean>;
+  revertDraftToPublished: () => void;
+  resetThemeToPublished: () => void;
+  rollbackToPublishedSnapshot: (snapshotId: string, reason?: string) => Promise<boolean>;
+  generatePreviewLink: (ttlMinutes?: number) => Promise<{ previewUrl: string; token: string; expiresAt: string }>;
+  scheduleRelease: (scheduledIsoString: string, timezone: string) => Promise<boolean>;
+  cancelScheduledRelease: () => boolean;
+  switchActiveProfile: (id: string) => void;
+  createNewProfile: (username: string, displayName: string, category: string, themeId?: string) => string;
+  duplicateProfile: (profileId: string) => void;
+  deleteProfile: (profileId: string) => boolean;
+
+  // Block Actions
+  addBlock: (tabId: string, blockType: BlockType, customTitle?: string) => void;
+  updateBlock: (tabId: string, blockId: string, updates: Partial<Block>) => void;
+  removeBlock: (tabId: string, blockId: string) => void;
+  reorderBlocks: (tabId: string, fromIndex: number, toIndex: number) => void;
+  duplicateBlock: (tabId: string, blockId: string) => void;
+
+  // Tab Actions
+  addTab: (title: string) => void;
+  updateTab: (tabId: string, title: string) => void;
+  removeTab: (tabId: string) => void;
+
+  // Theme & Styling
+  applyTheme: (theme: ThemeConfig | import('../types/themeSchema').StandardTheme) => void;
+  standardTheme: import('../types/themeSchema').StandardTheme;
+  updateStandardTheme: (updater: (prev: import('../types/themeSchema').StandardTheme) => import('../types/themeSchema').StandardTheme) => void;
+  undoThemeChange: () => void;
+  redoThemeChange: () => void;
+  canUndoTheme: boolean;
+  canRedoTheme: boolean;
+  rollbackToSnapshot: (snapshotId: string) => void;
+  saveCustomPreset: (name: string) => void;
+  customPresets: import('../types/themeSchema').StandardTheme[];
+
+  // Analytics & Submissions
+  analytics: AnalyticsEvent[];
+  trackEvent: (event: Omit<AnalyticsEvent, 'id' | 'timestamp'>) => void;
+  submissions: FormSubmission[];
+  submitForm: (
+    profileId: string, 
+    blockId: string, 
+    formTitle: string, 
+    formPayload: FormBlockPayload, 
+    data: Record<string, string>, 
+    consent: boolean,
+    honeypotTrap?: string
+  ) => Promise<{ success: boolean; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }>;
+  deleteSubmission: (id: string) => Promise<void>;
+
+  // Growth, Custom Domain & Billing
+  verifyDomain: (profileId: string, domain: string) => Promise<{ success: boolean; failureReason?: string }>;
+  removeDomain: (profileId: string) => void;
+  recheckDomain: (profileId: string) => Promise<void>;
+  upgradePlan: (plan: PlanType, cycle: BillingCycle) => Promise<void>;
+  cancelSubscription: () => Promise<void>;
+  processWebhookEvent: (eventType: string, planId?: PlanType, billingCycle?: BillingCycle) => void;
+
+  // PRO-005: Workspace Member Management
+  addMember: (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]) => { success: boolean; error?: string };
+  removeMember: (memberId: string) => void;
+  updateMemberRole: (memberId: string, role: ProfileRole, assignedProfileIds: string[]) => void;
+
+  // Compliance & Admin
+  auditLogs: AuditLog[];
+  abuseReports: AbuseReport[];
+  submitAbuseReport: (report: Omit<AbuseReport, 'id' | 'timestamp' | 'status'>) => Promise<void>;
+  exportAccountData: () => void;
+  resetAllData: () => void;
+
+  // API-002: API Key Management
+  apiKeys: ApiKey[];
+  createApiKey: (name: string, scopes: ApiKeyScope[], allowedProfileIds: string[] | null, expiresAt?: string) => Promise<{ key: ApiKey; secret: string } | { error: string }>;
+  revokeApiKey: (keyId: string) => Promise<{ success: boolean; error?: string }>;
+  rotateApiKey: (keyId: string) => Promise<{ key: ApiKey; secret: string } | { error: string }>;
+  // API-005: Webhook Subscriptions
+  webhookSubscriptions: WebhookSubscription[];
+  createWebhookSubscription: (url: string, topics: WebhookEventTopic[], description?: string) => Promise<{ hook: WebhookSubscription; signingSecret: string } | { error: string }>;
+  deleteWebhookSubscription: (hookId: string) => Promise<void>;
+  toggleWebhookStatus: (hookId: string, status: 'active' | 'paused') => Promise<void>;
+  dispatchTestWebhook: (hookId: string, topic: WebhookEventTopic) => Promise<{ deliveryId: string; status: 'delivered' | 'failed' }>;
+  // API-001: Sandbox request execution
+  executeApiRequest: (keyId: string, scope: ApiKeyScope, method: string, endpoint: string) => ApiGatewayResult;
+  // API audit
+  apiAuditLog: ApiAuditEntry[];
+
+  // Animation Trigger
+  animationTrigger: number;
+  triggerReplayAnimation: () => void;
+
+  // Workspace Concurrency & Autosave (EDT-003, EDT-004)
+  saveStatus: SaveStatus;
+  saveErrorMessage: string | null;
+  retrySave: () => void;
+  isConflictOpen: boolean;
+  resolveConflictReload: () => void;
+  resolveConflictOverwrite: () => void;
+  simulateNetworkError: () => void;
+
+  // Notification / Toast
+  toastMessage: string | null;
+  showToast: (msg: string) => void;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const STORAGE_KEYS = {
+  PROFILES: 'lynkflow_profiles_v1',
+  DRAFT_PROFILE_PREFIX: 'lynkflow_draft_profile_v1_',
+  WORKSPACE: 'lynkflow_workspace_v1',
+  ANALYTICS: 'lynkflow_analytics_v1',
+  SUBMISSIONS: 'lynkflow_submissions_v1',
+  AUDIT: 'lynkflow_audit_v1',
+  REPORTS: 'lynkflow_reports_v1',
+  ACTIVE_PROFILE_ID: 'lynkflow_active_prof_id_v1',
+  CUSTOM_THEMES: 'lynkflow_custom_themes_v1',
+  OFFLINE_DRAFT_PREFIX: 'lynkflow_offline_draft_v1_'
+};
+
+const EMPTY_CLOUD_PROFILE: Profile = {
+  ...JSON.parse(JSON.stringify(INITIAL_PROFILES[0])),
+  id: 'empty-profile',
+  username: '',
+  displayName: '',
+  bio: '',
+  status: 'draft',
+  publishedVersion: 0,
+  publishedSnapshot: undefined,
+  tabs: [],
+  socialLinks: [],
+  snapshotHistory: [],
+  customDomain: undefined,
+  publishedAt: undefined,
+};
+
+export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: boolean }> = ({ children, lightweight = false }) => {
+  const cloudReady = React.useRef(false);
+  const cloudApiState = React.useRef<{ apiKeys: ApiKey[]; webhookSubscriptions: WebhookSubscription[] } | null>(null);
+  const [cloudHydrated, setCloudHydrated] = React.useState(false);
+  const [user, setUser] = useState<UserAccount>(() => {
+    if (isSupabaseConfigured) {
+      return {
+        id: 'usr-guest', email: '', name: 'Guest', isVerified: false,
+        createdAt: new Date().toISOString(), lastLoginAt: new Date().toISOString(),
+        onboardingCompleted: false, onboardingStep: 'category', workspaceId: ''
+      };
+    }
+    return authService.getActiveSession() || {
+      id: 'usr-guest',
+      email: 'creator@example.com',
+      name: 'New Creator',
+      isVerified: false,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+      onboardingCompleted: false,
+      onboardingStep: 'category',
+      workspaceId: 'ws-main'
+    };
+  });
+
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [currentView, setCurrentViewState] = useState<AppView>(viewFromLocation);
+  const [previewDevice, setPreviewDevice] = useState<'mobile-small' | 'mobile' | 'tablet' | 'desktop' | 'wide'>('mobile');
+  const [previewSource, setPreviewSource] = useState<'draft' | 'published'>('draft');
+  const [publicViewingUsername, setPublicViewingUsername] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const pathnameHandle = window.location.pathname.startsWith('/@') ? window.location.pathname.slice(2) : '';
+    return pathnameHandle || new URLSearchParams(window.location.search).get('u');
+  });
+  const [publicDemo, setPublicDemo] = useState<boolean>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Custom User Themes saved to Workspace
+  const [customPresets, setCustomPresets] = useState<StandardTheme[]>(() => {
+    if (lightweight) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CUSTOM_THEMES);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Semantic Undo/Redo stacks for theme design studio
+  const [themeUndoStack, setThemeUndoStack] = useState<StandardTheme[]>([]);
+  const [themeRedoStack, setThemeRedoStack] = useState<StandardTheme[]>([]);
+  const [animationTrigger, setAnimationTrigger] = useState(0);
+
+  const triggerReplayAnimation = () => {
+    setAnimationTrigger(prev => prev + 1);
+  };
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 3500);
+  };
+
+  // State initialization from localStorage or seed
+  const [profiles, setProfiles] = useState<Profile[]>(() => {
+    if (lightweight) return [];
+    if (isSupabaseConfigured) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.PROFILES);
+      return saved ? JSON.parse(saved) : INITIAL_PROFILES;
+    } catch {
+      return INITIAL_PROFILES;
+    }
+  });
+
+  const [activeProfileId, setActiveProfileId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_PROFILE_ID);
+      if (saved && profiles.some(p => p.id === saved)) return saved;
+      return profiles[0]?.id || 'prof-alexvance';
+    } catch {
+      return 'prof-alexvance';
+    }
+  });
+
+  // Keep a separate draft profile per active profile
+  const [draftProfile, setDraftProfile] = useState<Profile>(() => {
+    const found = profiles.find(p => p.id === activeProfileId) || profiles[0] || (isSupabaseConfigured ? EMPTY_CLOUD_PROFILE : INITIAL_PROFILES[0]);
+    try {
+      const pendingDraft = localStorage.getItem(`${STORAGE_KEYS.OFFLINE_DRAFT_PREFIX}${found.id}`);
+      if (pendingDraft) return JSON.parse(pendingDraft);
+      const savedDraft = localStorage.getItem(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${found.id}`);
+      if (savedDraft) return JSON.parse(savedDraft);
+    } catch {}
+    return JSON.parse(JSON.stringify(found));
+  });
+
+  const [workspace, setWorkspace] = useState<Workspace>(() => {
+    if (lightweight) return INITIAL_WORKSPACE;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.WORKSPACE);
+      return saved ? JSON.parse(saved) : INITIAL_WORKSPACE;
+    } catch {
+      return INITIAL_WORKSPACE;
+    }
+  });
+
+  const defaultBrandKit = INITIAL_WORKSPACE.brandKit!;
+  const updateBrandKit = (updater: (prev: NonNullable<Workspace['brandKit']>) => NonNullable<Workspace['brandKit']>) => {
+    setWorkspace(prev => ({
+      ...prev,
+      brandKit: updater(prev.brandKit || { ...defaultBrandKit, updatedAt: new Date().toISOString() })
+    }));
+  };
+
+  const [analytics, setAnalytics] = useState<AnalyticsEvent[]>(() => {
+    if (lightweight) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ANALYTICS);
+      return saved ? JSON.parse(saved) : INITIAL_ANALYTICS;
+    } catch {
+      return INITIAL_ANALYTICS;
+    }
+  });
+
+  const [submissions, setSubmissions] = useState<FormSubmission[]>(() => {
+    if (lightweight) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
+      return saved ? JSON.parse(saved) : INITIAL_SUBMISSIONS;
+    } catch {
+      return INITIAL_SUBMISSIONS;
+    }
+  });
+
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    if (lightweight) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.AUDIT);
+      return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
+    } catch {
+      return INITIAL_AUDIT_LOGS;
+    }
+  });
+
+  const [abuseReports, setAbuseReports] = useState<AbuseReport[]>(() => {
+    if (lightweight) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.REPORTS);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (lightweight) return;
+    if (!isSupabaseConfigured) {
+      cloudReady.current = true;
+      setCloudHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    const hydrate = async () => {
+      const supabaseModule = await import('../lib/supabase');
+      supabase = supabaseModule.supabase;
+      if (!supabase) {
+        cloudReady.current = true;
+        setCloudHydrated(true);
+        return;
+      }
+      const cloudState = await loadCloudState();
+      if (cancelled) return;
+      if (!cloudState) {
+        cloudReady.current = true;
+        setCloudHydrated(true);
+        setUser({
+          id: 'usr-guest', email: '', name: 'Guest', isVerified: false,
+          createdAt: new Date().toISOString(), lastLoginAt: new Date().toISOString(),
+          onboardingCompleted: false, onboardingStep: 'category', workspaceId: ''
+        });
+        return;
+      }
+      setUser(cloudState.user);
+      setIsOnboardingOpen(!cloudState.user.onboardingCompleted);
+      setWorkspace(cloudState.workspace);
+      setAnalytics(cloudState.analytics);
+      setSubmissions(cloudState.submissions);
+      setAuditLogs(cloudState.auditLogs);
+      setAbuseReports(cloudState.abuseReports);
+      setCustomPresets(cloudState.customThemes);
+      cloudApiState.current = {
+        apiKeys: cloudState.apiKeys,
+        webhookSubscriptions: cloudState.webhookSubscriptions,
+      };
+      formSubmissionService.replaceSubscribers(cloudState.subscribers);
+      if (cloudState.profiles.length > 0) {
+        setProfiles(cloudState.profiles);
+        setActiveProfileId(cloudState.profiles[0].id);
+        setDraftProfile(JSON.parse(JSON.stringify(cloudState.profiles[0])));
+      }
+      cloudReady.current = true;
+      setCloudHydrated(true);
+    };
+    let unsubscribeAuth: (() => void) | undefined;
+    void hydrate().then(() => {
+      if (!cancelled && supabase) {
+        const authSubscription = supabase.auth.onAuthStateChange(() => { void hydrate(); });
+        unsubscribeAuth = () => authSubscription.data.subscription.unsubscribe();
+      }
+    }).catch(error => {
+      console.error('Supabase hydration failed', error);
+      cloudReady.current = true;
+      setCloudHydrated(true);
+    });
+    return () => { cancelled = true; unsubscribeAuth?.(); };
+  }, [lightweight]);
+
+  // Synchronize profiles and localStorage
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [profiles, lightweight]);
+
+  // Keep the working draft separate from the published profile cache so theme
+  // edits survive navigation and refresh without making unpublished changes live.
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${draftProfile.id}`, JSON.stringify(draftProfile));
+    } catch (e) {
+      console.error('Draft storage write error', e);
+    }
+  }, [draftProfile, lightweight]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    Promise.all(profiles.map(profile => saveCloudProfile(profile, user.id)))
+      .catch(error => console.error('Supabase profile save failed', error));
+  }, [profiles, user.id]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE_ID, activeProfileId);
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [activeProfileId, lightweight]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.WORKSPACE, JSON.stringify(workspace));
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [workspace, lightweight]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudWorkspace(workspace).catch(error => console.error('Supabase workspace save failed', error));
+  }, [workspace, user.id]);
+
+  useEffect(() => {
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudAnalytics(analytics, user.id).catch(error => console.error('Supabase analytics save failed', error));
+  }, [analytics, user.id]);
+
+  useEffect(() => {
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudSubmissions(submissions, user.id).catch(error => console.error('Supabase submissions save failed', error));
+    const subscribers = profiles.flatMap(profile => formSubmissionService.getSubscribers(profile.id));
+    saveCloudSubscribers(subscribers, user.id).catch(error => console.error('Supabase subscribers save failed', error));
+  }, [submissions, profiles, user.id]);
+
+  useEffect(() => {
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudAuditLogs(auditLogs, user.id).catch(error => console.error('Supabase audit save failed', error));
+  }, [auditLogs, user.id]);
+
+  useEffect(() => {
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudReports(abuseReports, user.id).catch(error => console.error('Supabase reports save failed', error));
+  }, [abuseReports, user.id]);
+
+  useEffect(() => {
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudThemes(customPresets, user.id).catch(error => console.error('Supabase themes save failed', error));
+  }, [customPresets, user.id]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.ANALYTICS, JSON.stringify(analytics));
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [analytics, lightweight]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [submissions, lightweight]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(auditLogs));
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [auditLogs, lightweight]);
+
+  useEffect(() => {
+    if (lightweight) return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(abuseReports));
+    } catch (e) {
+      console.error('Storage write error', e);
+    }
+  }, [abuseReports, lightweight]);
+
+  // When activeProfileId changes, sync draftProfile
+  useEffect(() => {
+    const curr = profiles.find(p => p.id === activeProfileId);
+    if (curr) {
+      try {
+        const savedDraft = localStorage.getItem(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${curr.id}`);
+        setDraftProfile(savedDraft ? JSON.parse(savedDraft) : JSON.parse(JSON.stringify(curr)));
+      } catch {
+        setDraftProfile(JSON.parse(JSON.stringify(curr)));
+      }
+    }
+  }, [activeProfileId]);
+
+  const activePublished = profiles.find(p => p.id === activeProfileId) || profiles[0] || (isSupabaseConfigured ? draftProfile : INITIAL_PROFILES[0]);
+
+  // Compare draft vs published to determine if there are unsaved/unpublished changes
+  const hasUnpublishedChanges = JSON.stringify(draftProfile) !== JSON.stringify(activePublished);
+
+  // Keep workspace views addressable and restorable on refresh. Public
+  // profiles retain their canonical /@handle URL.
+  const setCurrentView = (view: AppView) => {
+    setCurrentViewState(view);
+    if (typeof window === 'undefined') return;
+
+    if (view === 'public_standalone') {
+      if (window.location.pathname.startsWith('/@')) return;
+      const handle = publicViewingUsername || activePublished.username || draftProfile.username;
+      if (handle) window.history.pushState({}, '', `/@${encodeURIComponent(handle)}`);
+      return;
+    }
+
+    const targetPath = APP_VIEW_PATHS[view] || '/';
+    if (window.location.pathname !== targetPath || window.location.search) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  React.useEffect(() => {
+    const handlePopState = () => setCurrentViewState(viewFromLocation());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Autosave and Concurrency States (EDT-003, EDT-004)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [isConflictOpen, setIsConflictOpen] = useState(false);
+  const [forceSimulateNetworkError, setForceSimulateNetworkError] = useState(false);
+
+  const queueOfflineDraft = (profile: Profile) => {
+    try {
+      localStorage.setItem(`${STORAGE_KEYS.OFFLINE_DRAFT_PREFIX}${profile.id}`, JSON.stringify(profile));
+    } catch {}
+  };
+
+  const clearOfflineDraft = (profileId: string) => {
+    try {
+      localStorage.removeItem(`${STORAGE_KEYS.OFFLINE_DRAFT_PREFIX}${profileId}`);
+    } catch {}
+  };
+
+  // Concurrency listener from other tabs
+  useEffect(() => {
+    const unsubscribe = workspaceSyncService.onRemoteUpdate((updatedProfileId, remoteVersion) => {
+      if (updatedProfileId === activeProfileId) {
+        // Read fresh profiles
+        try {
+          const raw = localStorage.getItem(STORAGE_KEYS.PROFILES);
+          if (raw) {
+            const freshProfiles: Profile[] = JSON.parse(raw);
+            const fresh = freshProfiles.find(p => p.id === activeProfileId);
+            if (fresh && fresh.publishedVersion > draftProfile.publishedVersion) {
+              setIsConflictOpen(true);
+            }
+          }
+        } catch {}
+      }
+    });
+    return () => unsubscribe();
+  }, [activeProfileId, draftProfile.publishedVersion]);
+
+  // Debounced Autosave Pipeline
+  useEffect(() => {
+    setSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        queueOfflineDraft(draftProfile);
+        setSaveStatus('offline');
+        setSaveErrorMessage('Changes are stored on this device and will sync when you are back online.');
+        return;
+      }
+      const res = await workspaceSyncService.saveDraftAuthoritative(draftProfile, forceSimulateNetworkError);
+      if (res.success) {
+        try {
+          if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(res.updatedProfile || draftProfile, user.id);
+        } catch (error) {
+          setSaveStatus('error');
+          setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud save failed');
+          return;
+        }
+        clearOfflineDraft(draftProfile.id);
+        setSaveStatus('saved');
+        setSaveErrorMessage(null);
+      } else if (res.isConflict) {
+        setSaveStatus('conflict');
+        setIsConflictOpen(true);
+      } else {
+        const isOfflineFailure = typeof navigator !== 'undefined' && !navigator.onLine;
+        if (isOfflineFailure) {
+          queueOfflineDraft(draftProfile);
+          setSaveStatus('offline');
+          setSaveErrorMessage('Changes are stored on this device and will sync when you are back online.');
+        } else {
+          setSaveStatus('error');
+          setSaveErrorMessage(res.error || 'Autosave failed');
+        }
+      }
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [draftProfile, forceSimulateNetworkError]);
+
+  // Re-run the authoritative autosave pipeline when connectivity returns.
+  useEffect(() => {
+    const handleOnline = () => {
+      setSaveStatus('saving');
+      setSaveErrorMessage(null);
+      setDraftProfile(prev => ({ ...prev, updatedAt: new Date().toISOString() }));
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
+  const retrySave = async () => {
+    setForceSimulateNetworkError(false);
+    setSaveStatus('saving');
+    const res = await workspaceSyncService.saveDraftAuthoritative(draftProfile, false);
+    if (res.success) {
+      try {
+        if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(res.updatedProfile || draftProfile, user.id);
+      } catch (error) {
+        setSaveStatus('error');
+        setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud save failed');
+        return;
+      }
+      clearOfflineDraft(draftProfile.id);
+      setSaveStatus('saved');
+      setSaveErrorMessage(null);
+      showToast('Changes saved successfully.');
+    } else {
+      setSaveStatus('error');
+      setSaveErrorMessage(res.error || 'Retry failed');
+    }
+  };
+
+  const simulateNetworkError = () => {
+    setForceSimulateNetworkError(true);
+    setSaveStatus('error');
+    setSaveErrorMessage('Simulated network error during draft synchronization.');
+    showToast('Network error simulated. Notice the retry banner in workspace.');
+  };
+
+  const resolveConflictReload = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.PROFILES);
+      if (raw) {
+        const freshProfiles: Profile[] = JSON.parse(raw);
+        const fresh = freshProfiles.find(p => p.id === activeProfileId);
+        if (fresh) {
+          setDraftProfile(JSON.parse(JSON.stringify(fresh)));
+          setProfiles(freshProfiles);
+          setSaveStatus('saved');
+          setIsConflictOpen(false);
+          showToast('Updated local workspace to latest server version.');
+          return;
+        }
+      }
+    } catch {}
+    setIsConflictOpen(false);
+  };
+
+  const resolveConflictOverwrite = async () => {
+    const updatedDraft: Profile = {
+      ...draftProfile,
+      publishedVersion: draftProfile.publishedVersion + 1,
+      updatedAt: new Date().toISOString()
+    };
+    setSaveStatus('saving');
+    try {
+      // Deliberately omit the stale ETag: this is the explicit user decision
+      // to replace the competing draft with the local version.
+      const result = await workspaceSyncService.saveDraftAuthoritative(updatedDraft, false);
+      if (!result.success || !result.updatedProfile) {
+        setSaveStatus('error');
+        setSaveErrorMessage(result.error || 'Unable to overwrite the conflicting draft.');
+        return;
+      }
+      const savedDraft = result.updatedProfile;
+      if (isSupabaseConfigured && user.id !== 'usr-guest') {
+        await saveCloudProfile(savedDraft, user.id);
+      }
+      setDraftProfile(savedDraft);
+      setProfiles(prev => prev.map(p => (p.id === savedDraft.id ? savedDraft : p)));
+      setIsConflictOpen(false);
+      setSaveStatus('saved');
+      setSaveErrorMessage(null);
+      workspaceSyncService.broadcastProfileUpdate(savedDraft.id, savedDraft.publishedVersion);
+      showToast('Overwrote the server draft with your local changes.');
+    } catch (error) {
+      setSaveStatus('error');
+      setSaveErrorMessage(error instanceof Error ? error.message : 'Unable to overwrite the conflicting draft.');
+    }
+  };
+
+  // Actions
+  const updateDraftProfile = (updater: (prev: Profile) => Profile) => {
+    setDraftProfile(prev => {
+      const updated = updater(prev);
+      return {
+        ...updated,
+        updatedAt: new Date().toISOString()
+      };
+    });
+  };
+
+  const saveDraftNow = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      queueOfflineDraft(draftProfile);
+      setSaveStatus('offline');
+      setSaveErrorMessage('Changes are stored on this device and will sync when you are back online.');
+      return;
+    }
+    setSaveStatus('saving');
+    const res = await workspaceSyncService.saveDraftAuthoritative(draftProfile, forceSimulateNetworkError, draftProfile.etag);
+    if (res.success) {
+      try {
+        if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(res.updatedProfile || draftProfile, user.id);
+      } catch (error) {
+        setSaveStatus('error');
+        setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud save failed');
+        return;
+      }
+      clearOfflineDraft(draftProfile.id);
+      setSaveStatus('saved');
+      setSaveErrorMessage(null);
+      if (res.updatedProfile) {
+        setDraftProfile(res.updatedProfile);
+      }
+      showToast('Draft manually saved.');
+    } else if (res.isConflict) {
+      setSaveStatus('conflict');
+      setIsConflictOpen(true);
+    } else {
+      setSaveStatus('error');
+      setSaveErrorMessage(res.error || 'Failed to save draft');
+    }
+  };
+
+  const publishProfile = async (changeNote?: string, idempotencyKey?: string, versionName?: string, versionNotes?: string): Promise<boolean> => {
+    // ACC-001 & ACC-004: Unverified users cannot publish to production public web
+    if (!user.isVerified) {
+      showToast('Action restricted: Please verify your email address before publishing to live web.');
+      return false;
+    }
+
+    setSaveStatus('saving');
+    const idempKey = idempotencyKey || `pub-${draftProfile.id}-${Date.now()}`;
+
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        // Persist the draft first; the Worker performs validation and is the
+        // only writer allowed to create/update the public snapshot.
+        await saveCloudProfile(draftProfile, user.id);
+        const published = await publishCloudProfile(draftProfile.id, changeNote, idempKey, versionName, versionNotes);
+        setProfiles(prev => prev.map(profile => profile.id === published.id ? published : profile));
+        setDraftProfile(published);
+        setSaveStatus('saved');
+        showToast(`Published @${published.username} live (v${published.publishedVersion})!`);
+        return true;
+      } catch (error) {
+        setSaveStatus('error');
+        setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud publish failed');
+        showToast(error instanceof Error ? error.message : 'Cloud publish failed');
+        return false;
+      }
+    }
+
+    const result = await contentLifecycleService.publishAuthoritative(
+      draftProfile,
+      user.email,
+      idempKey,
+      changeNote,
+      versionName,
+      versionNotes
+    );
+
+    if (!result.success) {
+      setSaveStatus('error');
+      setSaveErrorMessage(result.error || 'Publish failed');
+      showToast(result.error || 'Publish failed validation check');
+      return false;
+    }
+
+    // Refresh stored profiles
+    try {
+      const rawStored = localStorage.getItem(STORAGE_KEYS.PROFILES);
+      if (rawStored) {
+        const fresh: Profile[] = JSON.parse(rawStored);
+        setProfiles(fresh);
+        const updated = fresh.find(p => p.id === draftProfile.id);
+        if (updated) {
+          setDraftProfile(updated);
+        }
+      }
+    } catch {}
+
+    if (result.auditLog) {
+      setAuditLogs(prev => [result.auditLog!, ...prev]);
+    }
+
+    setSaveStatus('saved');
+    showToast(`Published @${draftProfile.username} live (v${result.publishedVersion})!`);
+    return true;
+  };
+
+  const rollbackToPublishedSnapshot = async (snapshotId: string, reason?: string): Promise<boolean> => {
+    const isOwner = user.isVerified && (user.id !== 'usr-guest');
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        const rolledBack = await rollbackCloudProfile(draftProfile.id, snapshotId, reason);
+        setProfiles(prev => prev.map(p => (p.id === draftProfile.id ? rolledBack : p)));
+        setDraftProfile(rolledBack);
+        showToast(`Successfully rolled back to snapshot ${snapshotId}. New release v${rolledBack.publishedVersion} is now live.`);
+        return true;
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Cloud rollback failed');
+        return false;
+      }
+    }
+    const result = await contentLifecycleService.rollbackToSnapshot(
+      draftProfile.id,
+      snapshotId,
+      user.email,
+      isOwner,
+      reason
+    );
+
+    if (!result.success) {
+      showToast(result.error || 'Rollback failed');
+      return false;
+    }
+
+    if (result.rolledBackProfile) {
+      setProfiles(prev => prev.map(p => (p.id === draftProfile.id ? result.rolledBackProfile! : p)));
+      setDraftProfile(result.rolledBackProfile);
+    }
+
+    if (result.auditLog) {
+      setAuditLogs(prev => [result.auditLog!, ...prev]);
+    }
+
+    showToast(`Successfully rolled back to snapshot ${snapshotId}. New release v${result.rolledBackProfile?.publishedVersion} is now live.`);
+    return true;
+  };
+
+  const generatePreviewLink = async (ttlMinutes = 60) => {
+    const tokenObj = isSupabaseConfigured && user.id !== 'usr-guest'
+      ? await createCloudPreviewToken(draftProfile.id, ttlMinutes)
+      : contentLifecycleService.createPreviewToken(draftProfile.id, user.email, ttlMinutes);
+    const previewUrl = `${window.location.origin}/?view=public_standalone&u=${draftProfile.username}&previewToken=${tokenObj.token}`;
+    return {
+      previewUrl,
+      token: tokenObj.token,
+      expiresAt: tokenObj.expiresAt
+    };
+  };
+
+  const scheduleRelease = async (scheduledIsoString: string, timezone: string): Promise<boolean> => {
+    try {
+      const config = contentLifecycleService.schedulePublish(
+        draftProfile,
+        scheduledIsoString,
+        timezone,
+        user.email
+      );
+      setDraftProfile(prev => ({
+        ...prev,
+        scheduledPublish: config
+      }));
+      showToast(`Release scheduled for ${new Date(config.scheduledTimeUtc).toLocaleString()} (${config.timezone})`);
+      return true;
+    } catch (e: any) {
+      showToast(e?.message || 'Failed to schedule release');
+      return false;
+    }
+  };
+
+  const cancelScheduledRelease = (): boolean => {
+    const success = contentLifecycleService.cancelScheduledPublish(draftProfile.id, user.email);
+    if (success) {
+      setDraftProfile(prev => ({
+        ...prev,
+        scheduledPublish: null
+      }));
+      showToast('Scheduled release cancelled.');
+    }
+    return success;
+  };
+
+  const revertDraftToPublished = () => {
+    setDraftProfile(JSON.parse(JSON.stringify(activePublished)));
+    showToast('Draft reverted to published version');
+  };
+
+  const resetThemeToPublished = () => {
+    setDraftProfile(prev => ({
+      ...prev,
+      standardTheme: activePublished.standardTheme ? JSON.parse(JSON.stringify(activePublished.standardTheme)) : undefined,
+      theme: JSON.parse(JSON.stringify(activePublished.theme)),
+      updatedAt: new Date().toISOString()
+    }));
+    showToast('Unsaved theme changes were reset. Your content was preserved.');
+  };
+
+  const switchActiveProfile = (id: string) => {
+    const target = profiles.find(p => p.id === id);
+    if (target) {
+      setActiveProfileId(id);
+      setDraftProfile(JSON.parse(JSON.stringify(target)));
+      showToast(`Switched profile to @${target.username}`);
+    }
+  };
+
+  const createNewProfile = (username: string, displayName: string, category: string, themeId?: string): string => {
+    // BIL-003: Authoritative entitlement check for profile creation
+    const check = billingService.checkFeatureEntitlement(workspace, 'create_profile', {
+      currentProfileCount: profiles.length
+    });
+
+    if (!check.allowed) {
+      showToast(check.reason || 'Profile limit reached for current plan. Please upgrade.');
+      return '';
+    }
+
+    const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const selectedTheme = THEME_PRESETS.find(t => t.id === themeId) || THEME_PRESETS[0];
+
+    const newProfile: Profile = {
+      id: `prof-${Date.now()}`,
+      username: cleanUsername || `user_${Math.floor(Math.random() * 10000)}`,
+      displayName: displayName || cleanUsername,
+      bio: 'Welcome to my official links, portfolio, and projects.',
+      avatarUrl: '',
+      category: category || 'Creator',
+      verified: false,
+      status: 'draft',
+      publishedVersion: 1,
+      directLinkMode: false,
+      socialPosition: 'top',
+      socialLinks: [
+        { id: `soc-${Date.now()}-1`, platform: 'instagram', url: 'https://instagram.com', active: true },
+        { id: `soc-${Date.now()}-2`, platform: 'twitter', url: 'https://x.com', active: true },
+        { id: `soc-${Date.now()}-3`, platform: 'email', url: 'mailto:contact@domain.com', active: true }
+      ],
+      theme: selectedTheme,
+      tabs: [
+        {
+          id: `tab-${Date.now()}`,
+          title: 'Main',
+          slug: 'main',
+          position: 0,
+          blocks: [
+            {
+              id: `blk-${Date.now()}-1`,
+              type: 'link',
+              title: 'My Official Website',
+              position: 0,
+              isHidden: false,
+              clicks: 0,
+              payload: {
+                url: 'https://example.com',
+                subtitle: 'Portfolio, client inquiries and store',
+                highlightBadge: 'Official',
+                animation: 'none'
+              }
+            },
+            {
+              id: `blk-${Date.now()}-2`,
+              type: 'link',
+              title: 'Featured Project / Recent Work',
+              position: 1,
+              isHidden: false,
+              clicks: 0,
+              payload: {
+                url: 'https://example.com/project',
+                subtitle: 'Check out our latest release',
+                highlightBadge: 'New',
+                animation: 'shimmer'
+              }
+            },
+            {
+              id: `blk-${Date.now()}-3`,
+              type: 'form',
+              title: 'Get In Touch',
+              position: 2,
+              isHidden: false,
+              clicks: 0,
+              payload: {
+                formType: 'contact',
+                description: 'Send a direct message or booking inquiry',
+                fields: [
+                  { id: 'f-name', label: 'Your Name', type: 'text', required: true },
+                  { id: 'f-email', label: 'Email', type: 'email', required: true },
+                  { id: 'f-msg', label: 'Message', type: 'textarea', required: true }
+                ],
+                submitButtonText: 'Send Message',
+                successMessage: 'Message received! Will respond shortly.'
+              }
+            }
+          ]
+        }
+      ],
+      qrConfig: {
+        fgColor: selectedTheme.textColor,
+        bgColor: selectedTheme.bgColor,
+        pattern: 'dots',
+        showLogo: true,
+        dynamicTargetUrl: `https://lynkflow.me/${cleanUsername}`
+      },
+      seo: {
+        title: `${displayName || cleanUsername} | Official Link in Bio`,
+        description: `Explore links, projects, and contact channels for ${displayName || cleanUsername}.`,
+        noIndex: false
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString()
+    };
+
+    setProfiles(prev => [...prev, newProfile]);
+    setActiveProfileId(newProfile.id);
+    setDraftProfile(newProfile);
+
+    setWorkspace(prev => ({
+      ...prev,
+      profiles: [...prev.profiles, newProfile.id]
+    }));
+
+    showToast(`Created new profile @${newProfile.username}!`);
+    return newProfile.id;
+  };
+
+  const duplicateProfile = (profileId: string) => {
+    // BIL-003: Check entitlement before allowing duplicate
+    const check = billingService.checkFeatureEntitlement(workspace, 'create_profile', {
+      currentProfileCount: profiles.length
+    });
+    if (!check.allowed) {
+      showToast(check.reason || 'Profile limit reached. Upgrade to duplicate.');
+      return;
+    }
+
+    const source = profiles.find(p => p.id === profileId);
+    if (!source) return;
+
+    // PRO-002: Generate new unique IDs for every nested entity
+    const now = new Date().toISOString();
+    const idMap = new Map<string, string>();
+    const newId = (old: string) => {
+      if (!idMap.has(old)) idMap.set(old, `${old.split('-')[0]}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`);
+      return idMap.get(old)!;
+    };
+
+    const newTabs = source.tabs.map(tab => ({
+      ...tab,
+      id: newId(tab.id),
+      blocks: tab.blocks.map(block => ({
+        ...block,
+        id: newId(block.id),
+        clicks: 0 // reset engagement counters
+      }))
+    }));
+
+    const newSocialLinks = source.socialLinks.map(sl => ({
+      ...sl,
+      id: newId(sl.id)
+    }));
+
+    const copyUsername = `${source.username}_copy_${Date.now().toString().slice(-4)}`;
+    const newProfile: Profile = {
+      ...JSON.parse(JSON.stringify(source)),
+      id: `prof-${Date.now()}`,
+      username: copyUsername,
+      displayName: `${source.displayName} (Copy)`,
+      status: 'draft',
+      publishedVersion: 1,
+      publishedSnapshot: undefined,
+      snapshotHistory: [],
+      activePreviewTokens: [],
+      scheduledPublish: null,
+      // PRO-002: Do NOT carry over the original custom domain — each profile owns its own domain
+      customDomain: undefined,
+      tabs: newTabs,
+      socialLinks: newSocialLinks,
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: undefined
+    };
+
+    setProfiles(prev => [...prev, newProfile]);
+    setActiveProfileId(newProfile.id);
+    setDraftProfile(newProfile);
+    setWorkspace(prev => ({
+      ...prev,
+      profiles: [...prev.profiles, newProfile.id]
+    }));
+    showToast(`Duplicated to @${copyUsername}`);
+  };
+
+  const deleteProfile = (profileId: string): boolean => {
+    if (profiles.length <= 1) {
+      showToast('Cannot delete the only profile in the workspace');
+      return false;
+    }
+
+    const remaining = profiles.filter(p => p.id !== profileId);
+    setProfiles(remaining);
+    const nextId = remaining[0].id;
+    setActiveProfileId(nextId);
+    setDraftProfile(JSON.parse(JSON.stringify(remaining[0])));
+    setWorkspace(prev => ({
+      ...prev,
+      profiles: prev.profiles.filter(id => id !== profileId)
+    }));
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      void deleteCloudRecord('profiles', profileId, user.id).catch(error => {
+        console.error('Supabase profile deletion failed', error);
+        showToast('Profile removed locally, but server deletion needs a retry.');
+      });
+    }
+    showToast('Profile deleted');
+    return true;
+  };
+
+  // Block management
+  const addBlock = (tabId: string, blockType: BlockType, customTitle?: string) => {
+    updateDraftProfile(prev => {
+      const tabs = [...prev.tabs];
+      const targetTab = tabs.find(t => t.id === tabId) || tabs[0];
+      if (!targetTab) return prev;
+
+      let defaultPayload: any;
+      let title = customTitle || 'New Block';
+
+      switch (blockType) {
+        case 'link':
+          title = customTitle || 'My Link Title';
+          defaultPayload = {
+            url: 'https://',
+            subtitle: 'Add brief context or call to action',
+            highlightBadge: '',
+            animation: 'none',
+            openInNewTab: true
+          } as LinkBlockPayload;
+          break;
+        case 'media':
+          title = customTitle || 'Watch Featured Video';
+          defaultPayload = {
+            mediaType: 'video',
+            url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+            caption: 'Video description or notes',
+            aspectRatio: '16:9'
+          } as MediaBlockPayload;
+          break;
+        case 'gallery':
+          title = customTitle || 'Featured Gallery';
+          defaultPayload = { columns: 2, items: [
+            { id: 'gallery-1', image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=1200', title: 'Gallery image 1' },
+            { id: 'gallery-2', image: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=1200', title: 'Gallery image 2' }
+          ] };
+          break;
+        case 'carousel':
+          title = customTitle || 'Image Carousel';
+          defaultPayload = { autoplay: false, items: [
+            { id: 'carousel-1', image: 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=1200', title: 'Carousel image 1' },
+            { id: 'carousel-2', image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200', title: 'Carousel image 2' }
+          ] };
+          break;
+        case 'product':
+          title = customTitle || 'Featured Product';
+          defaultPayload = { image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1200', description: 'Add a product description', price: '49', currency: 'USD', url: 'https://example.com', buttonLabel: 'Shop now' };
+          break;
+        case 'text':
+          title = customTitle || 'Heading Text';
+          defaultPayload = {
+            textType: 'h2',
+            content: 'Write an announcement or introductory message for your audience.',
+            alignment: 'center'
+          } as TextBlockPayload;
+          break;
+        case 'divider':
+          title = 'Divider';
+          defaultPayload = {
+            style: 'hairline',
+            height: 'md'
+          } as DividerBlockPayload;
+          break;
+        case 'folder':
+          title = customTitle || 'Resource Collection';
+          defaultPayload = {
+            description: 'Group of related links & resources',
+            items: [
+              { id: `item-1`, title: 'Resource #1', url: 'https://example.com' },
+              { id: `item-2`, title: 'Resource #2', url: 'https://example.com' }
+            ]
+          } as FolderBlockPayload;
+          break;
+        case 'faq':
+          title = customTitle || 'Frequently Asked Questions';
+          defaultPayload = {
+            items: [
+              { id: 'f-1', question: 'How can I collaborate with you?', answer: 'Reach out via our inquiry form below!' },
+              { id: 'f-2', question: 'What is your turnaround time?', answer: 'Typical project timelines run 2 to 4 weeks.' }
+            ]
+          } as FaqBlockPayload;
+          break;
+        case 'testimonial':
+          title = customTitle || 'Client Feedback';
+          defaultPayload = {
+            quote: 'Working with this team transformed our brand metrics completely.',
+            authorName: 'Sarah Jenkins',
+            authorRole: 'Founder & CEO',
+            company: 'Lumina Studio',
+            rating: 5
+          } as TestimonialBlockPayload;
+          break;
+        case 'file':
+          title = customTitle || 'Download Media Kit';
+          defaultPayload = {
+            fileName: 'Media_Kit_2026.pdf',
+            fileSize: '2.8 MB',
+            fileUrl: '#',
+            description: 'Full portfolio, reach statistics, and booking pricing',
+            downloadCount: 0
+          } as FileBlockPayload;
+          break;
+        case 'form':
+          title = customTitle || 'Join Newsletter';
+          defaultPayload = {
+            formType: 'newsletter',
+            description: 'Subscribe to receive exclusive drops and weekly thoughts.',
+            fields: [
+              { id: 'f-email', label: 'Email', type: 'email', required: true, placeholder: 'name@email.com' }
+            ],
+            submitButtonText: 'Subscribe',
+            successMessage: 'Welcome to the circle! Check your email.',
+            consentText: 'I agree to receive occasional updates.'
+          } as FormBlockPayload;
+          break;
+        case 'emailSignup':
+          title = customTitle || 'Join the Email List';
+          defaultPayload = {
+            formType: 'newsletter',
+            description: 'Get updates directly in your inbox.',
+            fields: [{ id: 'signup-email', label: 'Email', type: 'email', required: true, placeholder: 'you@example.com' }],
+            submitButtonText: 'Subscribe',
+            successMessage: 'You are subscribed.',
+            consentText: 'I agree to receive updates.',
+            subscriberMode: true
+          } as FormBlockPayload;
+          break;
+        case 'contact':
+          title = customTitle || 'Direct Contact';
+          defaultPayload = {
+            contactType: 'email',
+            value: 'hello@mybrand.com',
+            presetSubject: 'Inquiry via LynkFlow'
+          } as ContactBlockPayload;
+          break;
+      }
+
+      const newBlock: Block = {
+        id: `blk-${Date.now()}`,
+        type: blockType,
+        title,
+        payload: defaultPayload,
+        position: targetTab.blocks.length,
+        isHidden: false,
+        clicks: 0
+      };
+
+      targetTab.blocks.push(newBlock);
+      return { ...prev, tabs };
+    });
+
+    showToast(`Added ${blockType} block`);
+  };
+
+  const updateBlock = (tabId: string, blockId: string, updates: Partial<Block>) => {
+    updateDraftProfile(prev => {
+      const tabs = prev.tabs.map(tab => {
+        if (tab.id !== tabId) return tab;
+        return {
+          ...tab,
+          blocks: tab.blocks.map(b => (b.id === blockId ? { ...b, ...updates } : b))
+        };
+      });
+      return { ...prev, tabs };
+    });
+  };
+
+  const removeBlock = (tabId: string, blockId: string) => {
+    updateDraftProfile(prev => {
+      const tabs = prev.tabs.map(tab => {
+        if (tab.id !== tabId) return tab;
+        return {
+          ...tab,
+          blocks: tab.blocks.filter(b => b.id !== blockId)
+        };
+      });
+      return { ...prev, tabs };
+    });
+    showToast('Block removed');
+  };
+
+  const duplicateBlock = (tabId: string, blockId: string) => {
+    updateDraftProfile(prev => {
+      const tabs = prev.tabs.map(tab => {
+        if (tab.id !== tabId) return tab;
+        const index = tab.blocks.findIndex(b => b.id === blockId);
+        if (index === -1) return tab;
+        const source = tab.blocks[index];
+        const clone: Block = {
+          ...JSON.parse(JSON.stringify(source)),
+          id: `blk-${Date.now()}`,
+          title: `${source.title} (Copy)`,
+          position: index + 1,
+          clicks: 0
+        };
+        const nextBlocks = [...tab.blocks];
+        nextBlocks.splice(index + 1, 0, clone);
+        return { ...tab, blocks: nextBlocks };
+      });
+      return { ...prev, tabs };
+    });
+    showToast('Block duplicated');
+  };
+
+  const reorderBlocks = (tabId: string, fromIndex: number, toIndex: number) => {
+    updateDraftProfile(prev => {
+      const tabs = prev.tabs.map(tab => {
+        if (tab.id !== tabId) return tab;
+        const blocks = [...tab.blocks];
+        const [moved] = blocks.splice(fromIndex, 1);
+        blocks.splice(toIndex, 0, moved);
+        const reindexed = blocks.map((b, idx) => ({ ...b, position: idx }));
+        return { ...tab, blocks: reindexed };
+      });
+      return { ...prev, tabs };
+    });
+  };
+
+  // Tabs
+  const addTab = (title: string) => {
+    const slug = title.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    updateDraftProfile(prev => ({
+      ...prev,
+      tabs: [
+        ...prev.tabs,
+        {
+          id: `tab-${Date.now()}`,
+          title,
+          slug: slug || `tab-${prev.tabs.length + 1}`,
+          position: prev.tabs.length,
+          blocks: []
+        }
+      ]
+    }));
+    showToast(`Added tab "${title}"`);
+  };
+
+  const updateTab = (tabId: string, title: string) => {
+    updateDraftProfile(prev => ({
+      ...prev,
+      tabs: prev.tabs.map(t => (t.id === tabId ? { ...t, title } : t))
+    }));
+  };
+
+  const removeTab = (tabId: string) => {
+    if (draftProfile.tabs.length <= 1) {
+      showToast('Profile must have at least one tab');
+      return;
+    }
+    updateDraftProfile(prev => ({
+      ...prev,
+      tabs: prev.tabs.filter(t => t.id !== tabId)
+    }));
+    showToast('Tab removed');
+  };
+
+  // Current active standard theme
+  const standardTheme = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
+
+  // Themes
+  const enforceBrandKitLocks = (current: StandardTheme, next: StandardTheme): StandardTheme => {
+    const locks = workspace.brandKit?.lockedFields;
+    if (!locks) return next;
+
+    const guarded = { ...next };
+    if (locks.colors) {
+      const kit = workspace.brandKit || defaultBrandKit;
+      const accentText = calculateContrastRatio('#FFFFFF', kit.accentColor) >= calculateContrastRatio('#000000', kit.accentColor) ? '#FFFFFF' : '#000000';
+      guarded.tokens = {
+        ...guarded.tokens,
+        colors: {
+          ...guarded.tokens.colors,
+          primaryText: kit.primaryColor,
+          textPrimary: kit.primaryColor,
+          secondaryText: kit.secondaryColor,
+          textSecondary: kit.secondaryColor,
+          accent: kit.accentColor,
+          accentPrimary: kit.accentColor,
+          accentText,
+          ctaText: accentText,
+        },
+      };
+      guarded.buttons = { ...current.buttons!, ...guarded.buttons, background: kit.accentColor, text: accentText };
+      guarded.socialIcons = { ...current.socialIcons!, ...guarded.socialIcons, color: kit.primaryColor };
+    }
+    if (locks.fonts) {
+      const kit = workspace.brandKit || defaultBrandKit;
+      guarded.tokens = {
+        ...guarded.tokens,
+        typography: {
+          ...guarded.tokens.typography,
+          bodyFamily: kit.latinFont,
+          displayFamily: kit.latinFont,
+          arabicFamily: kit.arabicFont,
+        },
+      };
+    }
+    if (locks.spacing) {
+      guarded.tokens = { ...guarded.tokens, spacing: current.tokens.spacing };
+      guarded.responsive = current.responsive;
+      guarded.layout = current.layout;
+    }
+    return guarded;
+  };
+
+  const applyTheme = (newTheme: ThemeConfig | StandardTheme) => {
+    const currentStd = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
+    // Push current to undo stack
+    setThemeUndoStack(prev => [JSON.parse(JSON.stringify(currentStd)), ...prev.slice(0, 30)]);
+    setThemeRedoStack([]);
+
+    const norm = enforceBrandKitLocks(currentStd, normalizeTheme(newTheme));
+    const legacyCompat: ThemeConfig = {
+      id: norm.id,
+      name: norm.name,
+      backgroundType: norm.background.type === 'gradient' ? 'gradient' : 'solid',
+      bgColor: norm.tokens.colors.pageBackground,
+      bgGradient: norm.background.gradientStops,
+      textColor: norm.tokens.colors.primaryText,
+      subtitleColor: norm.tokens.colors.secondaryText,
+      cardBg: norm.tokens.colors.panelBackground,
+      cardBorder: norm.tokens.colors.border,
+      cardTextColor: norm.tokens.colors.primaryText,
+      cardSubtitleColor: norm.tokens.colors.secondaryText,
+      cardShadow: norm.blockDefaults?.link?.shadow || 'sm',
+      cardRadius: norm.tokens.shape.buttonRadius > 20 ? 'full' : norm.tokens.shape.buttonRadius > 10 ? 'md' : 'sm',
+      cardStyle: norm.blockDefaults?.link?.variant === 'glass' ? 'glass' : norm.blockDefaults?.link?.variant === 'outline' ? 'outline' : 'solid',
+      fontDisplay: norm.tokens.typography.displayFamily,
+      fontBody: norm.tokens.typography.bodyFamily,
+      buttonHoverAnimation: (norm.tokens.motion.hoverEffect as any) || 'lift',
+      accentColor: norm.tokens.colors.accent
+    };
+
+    updateDraftProfile(prev => ({
+      ...prev,
+      standardTheme: norm,
+      theme: legacyCompat,
+      qrConfig: {
+        ...prev.qrConfig,
+        fgColor: norm.tokens.colors.primaryText,
+        bgColor: norm.tokens.colors.pageBackground
+      }
+    }));
+    showToast(`Applied ${norm.name} theme`);
+  };
+
+  const updateStandardTheme = (updater: (prev: StandardTheme) => StandardTheme) => {
+    const currentStd = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
+    setThemeUndoStack(prev => [JSON.parse(JSON.stringify(currentStd)), ...prev.slice(0, 30)]);
+    setThemeRedoStack([]);
+
+    const updated = updater(currentStd);
+    const norm = enforceBrandKitLocks(currentStd, normalizeTheme(updated));
+
+    const legacyCompat: ThemeConfig = {
+      id: norm.id,
+      name: norm.name,
+      backgroundType: norm.background.type === 'gradient' ? 'gradient' : 'solid',
+      bgColor: norm.tokens.colors.pageBackground,
+      bgGradient: norm.background.gradientStops,
+      textColor: norm.tokens.colors.primaryText,
+      subtitleColor: norm.tokens.colors.secondaryText,
+      cardBg: norm.tokens.colors.panelBackground,
+      cardBorder: norm.tokens.colors.border,
+      cardTextColor: norm.tokens.colors.primaryText,
+      cardSubtitleColor: norm.tokens.colors.secondaryText,
+      cardShadow: norm.blockDefaults?.link?.shadow || 'sm',
+      cardRadius: norm.tokens.shape.buttonRadius > 20 ? 'full' : norm.tokens.shape.buttonRadius > 10 ? 'md' : 'sm',
+      cardStyle: norm.blockDefaults?.link?.variant === 'glass' ? 'glass' : norm.blockDefaults?.link?.variant === 'outline' ? 'outline' : 'solid',
+      fontDisplay: norm.tokens.typography.displayFamily,
+      fontBody: norm.tokens.typography.bodyFamily,
+      buttonHoverAnimation: (norm.tokens.motion.hoverEffect as any) || 'lift',
+      accentColor: norm.tokens.colors.accent
+    };
+
+    updateDraftProfile(prev => ({
+      ...prev,
+      standardTheme: norm,
+      theme: legacyCompat
+    }));
+  };
+
+  const applyBrandKitToTheme = () => {
+    const kit = workspace.brandKit || defaultBrandKit;
+    updateStandardTheme(prev => ({
+      ...prev,
+      tokens: {
+        ...prev.tokens,
+      colors: {
+        ...prev.tokens.colors,
+          primaryText: kit.primaryColor, secondaryText: kit.secondaryColor, accent: kit.accentColor
+        },
+        typography: {
+          ...prev.tokens.typography,
+          bodyFamily: kit.latinFont, displayFamily: kit.latinFont, arabicFamily: kit.arabicFont
+        }
+      },
+      componentVariants: {
+        ...(prev.componentVariants || { link: 'solid', image: 'rounded', socialIcons: 'line', form: 'card' }),
+        link: kit.buttonStyle === 'pill' || kit.buttonStyle === 'filled' ? 'solid' : kit.buttonStyle === 'soft' ? 'soft-card' : kit.buttonStyle,
+        image: kit.imageStyle,
+        socialIcons: kit.socialIconStyle
+      },
+      socialIcons: { ...(prev.socialIcons || { color: kit.primaryColor, size: 36, style: kit.socialIconStyle }), style: kit.socialIconStyle, color: kit.primaryColor }
+    }));
+    showToast(`Applied ${kit.name} styles without changing content.`);
+  };
+
+  const undoThemeChange = () => {
+    if (themeUndoStack.length === 0) return;
+    const [previous, ...restUndo] = themeUndoStack;
+    const current = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
+
+    setThemeRedoStack(prev => [JSON.parse(JSON.stringify(current)), ...prev]);
+    setThemeUndoStack(restUndo);
+
+    updateDraftProfile(prev => ({
+      ...prev,
+      standardTheme: previous
+    }));
+    showToast('Undo theme change');
+  };
+
+  const redoThemeChange = () => {
+    if (themeRedoStack.length === 0) return;
+    const [next, ...restRedo] = themeRedoStack;
+    const current = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
+
+    setThemeUndoStack(prev => [JSON.parse(JSON.stringify(current)), ...prev]);
+    setThemeRedoStack(restRedo);
+
+    updateDraftProfile(prev => ({
+      ...prev,
+      standardTheme: next
+    }));
+    showToast('Redo theme change');
+  };
+
+  const rollbackToSnapshot = (snapshotId: string) => {
+    const snapshots = draftProfile.themeSnapshots || [];
+    const target = snapshots.find(s => s.snapshotId === snapshotId);
+    if (!target) {
+      showToast('Snapshot not found');
+      return;
+    }
+
+    applyTheme(target.theme);
+    showToast(`Rolled back theme to version v${target.version}`);
+  };
+
+  const saveCustomPreset = (name: string) => {
+    const current = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
+    const custom: StandardTheme = {
+      ...JSON.parse(JSON.stringify(current)),
+      id: `custom-${Date.now()}`,
+      name: name.trim() || 'My Custom Style',
+      source: 'custom',
+      presetId: null,
+      presetComposition: {
+        themeId: current.id,
+        layoutId: current.layout?.templateId ? `${current.id}:layout:${current.layout.templateId}` : undefined,
+        brandKitId: workspace.brandKit?.id,
+        selectedBlockVariants: current.componentVariants as unknown as Record<string, string>,
+        includesStarterContent: false,
+        changesContent: false,
+        changesLayout: true,
+      },
+      createdAt: new Date().toISOString()
+    };
+
+    setCustomPresets(prev => {
+      const next = [custom, ...prev];
+      try {
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_THEMES, JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+
+    showToast(`Saved "${custom.name}" as reusable custom preset!`);
+  };
+
+  // Tracking (PUB-004: Privacy-preserving sanitization)
+  const trackEvent = (eventData: Omit<AnalyticsEvent, 'id' | 'timestamp'>) => {
+    const newEvent = analyticsEngineService.recordVisitorEvent(eventData);
+    setAnalytics(prev => [newEvent, ...prev.slice(0, 500)]);
+
+    // Also increment block click counter if applicable
+    if (eventData.type === 'block_click' && eventData.blockId) {
+      setProfiles(prev => prev.map(p => {
+        if (p.id !== eventData.profileId) return p;
+        return {
+          ...p,
+          tabs: p.tabs.map(t => ({
+            ...t,
+            blocks: t.blocks.map(b => (b.id === eventData.blockId ? { ...b, clicks: b.clicks + 1 } : b))
+          }))
+        };
+      }));
+    }
+  };
+
+  // Forms (FORM-001, FORM-002, FORM-003, FORM-004, FORM-005)
+  const submitForm = async (
+    profileId: string, 
+    blockId: string, 
+    formTitle: string, 
+    formPayload: FormBlockPayload, 
+    data: Record<string, string>, 
+    consent: boolean,
+    honeypotTrap?: string
+  ): Promise<{ success: boolean; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }> => {
+    // 1. Authoritative server-side validation, spam & rate-limit check, audience sync
+    if (isSupabaseConfigured && user.id === 'usr-guest') {
+      return submitPublicForm({ profileId, blockId, formTitle, formPayload, data, consentGiven: consent, honeypotTrap });
+    }
+
+    const result = formSubmissionService.submitFormAuthoritative({
+      profileId,
+      blockId,
+      formTitle,
+      formPayload,
+      data,
+      consentGiven: consent,
+      honeypotTrap,
+      clientIpHash: typeof window !== 'undefined' ? (window.location.hostname || 'client-browser') : 'server-node'
+    });
+
+    if (!result.success) {
+      if (result.error) {
+        showToast(result.error);
+      }
+      return result;
+    }
+
+    // 2. Refresh local submissions state from authoritative store
+    const updated = formSubmissionService.getSubmissions(profileId);
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudSubmissions(updated, user.id);
+        await saveCloudSubscribers(formSubmissionService.getSubscribers(profileId), user.id);
+      } catch (error) {
+        if (result.submissionId) formSubmissionService.deleteSubmission(profileId, result.submissionId, user.email);
+        const message = error instanceof Error ? error.message : 'Cloud submission failed';
+        showToast('Submission was not saved. Please retry.');
+        return { success: false, error: message };
+      }
+    }
+    setSubmissions(prev => {
+      // Keep other profiles' submissions intact in state
+      const otherProfiles = prev.filter(s => s.profileId !== profileId);
+      return [...updated, ...otherProfiles];
+    });
+
+    // 3. Track analytics event
+    trackEvent({
+      profileId,
+      blockId,
+      type: 'form_submit',
+      referrer: 'Public Profile Page',
+      country: 'United States',
+      device: 'mobile'
+    });
+
+    showToast(formPayload.successMessage || 'Submission confirmed!');
+    return { success: true };
+  };
+
+  const deleteSubmission = async (id: string) => {
+    formSubmissionService.deleteSubmission(activeProfileId, id, user.email);
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await deleteCloudRecord('form_submissions', id, user.id);
+      } catch (error) {
+        showToast('Submission deletion was not saved. Please retry.');
+        return;
+      }
+    }
+    setSubmissions(prev => prev.filter(s => s.id !== id));
+    showToast('Submission deleted');
+  };
+
+  // Domains — all mutations go through domainService for PRO-001/003/004 compliance
+  const verifyDomain = async (profileId: string, domain: string): Promise<{ success: boolean; failureReason?: string }> => {
+    const check = billingService.checkFeatureEntitlement(workspace, 'custom_domain');
+    if (!check.allowed) {
+      showToast(check.reason || 'Custom domains require Creator Pro or Agency plan.');
+      return { success: false, failureReason: check.reason };
+    }
+
+    if (isSupabaseConfigured) {
+      const remote = await verifyManagedDomain(profileId, domain);
+      if (!remote.config) { showToast(remote.error || 'Domain verification failed.'); return { success: false, failureReason: remote.error }; }
+      updateDraftProfile(prev => ({ ...prev, customDomain: remote.config }));
+      setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, customDomain: remote.config } : p));
+      if (remote.success) showToast(remote.config.sslStatus === 'active' ? 'Domain verified and SSL is active.' : 'DNS verified. SSL is provisioning.');
+      else showToast(remote.error || remote.config.failureReason || 'DNS verification failed.');
+      return { success: Boolean(remote.success), failureReason: remote.error || remote.config.failureReason };
+    }
+
+    const result = await domainService.verifyDomain(domain, profileId, workspace.id, profiles);
+
+    updateDraftProfile(prev => ({ ...prev, customDomain: result.config }));
+    // Also update the source profiles array so other profile views see the state
+    setProfiles(prev => prev.map(p =>
+      p.id === profileId ? { ...p, customDomain: result.config } : p
+    ));
+
+    if (result.success) {
+      showToast(`Domain ${result.domain} verified & SSL provisioned!`);
+    } else {
+      showToast(result.failureReason || 'Domain verification failed. Check DNS settings.');
+    }
+    return { success: result.success, failureReason: result.failureReason };
+  };
+
+  const removeDomain = async (profileId: string): Promise<void> => {
+    const profile = profiles.find(p => p.id === profileId);
+    if (!profile?.customDomain) return;
+    if (isSupabaseConfigured) {
+      const remote = await removeManagedDomain(profileId);
+      if (remote.error) { showToast(remote.error); return; }
+    } else {
+      domainService.removeDomain(profile.customDomain.domain, workspace.id);
+    }
+    const updater = (p: Profile) => ({ ...p, customDomain: undefined });
+    updateDraftProfile(updater);
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, customDomain: undefined } : p));
+    showToast('Custom domain disconnected.');
+  };
+
+  const recheckDomain = async (profileId: string): Promise<void> => {
+    const profile = profiles.find(p => p.id === profileId);
+    if (!profile?.customDomain) return;
+    if (isSupabaseConfigured) {
+      const remote = await recheckManagedDomain(profileId, profile.customDomain.domain);
+      if (!remote.config) { showToast(remote.error || 'DNS check failed.'); return; }
+      updateDraftProfile(prev => ({ ...prev, customDomain: remote.config }));
+      setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, customDomain: remote.config } : p));
+      showToast(remote.config.failureReason || (remote.config.sslStatus === 'active' ? 'DNS and SSL check complete.' : 'DNS verified; SSL remains in provisioning.'));
+      return;
+    }
+    const result = await domainService.recheckDomain(profile.customDomain, workspace.id);
+    const updater = (p: Profile) => ({ ...p, customDomain: result.config });
+    updateDraftProfile(updater);
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, customDomain: result.config } : p));
+    if (result.changed) {
+      showToast(result.failureReason || 'Domain status updated.');
+    } else {
+      showToast('DNS check complete — no change detected.');
+    }
+  };
+
+  // PRO-005: Member management
+  const addMember = (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]): { success: boolean; error?: string } => {
+    const existing = workspace.members?.find(m => m.email === email);
+    if (existing) return { success: false, error: `${email} is already a workspace member.` };
+    const member: ProfileMember = {
+      id: `mem-${Date.now()}`,
+      email,
+      name,
+      role,
+      assignedProfileIds,
+      addedAt: new Date().toISOString(),
+      addedBy: user.email,
+      pendingInviteExpiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+    };
+    setWorkspace(prev => ({ ...prev, members: [...(prev.members || []), member] }));
+    showToast(`Invitation sent to ${email}`);
+    return { success: true };
+  };
+
+  const removeMember = (memberId: string): void => {
+    setWorkspace(prev => ({ ...prev, members: (prev.members || []).filter(m => m.id !== memberId) }));
+    showToast('Member removed from workspace.');
+  };
+
+  const updateMemberRole = (memberId: string, role: ProfileRole, assignedProfileIds: string[]): void => {
+    setWorkspace(prev => ({
+      ...prev,
+      members: (prev.members || []).map(m =>
+        m.id === memberId ? { ...m, role, assignedProfileIds } : m
+      )
+    }));
+    showToast('Member permissions updated.');
+  };
+
+  // ─── Feature 12: API Keys & Webhooks ────────────────────────────────────────
+
+  const [apiKeys, setApiKeys] = React.useState<ApiKey[]>(() => apiKeyService.listKeys(workspace.id));
+  const [webhookSubscriptions, setWebhookSubscriptions] = React.useState<WebhookSubscription[]>(() => apiKeyService.listWebhooks(workspace.id));
+  const [apiAuditLog, setApiAuditLog] = React.useState<ApiAuditEntry[]>(() => apiKeyService.getAuditLog());
+
+  useEffect(() => {
+    if (!cloudHydrated || !cloudApiState.current) return;
+    const { apiKeys: remoteKeys, webhookSubscriptions: remoteWebhooks } = cloudApiState.current;
+    setApiKeys(remoteKeys);
+    setWebhookSubscriptions(remoteWebhooks);
+    apiKeyService.replaceKeys(workspace.id, remoteKeys);
+    apiKeyService.replaceWebhooks(workspace.id, remoteWebhooks);
+  }, [cloudHydrated, workspace.id]);
+
+  useEffect(() => {
+    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    saveCloudApiKeys(apiKeys, user.id).catch(error => console.error('Supabase API key save failed', error));
+    if (!isSupabaseConfigured) saveCloudWebhooks(webhookSubscriptions, user.id).catch(error => console.error('Supabase webhook save failed', error));
+  }, [apiKeys, webhookSubscriptions, user.id]);
+
+  const refreshApiState = () => {
+    setApiKeys(apiKeyService.listKeys(workspace.id));
+    setWebhookSubscriptions(apiKeyService.listWebhooks(workspace.id));
+    setApiAuditLog(apiKeyService.getAuditLog());
+  };
+
+  /** API-002: Create a new scoped key. Returns full secret exactly once. */
+  const createApiKey = async (name: string, scopes: ApiKeyScope[], allowedProfileIds: string[] | null, expiresAt?: string) => {
+    if (isSupabaseConfigured) {
+      const remote = await createManagedApiKey({ name, scopes, allowedProfileIds, expiresAt });
+      if (remote.error || !remote.data || !remote.secret) { showToast(remote.error || 'API key creation failed.'); return { error: remote.error || 'API key creation failed.' }; }
+      apiKeyService.replaceKeys(workspace.id, [...apiKeys, remote.data]);
+      setApiKeys(prev => [...prev, remote.data!]);
+      showToast(`API key "${name}" created. Copy the secret now — it will not be shown again.`);
+      return { key: remote.data, secret: remote.secret };
+    }
+    const result = apiKeyService.createKey(workspace, name, scopes, allowedProfileIds, user.email, expiresAt);
+    if ('error' in result) { showToast(result.error); return result; }
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudApiKeys([result.key], user.id);
+      } catch (error) {
+        apiKeyService.replaceKeys(workspace.id, apiKeys);
+        const message = error instanceof Error ? error.message : 'Cloud API key save failed';
+        showToast(message);
+        return { error: message };
+      }
+    }
+    showToast(`API key "${name}" created. Copy the secret now — it will not be shown again.`);
+    refreshApiState();
+    return result;
+  };
+
+  /** API-002: Revoke key immediately. */
+  const revokeApiKey = async (keyId: string) => {
+    if (isSupabaseConfigured) {
+      const remote = await revokeManagedApiKey(keyId);
+      if (remote.error) { showToast(remote.error); return { success: false, error: remote.error }; }
+      setApiKeys(prev => prev.map(key => key.id === keyId ? { ...key, status: 'revoked', revokedAt: new Date().toISOString() } : key));
+      showToast('API key revoked.');
+      return { success: true };
+    }
+    const previousKeys = apiKeys;
+    const result = apiKeyService.revokeKey(workspace.id, keyId, user.email);
+    if (result.success && isSupabaseConfigured && user.id !== 'usr-guest') {
+      const nextKeys = apiKeyService.listKeys(workspace.id);
+      try {
+        await saveCloudApiKeys(nextKeys, user.id);
+      } catch (error) {
+        apiKeyService.replaceKeys(workspace.id, previousKeys);
+        const message = error instanceof Error ? error.message : 'Cloud API key revoke failed';
+        showToast(message);
+        return { success: false, error: message };
+      }
+    }
+    if (result.success) showToast('API key revoked. Any in-flight requests using this key will be rejected.');
+    else showToast(result.error || 'Could not revoke key.');
+    refreshApiState();
+    return result;
+  };
+
+  /** API-002: Rotate key — old key invalidated, new secret shown once. */
+  const rotateApiKey = async (keyId: string) => {
+    if (isSupabaseConfigured) {
+      const remote = await rotateManagedApiKey(keyId);
+      if (remote.error || !remote.data || !remote.secret) { showToast(remote.error || 'API key rotation failed.'); return { error: remote.error || 'API key rotation failed.' }; }
+      setApiKeys(prev => prev.map(key => key.id === keyId ? remote.data! : key));
+      apiKeyService.replaceKeys(workspace.id, apiKeys.map(key => key.id === keyId ? remote.data! : key));
+      showToast('Key rotated. Copy the new secret — the old key is now revoked.');
+      return { key: remote.data, secret: remote.secret };
+    }
+    const previousKeys = apiKeys;
+    const result = apiKeyService.rotateKey(workspace.id, keyId, user.email);
+    if ('error' in result) { showToast(result.error); return result; }
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudApiKeys([result.key], user.id);
+      } catch (error) {
+        apiKeyService.replaceKeys(workspace.id, previousKeys);
+        const message = error instanceof Error ? error.message : 'Cloud API key rotation failed';
+        showToast(message);
+        return { error: message };
+      }
+    }
+    showToast('Key rotated. Copy the new secret — the old one is now revoked.');
+    refreshApiState();
+    return result;
+  };
+
+  /** API-005: Subscribe to webhook events. */
+  const createWebhookSubscription = async (url: string, topics: WebhookEventTopic[], description?: string) => {
+    if (isSupabaseConfigured) {
+      const remote = await createManagedWebhook({ url, topics, description });
+      if (remote.error || !remote.data || !remote.secret) { showToast(remote.error || 'Webhook creation failed.'); return { error: remote.error || 'Webhook creation failed.' }; }
+      const hook = remote.data;
+      apiKeyService.replaceWebhooks(workspace.id, [...webhookSubscriptions, hook]);
+      setWebhookSubscriptions(prev => [...prev, hook]);
+      showToast('Webhook subscription created. Copy the signing secret now.');
+      return { hook, signingSecret: remote.secret };
+    }
+    const result = apiKeyService.createWebhook(workspace, url, topics, user.email, description);
+    if ('error' in result) { showToast(result.error); return result; }
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudWebhooks([result.hook], user.id);
+      } catch (error) {
+        apiKeyService.replaceWebhooks(workspace.id, webhookSubscriptions);
+        const message = error instanceof Error ? error.message : 'Cloud webhook save failed';
+        showToast(message);
+        return { error: message };
+      }
+    }
+    showToast('Webhook subscription created. Copy the signing secret now.');
+    refreshApiState();
+    return result;
+  };
+
+  const deleteWebhookSubscription = async (hookId: string) => {
+    if (isSupabaseConfigured) {
+      const remote = await deleteManagedWebhook(hookId);
+      if (remote.error) { showToast(remote.error); return; }
+      setWebhookSubscriptions(prev => prev.filter(hook => hook.id !== hookId));
+      apiKeyService.replaceWebhooks(workspace.id, webhookSubscriptions.filter(hook => hook.id !== hookId));
+      showToast('Webhook subscription removed.');
+      return;
+    }
+    const previousHooks = webhookSubscriptions;
+    apiKeyService.deleteWebhook(workspace.id, hookId);
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await deleteCloudRecord('webhook_subscriptions', hookId, user.id);
+      } catch (error) {
+        apiKeyService.replaceWebhooks(workspace.id, previousHooks);
+        showToast(error instanceof Error ? error.message : 'Cloud webhook deletion failed');
+        return;
+      }
+    }
+    showToast('Webhook subscription removed.');
+    refreshApiState();
+  };
+
+  const toggleWebhookStatus = async (hookId: string, status: 'active' | 'paused') => {
+    if (isSupabaseConfigured) {
+      const remote = await updateManagedWebhook(hookId, status);
+      if (remote.error) { showToast(remote.error); return; }
+      setWebhookSubscriptions(prev => prev.map(hook => hook.id === hookId ? { ...hook, status } : hook));
+      apiKeyService.replaceWebhooks(workspace.id, webhookSubscriptions.map(hook => hook.id === hookId ? { ...hook, status } : hook));
+      showToast(`Webhook ${status === 'active' ? 'resumed' : 'paused'}.`);
+      return;
+    }
+    const previousHooks = webhookSubscriptions;
+    apiKeyService.updateWebhookStatus(workspace.id, hookId, status);
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudWebhooks(apiKeyService.listWebhooks(workspace.id), user.id);
+      } catch (error) {
+        apiKeyService.replaceWebhooks(workspace.id, previousHooks);
+        showToast(error instanceof Error ? error.message : 'Cloud webhook update failed');
+        return;
+      }
+    }
+    showToast(`Webhook ${status === 'active' ? 'resumed' : 'paused'}.`);
+    refreshApiState();
+  };
+
+  const dispatchTestWebhook = async (hookId: string, topic: WebhookEventTopic) => {
+    if (isSupabaseConfigured) {
+      const remote = await testManagedWebhook(hookId);
+      const status: 'delivered' | 'failed' = remote.error ? 'failed' : remote.delivered ? 'delivered' : 'failed';
+      showToast(status === 'delivered' ? `Test delivered — delivery ID: ${(remote.deliveryId || '').slice(0, 14)}` : remote.error || 'Test delivery failed.');
+      return { deliveryId: remote.deliveryId || '', signatureHeader: '', status };
+    }
+    const result = await apiKeyService.simulateWebhookDispatch(workspace.id, hookId, topic, {
+      topic, profileId: activeProfileId, timestamp: Date.now()
+    });
+    showToast(result.status === 'delivered'
+      ? `Test delivered (${topic}) — delivery ID: ${result.deliveryId.slice(0, 14)}`
+      : 'Test delivery failed — endpoint returned an error. Check webhook logs.');
+    refreshApiState();
+    return result;
+  };
+
+  /** API-001/003/004: Execute a sandboxed API request through the gateway. */
+  const executeApiRequest = (keyId: string, scope: ApiKeyScope, method: string, endpoint: string): ApiGatewayResult => {
+    if (isSupabaseConfigured) {
+      return {
+        ok: false,
+        statusCode: 501,
+        error: { code: 'SANDBOX_DISABLED', message: 'The dashboard does not retain API secrets. Run this request from your server using the one-time key secret.' },
+        requestId: `req_${crypto.randomUUID()}`,
+        durationMs: 0,
+      };
+    }
+    const result = apiKeyService.executeRequest({
+      workspaceId: workspace.id,
+      keyId,
+      requiredScope: scope,
+      method,
+      endpoint,
+      workspace,
+      profile: draftProfile,
+      handler: () => {
+        // Return normalized profile/block/analytics data matching OpenAPI schema
+        if (scope === 'profiles:read') {
+          return {
+            id: draftProfile.id, username: draftProfile.username, displayName: draftProfile.displayName,
+            bio: draftProfile.bio, status: draftProfile.status, publishedVersion: draftProfile.publishedVersion,
+            customDomain: draftProfile.customDomain?.domain ?? null,
+            tabsCount: draftProfile.tabs.length,
+            blocksCount: draftProfile.tabs.reduce((t, tab) => t + tab.blocks.length, 0)
+          };
+        }
+        if (scope === 'blocks:read') {
+          return {
+            profileId: draftProfile.id,
+            tabs: draftProfile.tabs.map(tab => ({
+              id: tab.id, title: tab.title, slug: tab.slug,
+              blocks: tab.blocks.map(b => ({ id: b.id, type: b.type, title: b.title, isHidden: b.isHidden, clicks: b.clicks }))
+            }))
+          };
+        }
+        if (scope === 'themes:read') {
+          return { id: draftProfile.theme.id, name: draftProfile.theme.name, accentColor: draftProfile.theme.accentColor, cardStyle: draftProfile.theme.cardStyle };
+        }
+        if (scope === 'analytics:read') {
+          return { profileId: draftProfile.id, period: '7d', pageViews: 1420, uniqueVisitors: 1022, clicks: 648, ctr: '45.6%' };
+        }
+        if (scope === 'forms:read') {
+          return { profileId: draftProfile.id, total: 0, data: [], cursor: null };
+        }
+        return { acknowledged: true };
+      }
+    });
+    setApiAuditLog(apiKeyService.getAuditLog());
+    return result;
+  };
+
+  // Billing — all mutations go through billingService for idempotency + audit trail
+  const upgradePlan = async (plan: PlanType, cycle: BillingCycle) => {
+    if (isSupabaseConfigured) {
+      try {
+        const checkoutUrl = await createStripeCheckoutSession(plan, cycle);
+        window.location.assign(checkoutUrl);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Unable to start checkout.');
+      }
+      return;
+    }
+    const planConfig = billingService.getPlanConfig(plan);
+    const amountPaid = cycle === 'annual' ? `$${planConfig.annualBilledTotal}.00` : `$${planConfig.monthlyPrice}.00`;
+    const now = new Date().toISOString();
+    const periodEnd = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+
+    const webhookEvent = {
+      id: `evt_checkout_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      type: 'checkout.session.completed' as const,
+      created: Date.now(),
+      data: {
+        workspaceId: workspace.id,
+        planId: plan,
+        billingCycle: cycle,
+        status: 'active' as const,
+        customerId: workspace.providerCustomerId || `cus_${Math.random().toString(36).substr(2, 8)}`,
+        subscriptionId: workspace.providerSubscriptionId || `sub_${Math.random().toString(36).substr(2, 8)}`,
+        periodStart: now,
+        periodEnd,
+        amountPaid,
+        cancelAtPeriodEnd: false
+      }
+    };
+
+    const result = billingService.processWebhookEvent(webhookEvent);
+    if (result.updatedWorkspace) {
+      setWorkspace({ ...result.updatedWorkspace, profiles: workspace.profiles });
+    }
+    showToast(`Subscribed to ${plan.toUpperCase()} plan successfully!`);
+  };
+
+  const cancelSubscription = async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await cancelStripeSubscription();
+        setWorkspace(prev => ({ ...prev, cancelAtPeriodEnd: true }));
+        showToast('Subscription will remain active until the end of the current billing period.');
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Unable to cancel subscription.');
+      }
+      return;
+    }
+    const updated = billingService.cancelSubscription(workspace, user.email);
+    setWorkspace(prev => ({ ...updated, profiles: prev.profiles }));
+    showToast('Subscription will remain active until the end of the current billing period.');
+  };
+
+  const processWebhookEvent = (eventType: string, planId?: PlanType, cycle?: BillingCycle) => {
+    const now = new Date().toISOString();
+    const periodEnd = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    const event = {
+      id: `evt_sim_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      type: eventType as 'invoice.payment_failed' | 'invoice.payment_succeeded' | 'customer.subscription.deleted' | 'customer.subscription.updated' | 'checkout.session.completed',
+      created: Date.now(),
+      data: {
+        workspaceId: workspace.id,
+        planId: planId || workspace.plan,
+        billingCycle: cycle || workspace.billingCycle || 'annual',
+        status: 'active' as const,
+        customerId: workspace.providerCustomerId || `cus_${Math.random().toString(36).substr(2, 8)}`,
+        periodStart: now,
+        periodEnd,
+        amountPaid: '$84.00'
+      }
+    };
+    const result = billingService.processWebhookEvent(event);
+    if (result.updatedWorkspace) {
+      setWorkspace(prev => ({ ...result.updatedWorkspace!, profiles: prev.profiles }));
+    }
+    showToast(`[Billing] ${result.duplicate ? 'Duplicate event ignored.' : result.message}`);
+  };
+
+  // Abuse Reports
+  const submitAbuseReport = async (report: Omit<AbuseReport, 'id' | 'timestamp' | 'status'>) => {
+    if (isSupabaseConfigured) {
+      const result = await submitPublicAbuseReport(report);
+      if (!result.success) {
+        showToast(result.error || 'Report could not be submitted.');
+        return;
+      }
+      showToast('Report submitted for compliance review.');
+      return;
+    }
+    const newReport: AbuseReport = {
+      ...report,
+      id: `rep-${Date.now()}`,
+      timestamp: Date.now(),
+      status: 'pending'
+    };
+    setAbuseReports(prev => [newReport, ...prev]);
+    showToast('Report submitted for compliance review. Ticket #'+ newReport.id);
+  };
+
+  // Export & Reset
+  const exportAccountData = () => {
+    const exportBundle = {
+      workspace,
+      profiles,
+      analyticsSummary: { totalEvents: analytics.length },
+      submissions,
+      auditLogs,
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lynkflow_export_${user.email.split('@')[0]}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Account data exported successfully');
+  };
+
+  const resetAllData = () => {
+    localStorage.clear();
+    setProfiles(INITIAL_PROFILES);
+    setActiveProfileId(INITIAL_PROFILES[0].id);
+    setDraftProfile(JSON.parse(JSON.stringify(INITIAL_PROFILES[0])));
+    setWorkspace(INITIAL_WORKSPACE);
+    setAnalytics(INITIAL_ANALYTICS);
+    setSubmissions(INITIAL_SUBMISSIONS);
+    setAuditLogs(INITIAL_AUDIT_LOGS);
+    setAbuseReports([]);
+    showToast('Demo data reset to factory seed');
+  };
+
+  // Auth & Onboarding Handlers (ACC-001 through ACC-005)
+  const signUp = async (email: string, pass: string, name?: string): Promise<AuthResponse> => {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { name } } });
+      if (error || !data.user) {
+        const result = { success: false, error: error?.message || 'Failed to create account.' };
+        showToast(result.error);
+        return result;
+      }
+      const remoteUser: UserAccount = {
+        id: data.user.id,
+        email: data.user.email || email,
+        name: name?.trim() || email.split('@')[0],
+        isVerified: Boolean(data.user.email_confirmed_at),
+        createdAt: data.user.created_at,
+        lastLoginAt: new Date().toISOString(),
+        onboardingCompleted: false,
+        onboardingStep: 'category',
+        workspaceId: data.user.id,
+      };
+      setUser(remoteUser);
+      setIsOnboardingOpen(true);
+      showToast(`Account created for ${remoteUser.email}! Check your inbox to verify it.`);
+      return { success: true, user: remoteUser, actionRequired: 'verify_email' };
+    }
+    const res = authService.signUp(email, pass, name);
+    if (res.success && res.user) {
+      setUser(res.user);
+      setIsOnboardingOpen(true);
+      showToast(`Account created for ${res.user.email}!`);
+    } else if (res.error) {
+      showToast(res.error);
+    }
+    return res;
+  };
+
+  const logIn = async (email: string, pass: string): Promise<AuthResponse> => {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+      if (error || !data.user) {
+        const result = { success: false, error: 'Invalid email or password. Please verify your credentials and try again.' };
+        showToast(result.error);
+        return result;
+      }
+      const remoteUser: UserAccount = {
+        id: data.user.id,
+        email: data.user.email || email,
+        name: String(data.user.user_metadata?.name || email.split('@')[0]),
+        isVerified: Boolean(data.user.email_confirmed_at),
+        createdAt: data.user.created_at,
+        lastLoginAt: new Date().toISOString(),
+        onboardingCompleted: data.user.user_metadata?.onboardingCompleted === true,
+        onboardingStep: data.user.user_metadata?.onboardingCompleted === true ? 'completed' : 'category',
+        workspaceId: data.user.id,
+      };
+      setUser(remoteUser);
+      setIsOnboardingOpen(!remoteUser.onboardingCompleted);
+      showToast(`Welcome back, ${remoteUser.name}!`);
+      return { success: true, user: remoteUser };
+    }
+    const res = authService.logIn(email, pass);
+    if (res.success && res.user) {
+      setUser(res.user);
+      if (!res.user.onboardingCompleted) {
+        setIsOnboardingOpen(true);
+      }
+      showToast(`Welcome back, ${res.user.name}!`);
+    } else if (res.error) {
+      showToast(res.error);
+    }
+    return res;
+  };
+
+  const logOut = () => {
+    if (isSupabaseConfigured && supabase) void supabase.auth.signOut();
+    authService.logOut();
+    if (isSupabaseConfigured) {
+      setProfiles([]);
+      setActiveProfileId('');
+      setDraftProfile(JSON.parse(JSON.stringify(EMPTY_CLOUD_PROFILE)));
+      setAnalytics([]);
+      setSubmissions([]);
+      setAuditLogs([]);
+      setAbuseReports([]);
+      setCustomPresets([]);
+      setIsOnboardingOpen(false);
+      cloudApiState.current = null;
+    }
+    setUser({
+      id: 'usr-guest',
+      email: 'creator@example.com',
+      name: 'Logged Out',
+      isVerified: false,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+      onboardingCompleted: false,
+      onboardingStep: 'category',
+      workspaceId: 'ws-main'
+    });
+    setCurrentView('marketing');
+    showToast('Logged out of workspace.');
+  };
+
+  const verifyEmail = (token: string): AuthResponse => {
+    const res = authService.verifyEmail(token);
+    if (res.success && res.user) {
+      setUser(res.user);
+      showToast('Email verified successfully! Full publishing privileges enabled.');
+    } else if (res.error) {
+      showToast(res.error);
+    }
+    return res;
+  };
+
+  const resendVerificationEmail = async () => {
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: user.email });
+      const result = error ? { success: false, error: error.message } : { success: true };
+      showToast(result.success ? 'Verification email sent.' : result.error || 'Unable to send verification email.');
+      return result;
+    }
+    const res = authService.resendVerificationEmail(user.id);
+    if (res.success) {
+      showToast('Verification token sent to your email.');
+    } else if (res.error) {
+      showToast(res.error);
+    }
+    return res;
+  };
+
+  const requestPasswordReset = async (email: string): Promise<PasswordResetResponse> => {
+    if (isSupabaseConfigured && supabase) {
+      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/?password-recovery=1` : undefined;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+      const result: PasswordResetResponse = {
+        success: !error,
+        message: 'If an account matches that email address, password reset instructions have been dispatched.',
+        ...(error ? { error: error.message } : {})
+      };
+      showToast(result.message);
+      return result;
+    }
+    const res = authService.requestPasswordReset(email);
+    showToast(res.message);
+    return res;
+  };
+
+  const resetPassword = async (token: string, newPass: string): Promise<AuthResponse> => {
+    if (isSupabaseConfigured && supabase) {
+      if (!newPass || newPass.length < 8) return { success: false, error: 'New password must be at least 8 characters long.' };
+      const { data, error } = await supabase.auth.updateUser({ password: newPass });
+      if (error || !data.user) return { success: false, error: error?.message || 'Unable to reset password.' };
+      showToast('Password reset successfully.');
+      return { success: true };
+    }
+    const res = authService.resetPassword(token, newPass);
+    if (res.success && res.user) {
+      setUser(res.user);
+      showToast('Password reset successfully. You are now logged in.');
+    } else if (res.error) {
+      showToast(res.error);
+    }
+    return res;
+  };
+
+  const completeOnboarding = async (starter?: StarterProfileBlueprint) => {
+    let createdProfileId = activeProfileId;
+    if (starter) {
+      createdProfileId = createNewProfile(
+        starter.handle,
+        starter.displayName || starter.handle,
+        starter.category,
+        starter.themeId
+      );
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.updateUser({ data: { onboardingCompleted: true, onboardingStep: 'completed' } });
+      setUser(prev => ({ ...prev, onboardingCompleted: true, onboardingStep: 'completed' }));
+    } else {
+      const updatedUser = authService.updateOnboarding(user.id, 'completed', true);
+      if (updatedUser) setUser(updatedUser);
+    }
+    setIsOnboardingOpen(false);
+    setCurrentView('editor');
+    showToast('Onboarding complete! Welcome to your creator studio.');
+  };
+
+  const skipOnboarding = () => {
+    if (isSupabaseConfigured && supabase) {
+      void supabase.auth.updateUser({ data: { onboardingCompleted: true, onboardingStep: 'completed' } });
+      setUser(prev => ({ ...prev, onboardingCompleted: true, onboardingStep: 'completed' }));
+    } else {
+      const updatedUser = authService.updateOnboarding(user.id, 'completed', true);
+      if (updatedUser) setUser(updatedUser);
+    }
+    setIsOnboardingOpen(false);
+    setCurrentView('editor');
+    showToast('You can customize your handle and profile anytime in Settings.');
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        user,
+        signUp,
+        logIn,
+        logOut,
+        verifyEmail,
+        resendVerificationEmail,
+        requestPasswordReset,
+        resetPassword,
+        completeOnboarding,
+        skipOnboarding,
+        isOnboardingOpen,
+        setIsOnboardingOpen,
+
+        workspace,
+        profiles,
+        activeProfile: draftProfile,
+        publishedProfile: activePublished,
+        hasUnpublishedChanges,
+        currentView,
+        setCurrentView,
+        previewDevice,
+        setPreviewDevice,
+        previewSource,
+        setPreviewSource,
+        publicViewingUsername,
+        setPublicViewingUsername,
+        publicDemo,
+        setPublicDemo,
+        updateBrandKit,
+        applyBrandKitToTheme,
+
+        updateDraftProfile,
+        saveDraftNow,
+        publishProfile,
+        revertDraftToPublished,
+        resetThemeToPublished,
+        rollbackToPublishedSnapshot,
+        generatePreviewLink,
+        scheduleRelease,
+        cancelScheduledRelease,
+        switchActiveProfile,
+        createNewProfile,
+        duplicateProfile,
+        deleteProfile,
+
+        addBlock,
+        updateBlock,
+        removeBlock,
+        reorderBlocks,
+        duplicateBlock,
+
+        addTab,
+        updateTab,
+        removeTab,
+
+        applyTheme,
+        standardTheme,
+        updateStandardTheme,
+        undoThemeChange,
+        redoThemeChange,
+        canUndoTheme: themeUndoStack.length > 0,
+        canRedoTheme: themeRedoStack.length > 0,
+        rollbackToSnapshot,
+        saveCustomPreset,
+        customPresets,
+
+        analytics,
+        trackEvent,
+        submissions,
+        submitForm,
+        deleteSubmission,
+
+        verifyDomain,
+        removeDomain,
+        recheckDomain,
+        upgradePlan,
+        cancelSubscription,
+        processWebhookEvent,
+
+        addMember,
+        removeMember,
+        updateMemberRole,
+
+        auditLogs,
+        abuseReports,
+        submitAbuseReport,
+        exportAccountData,
+        resetAllData,
+
+        // Feature 12: API & Automation
+        apiKeys,
+        createApiKey,
+        revokeApiKey,
+        rotateApiKey,
+        webhookSubscriptions,
+        createWebhookSubscription,
+        deleteWebhookSubscription,
+        toggleWebhookStatus,
+        dispatchTestWebhook,
+        executeApiRequest,
+        apiAuditLog,
+
+        toastMessage,
+        showToast,
+
+        animationTrigger,
+        triggerReplayAnimation,
+
+        // Workspace Concurrency & Autosave (EDT-003, EDT-004)
+        saveStatus,
+        saveErrorMessage,
+        retrySave,
+        isConflictOpen,
+        resolveConflictReload,
+        resolveConflictOverwrite,
+        simulateNetworkError
+
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+};

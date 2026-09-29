@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">LynkFlow link-in-bio and mini-site builder</title>
+  <desc id="desc">Create branded link-in-bio pages, forms, themes, and analytics with LynkFlow.</desc>
+  <rect width="1200" height="630" fill="#0a0a0a"/>
+  <circle cx="980" cy="110" r="250" fill="#4f46e5" opacity=".25"/>
+  <circle cx="180" cy="560" r="230" fill="#10b981" opacity=".12"/>
+  <text x="100" y="270" fill="#ffffff" font-family="Arial, sans-serif" font-size="92" font-weight="700">LynkFlow</text>
+  <text x="104" y="350" fill="#a5b4fc" font-family="Arial, sans-serif" font-size="34">Link-in-Bio &amp; Mini-Site Builder</text>
+  <text x="104" y="420" fill="#a3a3a3" font-family="Arial, sans-serif" font-size="24">Build a branded destination for every link, lead, and audience.</text>
+</svg>

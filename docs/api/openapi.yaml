@@ -1,0 +1,108 @@
+openapi: 3.0.3
+info:
+  title: LynkFlow API
+  version: 1.0.0
+  description: Scoped REST API for profiles, blocks, themes, and publishing.
+servers:
+  - url: https://lynkflow.samirmagdy80.workers.dev
+security:
+  - ApiKey: []
+paths:
+  /api/health:
+    get:
+      operationId: get-health
+      security: []
+      responses: {'200': {description: All services ready}, '503': {description: Degraded or not ready}}
+  /api/v1/profiles:
+    get:
+      operationId: listProfiles
+      security: [{ApiKey: []}]
+      responses: {'200': {description: Profiles returned}, '401': {description: Invalid key}, '429': {description: Rate limited}}
+  /api/v1/profiles/{profileId}:
+    parameters: [{name: profileId, in: path, required: true, schema: {type: string}}]
+    get:
+      operationId: getProfile
+      responses: {'200': {description: Profile returned}, '404': {description: Not found}}
+    patch:
+      operationId: updateProfile
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DataPatch'}}}}
+      responses: {'200': {description: Profile updated}, '409': {description: Conflict}}
+  /api/v1/profiles/{profileId}/blocks:
+    parameters: [{name: profileId, in: path, required: true, schema: {type: string}}]
+    get:
+      operationId: listBlocks
+      responses: {'200': {description: Blocks returned}}
+  /api/v1/profiles/{profileId}/blocks/{blockId}:
+    parameters:
+      - {name: profileId, in: path, required: true, schema: {type: string}}
+      - {name: blockId, in: path, required: true, schema: {type: string}}
+    patch:
+      operationId: updateBlock
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DataPatch'}}}}
+      responses: {'200': {description: Block updated}, '404': {description: Not found}}
+  /api/v1/profiles/{profileId}/themes:
+    parameters: [{name: profileId, in: path, required: true, schema: {type: string}}]
+    get:
+      operationId: getTheme
+      responses: {'200': {description: Theme returned}}
+    patch:
+      operationId: updateTheme
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DataPatch'}}}}
+      responses: {'200': {description: Theme updated}}
+  /api/v1/profiles/{profileId}/publish:
+    parameters: [{name: profileId, in: path, required: true, schema: {type: string}}]
+    post:
+      operationId: publishProfile
+      responses: {'200': {description: Published}, '403': {description: Missing scope}}
+  /api/webhooks:
+    post:
+      operationId: create-webhook
+      security: [{Session: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {'200': {description: Subscription and one-time secret returned}, '403': {description: Paid plan required}}
+  /api/webhooks/{hookId}:
+    parameters: [{name: hookId, in: path, required: true, schema: {type: string}}]
+    patch:
+      operationId: update-webhook
+      security: [{Session: []}]
+      responses: {'200': {description: Updated}}
+    delete:
+      operationId: delete-webhook
+      security: [{Session: []}]
+      responses: {'200': {description: Deleted}}
+  /api/webhooks/{hookId}/test:
+    parameters: [{name: hookId, in: path, required: true, schema: {type: string}}]
+    post:
+      operationId: test-webhook
+      security: [{Session: []}]
+      responses: {'200': {description: Delivery result}}
+  /api/domains/verify:
+    post:
+      operationId: verify-domain
+      security: [{Session: []}]
+      responses: {'200': {description: DNS and SSL state}, '422': {description: DNS mismatch}}
+  /api/domains/recheck:
+    post:
+      operationId: recheck-domain
+      security: [{Session: []}]
+      responses: {'200': {description: Current domain state}}
+  /api/domains/remove:
+    post:
+      operationId: remove-domain
+      security: [{Session: []}]
+      responses: {'200': {description: Removed}}
+components:
+  securitySchemes:
+    ApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: lf_live_secret
+    Session:
+      type: http
+      scheme: bearer
+  schemas:
+    DataPatch:
+      type: object
+      required: [data]
+      properties:
+        data: {type: object, additionalProperties: true}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "generative-illustration": {
+      "source": "iart-ai/generative-illustration-skills",
+      "sourceType": "github",
+      "skillPath": "skills/generative-illustration/SKILL.md",
+      "computedHash": "44b938cb23d71354896a7e5501b6c74aec80bb0add0413a3453c2b619f267c8d"
+    }
+  }
+}

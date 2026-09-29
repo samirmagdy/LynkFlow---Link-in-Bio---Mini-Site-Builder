@@ -1,0 +1,305 @@
+import React, { useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { Sparkles, ArrowRight, Menu, X, LogIn, UserPlus } from 'lucide-react';
+import { ThemeToggle } from '../common/ThemeToggle';
+import { 
+  triggerAnimeRipple, 
+  animateHoverEnter, 
+  animateHoverLeave, 
+  animateIconBounce 
+} from '../../utils/animeAnimations';
+
+interface TopNavigationProps {
+  onOpenAuth?: (mode: 'create' | 'login' | 'forgot' | 'verify') => void;
+}
+
+export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
+  const { currentView, setCurrentView, activeProfile, setPublicViewingUsername, setPublicDemo, user, logOut } = useApp();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleOpenLiveDemo = (e: React.MouseEvent<HTMLButtonElement>) => {
+    triggerAnimeRipple(e, e.currentTarget, 'rgba(100, 100, 100, 0.18)');
+    setPublicViewingUsername(activeProfile.username);
+    setPublicDemo(user.id === 'usr-guest');
+    window.history.replaceState({}, '', user.id === 'usr-guest'
+      ? `/@${encodeURIComponent(activeProfile.username)}?demo=1`
+      : `/@${encodeURIComponent(activeProfile.username)}`);
+    setCurrentView('public_standalone');
+    setMobileMenuOpen(false);
+  };
+
+  const handleOpenStudio = (e: React.MouseEvent<HTMLButtonElement>) => {
+    triggerAnimeRipple(e, e.currentTarget, 'rgba(0, 0, 0, 0.2)');
+    const icon = e.currentTarget.querySelector<HTMLElement>('.nav-arrow-icon');
+    if (icon) animateIconBounce(icon);
+    setTimeout(() => {
+      setCurrentView('editor');
+      setMobileMenuOpen(false);
+    }, 150);
+  };
+
+  const handleNavClick = (view: any, e: React.MouseEvent<HTMLButtonElement>) => {
+    triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.25)');
+    setCurrentView(view);
+    setMobileMenuOpen(false);
+  };
+
+  const handleScrollToAnchor = (anchorId: string, e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const scrollToAnchor = () => {
+      const el = document.getElementById(anchorId);
+      if (el) {
+        // Measure only the fixed top bar. The mobile drawer lives inside the
+        // header and may still be present during its exit transition.
+        const headerHeight = document.querySelector('header > div')?.getBoundingClientRect().height || 0;
+        const targetTop = window.scrollY + el.getBoundingClientRect().top - headerHeight - 12;
+        const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+        window.scrollTo({ top: Math.max(0, targetTop), behavior });
+        el.focus({ preventScroll: true });
+      }
+    };
+
+    // Close the mobile drawer before measuring the target; otherwise removing
+    // the drawer shifts the document after scrollIntoView has calculated its position.
+    setMobileMenuOpen(false);
+    if (currentView !== 'marketing') {
+      setCurrentView('marketing');
+      setTimeout(scrollToAnchor, 220);
+    } else {
+      // Allow the drawer's exit render to commit before measuring the sticky header.
+      setTimeout(scrollToAnchor, 220);
+    }
+  };
+
+  return (
+    <header className="sticky top-0 z-40 w-full border-b border-line bg-canvas/90 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        {/* Zone 1: Single text element wordmark */}
+        <button
+          onClick={(e) => {
+            triggerAnimeRipple(e, e.currentTarget, 'rgba(100, 100, 100, 0.18)');
+            setCurrentView('marketing');
+          }}
+          onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+          onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+          className="touch-target relative overflow-hidden px-2 py-1 rounded-lg text-lg font-bold tracking-tight text-ink font-['Syne'] hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+        >
+          LynkFlow
+        </button>
+
+        {/* Zone 2: Clean navigation links with anchor preservation */}
+        <nav 
+          aria-label="Main Navigation" 
+          className="hidden md:flex items-center gap-6 text-xs font-medium text-muted"
+        >
+          <a
+            href="#overview"
+            onClick={(e) => handleScrollToAnchor('overview', e)}
+            className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            Overview
+          </a>
+          <a
+            href="#features"
+            onClick={(e) => handleScrollToAnchor('features', e)}
+            className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            Features
+          </a>
+          <a
+            href="#themes"
+            onClick={(e) => handleScrollToAnchor('themes', e)}
+            className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            Themes
+          </a>
+          <a
+            href="#pricing"
+            onClick={(e) => handleScrollToAnchor('pricing', e)}
+            className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            Pricing
+          </a>
+          <a
+            href="#faq"
+            onClick={(e) => handleScrollToAnchor('faq', e)}
+            className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            FAQ
+          </a>
+          <button
+            onClick={(e) => handleNavClick('editor', e)}
+            className={`transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none ${currentView === 'editor' ? 'text-ink font-semibold' : ''}`}
+          >
+            Studio Builder
+          </button>
+        </nav>
+
+        {/* Zone 3: Primary Actions (MKT-001 & Flow 3) */}
+        <div className="hidden sm:flex items-center gap-2.5">
+          <ThemeToggle className="shrink-0" />
+          {user.id !== 'usr-guest' ? (
+            <div className="flex items-center gap-2">
+              {!user.isVerified && (
+                <button
+                  onClick={() => onOpenAuth ? onOpenAuth('verify') : undefined}
+                  className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-warning text-[10px] font-semibold flex items-center gap-1 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                  title="Click to enter verification token"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Unverified</span>
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface border border-line text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="font-medium text-ink max-w-[120px] truncate">{user.name}</span>
+              </div>
+              <button
+                onClick={logOut}
+                className="px-2.5 py-1 text-xs text-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                Log Out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => onOpenAuth ? onOpenAuth('login') : setCurrentView('editor')}
+              className="px-3 py-1.5 text-xs font-semibold text-body hover:text-ink transition-colors rounded-lg cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            >
+              Log In
+            </button>
+          )}
+
+          <button
+            onClick={handleOpenLiveDemo}
+            onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
+            onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+            className="relative overflow-hidden px-3 py-1.5 text-xs font-medium text-body hover:text-ink transition-colors border border-line hover:border-line-strong rounded-lg whitespace-nowrap hidden lg:inline-flex items-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            <span>Live Demo</span>
+            <span className="text-[10px] text-subtle font-mono">@{activeProfile.username}</span>
+          </button>
+
+          <button
+            onClick={(e) => {
+              if (user.id === 'usr-guest') {
+                if (onOpenAuth) onOpenAuth('create');
+                else handleOpenStudio(e);
+              } else {
+                handleOpenStudio(e);
+              }
+            }}
+            onMouseEnter={(e) => {
+              animateHoverEnter(e.currentTarget);
+              const icon = e.currentTarget.querySelector<HTMLElement>('.nav-arrow-icon');
+              if (icon) animateIconBounce(icon);
+            }}
+            onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
+            className="relative overflow-hidden px-4 py-2 text-xs font-bold text-inverse-text bg-inverse hover:bg-inverse-hover transition-colors rounded-lg whitespace-nowrap flex items-center gap-1.5 shadow-sm cursor-pointer group focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            <span>{user.id !== 'usr-guest' ? 'Open Studio' : 'Create your page'}</span>
+            <ArrowRight className="nav-arrow-icon w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        </div>
+
+        {/* Mobile Hamburger Button (MKT-004: Accessible mobile navigation) */}
+        <div className="flex md:hidden items-center gap-2">
+          <ThemeToggle className="hidden sm:inline-flex" />
+          <button
+            onClick={() => onOpenAuth ? onOpenAuth('create') : setCurrentView('editor')}
+            className="touch-target px-3 py-1.5 text-xs font-bold text-inverse-text bg-inverse rounded-lg cursor-pointer"
+          >
+            Start Free
+          </button>
+          <button
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            aria-expanded={mobileMenuOpen}
+            aria-label="Toggle navigation menu"
+            className="touch-target rounded-lg text-muted hover:text-ink hover:bg-surface border border-line transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Drawer (Accessible at 320px & 200% text zoom) */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-line bg-canvas/98 px-4 py-4 space-y-3 animate-in slide-in-from-top-2 duration-150 shadow-2xl">
+          <div className="grid grid-cols-2 gap-2 pb-3 border-b border-line text-xs">
+            <button
+              onClick={() => {
+                onOpenAuth ? onOpenAuth('create') : setCurrentView('editor');
+                setMobileMenuOpen(false);
+              }}
+              className="touch-target py-2.5 px-3 rounded-xl bg-inverse text-inverse-text font-bold text-center flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Create page</span>
+            </button>
+            <button
+              onClick={() => {
+                onOpenAuth ? onOpenAuth('login') : setCurrentView('editor');
+                setMobileMenuOpen(false);
+              }}
+              className="touch-target py-2.5 px-3 rounded-xl bg-surface border border-line text-ink font-semibold text-center flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Log in</span>
+            </button>
+          </div>
+
+          <nav aria-label="Mobile Navigation" className="flex flex-col space-y-1 text-sm font-medium text-body">
+            <a
+              href="#overview"
+              onClick={(e) => handleScrollToAnchor('overview', e)}
+              className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
+            >
+              Overview
+            </a>
+            <a
+              href="#features"
+              onClick={(e) => handleScrollToAnchor('features', e)}
+              className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
+            >
+              Features
+            </a>
+            <a
+              href="#themes"
+              onClick={(e) => handleScrollToAnchor('themes', e)}
+              className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
+            >
+              Themes
+            </a>
+            <a
+              href="#pricing"
+              onClick={(e) => handleScrollToAnchor('pricing', e)}
+              className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
+            >
+              Pricing
+            </a>
+            <a
+              href="#faq"
+              onClick={(e) => handleScrollToAnchor('faq', e)}
+              className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
+            >
+              FAQ
+            </a>
+            <button
+              onClick={(e) => handleNavClick('editor', e)}
+              className="touch-target w-full justify-start py-2 px-3 rounded-lg text-left hover:bg-surface hover:text-ink transition-colors"
+            >
+              Studio Builder
+            </button>
+            <button
+              onClick={handleOpenLiveDemo}
+              className="touch-target w-full justify-between py-2 px-3 rounded-lg text-left text-accent hover:bg-surface transition-colors flex items-center"
+            >
+              <span>Explore Demo Profile</span>
+              <span className="text-xs font-mono text-subtle">@{activeProfile.username}</span>
+            </button>
+          </nav>
+        </div>
+      )}
+    </header>
+  );
+};

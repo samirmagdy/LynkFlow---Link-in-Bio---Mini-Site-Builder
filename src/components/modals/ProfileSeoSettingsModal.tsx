@@ -1,0 +1,612 @@
+import React, { useState, useEffect } from 'react';
+import { useApp } from '../../context/AppContext';
+import { Dialog } from '../common/Dialog';
+import { 
+  X, 
+  Globe, 
+  Search, 
+  Share2, 
+  Image as ImageIcon, 
+  Sparkles, 
+  Check, 
+  Copy, 
+  AlertCircle, 
+  Eye, 
+  ExternalLink,
+  Code,
+  Shield,
+  Layers,
+  RefreshCw,
+  Sliders,
+  CheckCircle2
+} from 'lucide-react';
+
+interface ProfileSeoSettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const ProfileSeoSettingsModal: React.FC<ProfileSeoSettingsModalProps> = ({
+  isOpen,
+  onClose
+}) => {
+  const { activeProfile, updateDraftProfile, showToast } = useApp();
+
+  const [title, setTitle] = useState(activeProfile?.seo?.title || '');
+  const [description, setDescription] = useState(activeProfile?.seo?.description || '');
+  const [ogImage, setOgImage] = useState(activeProfile?.seo?.ogImage || '');
+  const [noIndex, setNoIndex] = useState(activeProfile?.seo?.noIndex ?? false);
+  const [keywords, setKeywords] = useState((activeProfile?.seo as any)?.keywords || '');
+  
+  const [activePreviewTab, setActivePreviewTab] = useState<'google' | 'twitter' | 'facebook' | 'discord'>('google');
+  const [showCodeInspector, setShowCodeInspector] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Sync state whenever activeProfile changes or modal opens
+  useEffect(() => {
+    if (activeProfile && isOpen) {
+      setTitle(activeProfile.seo?.title || `${activeProfile.displayName || activeProfile.username} (@${activeProfile.username})`);
+      setDescription(activeProfile.seo?.description || activeProfile.bio || `Explore links, projects, and exclusive content from @${activeProfile.username}.`);
+      setOgImage(activeProfile.seo?.ogImage || activeProfile.avatarUrl || '');
+      setNoIndex(activeProfile.seo?.noIndex ?? false);
+      setKeywords((activeProfile.seo as any)?.keywords || `${activeProfile.username}, link in bio, ${activeProfile.category || 'creator'}`);
+    }
+  }, [activeProfile, isOpen]);
+
+  if (!isOpen || !activeProfile) return null;
+
+  // Preset OG Social Backgrounds
+  const PRESET_OG_IMAGES = [
+    {
+      id: 'avatar',
+      label: 'Profile Avatar',
+      url: activeProfile.avatarUrl,
+      desc: 'Use high-res profile picture'
+    },
+    {
+      id: 'studio-dark',
+      label: 'Studio Film Dark',
+      url: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=1200&h=630&q=80',
+      desc: '35mm cinema aesthetic'
+    },
+    {
+      id: 'gradient-aurora',
+      label: 'Cosmic Indigo Aurora',
+      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&h=630&q=80',
+      desc: 'Vibrant mesh waves'
+    },
+    {
+      id: 'minimal-slate',
+      label: 'Nordic Clean Architecture',
+      url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&h=630&q=80',
+      desc: 'Monochrome precision'
+    },
+    {
+      id: 'sunset-ember',
+      label: 'Warm Horizon Amber',
+      url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&h=630&q=80',
+      desc: 'Golden hour palette'
+    },
+    {
+      id: 'cyber-neon',
+      label: 'Cyber Grid Velocity',
+      url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1200&h=630&q=80',
+      desc: 'High-tech creator glow'
+    }
+  ];
+
+  // Character Counts & Recommendations
+  const titleLen = title.length;
+  const descLen = description.length;
+
+  const getTitleStatus = () => {
+    if (titleLen === 0) return { label: 'Empty title', color: 'text-danger bg-rose-500/10 border-rose-500/20' };
+    if (titleLen < 30) return { label: 'Short (30-60 recommended)', color: 'text-warning bg-amber-500/10 border-amber-500/20' };
+    if (titleLen <= 60) return { label: 'Optimal length', color: 'text-success bg-emerald-500/10 border-emerald-500/20' };
+    return { label: 'Too long (may truncate)', color: 'text-danger bg-rose-500/10 border-rose-500/20' };
+  };
+
+  const getDescStatus = () => {
+    if (descLen === 0) return { label: 'Empty description', color: 'text-danger bg-rose-500/10 border-rose-500/20' };
+    if (descLen < 80) return { label: 'Short (120-160 recommended)', color: 'text-warning bg-amber-500/10 border-amber-500/20' };
+    if (descLen <= 160) return { label: 'Optimal length', color: 'text-success bg-emerald-500/10 border-emerald-500/20' };
+    return { label: 'Too long (search snippet cutoff)', color: 'text-danger bg-rose-500/10 border-rose-500/20' };
+  };
+
+  const titleStatus = getTitleStatus();
+  const descStatus = getDescStatus();
+
+  // Smart Generators
+  const handleAutoGenerateTitle = () => {
+    const generated = `${activeProfile.displayName || activeProfile.username} – ${activeProfile.category || 'Creator'} | LynkFlow`;
+    setTitle(generated.slice(0, 60));
+  };
+
+  const handleAutoGenerateDesc = () => {
+    if (activeProfile.bio && activeProfile.bio.length >= 80) {
+      setDescription(activeProfile.bio.slice(0, 160));
+    } else {
+      const bioPart = activeProfile.bio ? `${activeProfile.bio}. ` : '';
+      const topBlocks = activeProfile.tabs[0]?.blocks.slice(0, 3).map(b => b.title).join(', ');
+      const blocksPart = topBlocks ? `Explore ${topBlocks}. ` : '';
+      const generated = `${bioPart}${blocksPart}Connect with @${activeProfile.username} on LynkFlow.`;
+      setDescription(generated.slice(0, 160));
+    }
+  };
+
+  // Canonical & Domain URLs
+  const canonicalDomain = activeProfile.customDomain?.status === 'verified'
+    ? activeProfile.customDomain.domain
+    : `lynkflow.me/${activeProfile.username}`;
+  const fullCanonicalUrl = `https://${canonicalDomain}`;
+
+  // Save changes to draft
+  const handleSave = () => {
+    updateDraftProfile(prev => ({
+      ...prev,
+      seo: {
+        title: title.trim(),
+        description: description.trim(),
+        ogImage: ogImage.trim(),
+        noIndex,
+        keywords: keywords.trim(),
+      } as any
+    }));
+    showToast('SEO & Social Open Graph settings saved to draft!');
+    onClose();
+  };
+
+  // Generate Raw HTML Meta Tags for Developer Audit
+  const rawMetaHtml = `<!-- Search Engine & Core Metadata -->
+<title>${title || `${activeProfile.displayName} (@${activeProfile.username})`}</title>
+<meta name="description" content="${description || activeProfile.bio || ''}" />
+${keywords ? `<meta name="keywords" content="${keywords}" />\n` : ''}<meta name="robots" content="${noIndex ? 'noindex, nofollow' : 'index, follow'}" />
+<link rel="canonical" href="${fullCanonicalUrl}" />
+
+<!-- OpenGraph Social Cards (Facebook, LinkedIn, iMessage) -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content="${fullCanonicalUrl}" />
+<meta property="og:title" content="${title || activeProfile.displayName}" />
+<meta property="og:description" content="${description || activeProfile.bio || ''}" />
+<meta property="og:image" content="${ogImage || activeProfile.avatarUrl}" />
+<meta property="og:site_name" content="LynkFlow" />
+
+<!-- Twitter / X Cards -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="${fullCanonicalUrl}" />
+<meta name="twitter:title" content="${title || activeProfile.displayName}" />
+<meta name="twitter:description" content="${description || activeProfile.bio || ''}" />
+<meta name="twitter:image" content="${ogImage || activeProfile.avatarUrl}" />`;
+
+  const handleCopyMetaCode = async () => {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(rawMetaHtml);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+      showToast('Meta tags copied to clipboard!');
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onClose={onClose} labelledBy="seo-settings-title" className="w-full max-w-4xl bg-surface border border-line rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line bg-canvas/60 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-accent">
+              <Globe className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 id="seo-settings-title" className="text-sm font-bold text-ink tracking-tight">
+                  SEO & Social Sharing Card Settings
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-surface-2 text-body border border-line-strong">
+                  @{activeProfile.username}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted mt-0.5">
+                Configure custom meta titles, descriptions, and Open Graph share previews for your public link-in-bio page.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            aria-label="Close SEO settings dialog"
+            className="touch-target p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface-2 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Modal Body: 2-Column Split (Settings Form & Real-Time Social Preview) */}
+        <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Left Column: Configuration Controls (7 Cols) */}
+          <div className="lg:col-span-7 space-y-5">
+            
+            {/* Custom Meta Title Field */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-ink-strong flex items-center gap-1.5">
+                  <Search className="w-3.5 h-3.5 text-accent" />
+                  <span>Custom Meta Page Title (`&lt;title&gt;` &amp; `og:title`)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${titleStatus.color}`}>
+                    {titleLen}/60 chars · {titleStatus.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateTitle}
+                    className="text-[10px] text-accent hover:text-accent-soft font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Auto-Generate</span>
+                  </button>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Alex Vance – Visual Director & Photographer"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-canvas border border-line text-ink placeholder-subtle focus:outline-none focus:border-indigo-500 font-medium"
+              />
+              <p className="text-[10px] text-muted">
+                Shown as the primary headline in Google Search results and on browser tabs. Keep between 30–60 characters.
+              </p>
+            </div>
+
+            {/* Custom Meta Description Field */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-ink-strong flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-accent" />
+                  <span>Meta Snippet Description (`og:description`)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${descStatus.color}`}>
+                    {descLen}/160 chars · {descStatus.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateDesc}
+                    className="text-[10px] text-accent hover:text-accent-soft font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Auto-Generate</span>
+                  </button>
+                </div>
+              </div>
+
+              <textarea
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Official portfolio, Lightroom film presets, 2026 workshop dates, and media kit for photographer Alex Vance."
+                className="w-full px-3 py-2 text-xs rounded-xl bg-canvas border border-line text-ink placeholder-subtle focus:outline-none focus:border-indigo-500 leading-relaxed"
+              />
+              <p className="text-[10px] text-muted">
+                Compelling 1–2 sentence summary that appears under the clickable title in search engines and social cards.
+              </p>
+            </div>
+
+            {/* Open Graph Social Sharing Image */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-canvas/70 border border-line">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-ink-strong flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-accent" />
+                  <span>Open Graph Share Image (`og:image`)</span>
+                </label>
+                <span className="text-[10px] font-mono text-muted">1200 x 630 px (1.91:1)</span>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={ogImage}
+                  onChange={(e) => setOgImage(e.target.value)}
+                  placeholder="https://images.unsplash.com/... or https://..."
+                  className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink font-mono placeholder-subtle focus:outline-none focus:border-indigo-500"
+                />
+                {ogImage && (
+                  <button
+                    type="button"
+                    onClick={() => setOgImage('')}
+                    className="px-2.5 py-1 text-xs text-muted hover:text-danger rounded-lg hover:bg-surface-2 transition-colors cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Preset Image Chooser */}
+              <div className="pt-2">
+                <div className="text-[11px] font-medium text-muted mb-1.5 flex items-center gap-1">
+                  <span>Quick Curated Backgrounds:</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {PRESET_OG_IMAGES.map((preset) => {
+                    const isSelected = ogImage === preset.url;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setOgImage(preset.url)}
+                        className={`group relative rounded-lg overflow-hidden border transition-all aspect-video cursor-pointer ${
+                          isSelected 
+                            ? 'border-indigo-500 ring-2 ring-indigo-500/30' 
+                            : 'border-line hover:border-line-strong'
+                        }`}
+                        title={preset.label}
+                      >
+                        <img 
+                          src={preset.url} 
+                          alt={preset.label} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center p-1 text-center">
+                          <span className="text-[9px] font-medium text-ink line-clamp-1">
+                            {preset.label}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-indigo-600 flex items-center justify-center">
+                            <Check className="w-2.5 h-2.5 text-ink" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy & Indexing Controls */}
+            <div className="p-3.5 rounded-xl bg-canvas/70 border border-line space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                    <Shield className="w-3.5 h-3.5 text-accent" />
+                    <span>Search Engine Visibility</span>
+                  </div>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    {noIndex 
+                      ? 'Hidden from Google & search crawlers (noindex, nofollow)' 
+                      : 'Indexable by Google, Bing, DuckDuckGo, and social bots'}
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!noIndex}
+                    onChange={(e) => setNoIndex(!e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-surface-2 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-inverse after:border-line-strong after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              {/* Keywords Tag Input */}
+              <div className="pt-2 border-t border-line/80">
+                <label className="block text-[11px] font-medium text-body mb-1">
+                  Target Search Keywords (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={keywords}
+                  onChange={(e) => setKeywords(e.target.value)}
+                  placeholder="e.g. photography, presets, lofoten, director"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink placeholder-subtle focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right Column: Multi-Platform Live Social Previews (5 Cols) */}
+          <div className="lg:col-span-5 flex flex-col space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-line">
+              <span className="text-xs font-bold text-ink uppercase tracking-wider font-mono flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-accent" />
+                <span>Live Share Card Previews</span>
+              </span>
+
+              {/* Platform Switcher Tabs */}
+              <div className="flex items-center gap-1 bg-canvas p-1 rounded-lg border border-line">
+                {(['google', 'twitter', 'facebook', 'discord'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActivePreviewTab(tab)}
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded capitalize transition-colors cursor-pointer ${
+                      activePreviewTab === tab
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PREVIEW CONTAINER */}
+            <div className="p-4 rounded-2xl bg-canvas border border-line flex-1 flex flex-col justify-center min-h-[300px]">
+              
+              {/* GOOGLE SEARCH PREVIEW */}
+              {activePreviewTab === 'google' && (
+                <div className="p-4 rounded-xl bg-surface border border-line/80 space-y-2 text-left shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-indigo-500/20 text-accent-soft flex items-center justify-center text-[9px] font-bold">
+                      LF
+                    </div>
+                    <div className="text-[11px] text-muted truncate font-mono">
+                      https://{canonicalDomain}
+                    </div>
+                  </div>
+                  <div className="text-base font-medium text-info hover:underline cursor-pointer line-clamp-1 leading-snug">
+                    {title || `${activeProfile.displayName} – Link in Bio`}
+                  </div>
+                  <p className="text-xs text-muted line-clamp-2 leading-relaxed">
+                    {description || 'No description provided. Add a meta description to boost click-through rates.'}
+                  </p>
+                </div>
+              )}
+
+              {/* TWITTER / X SUMMARY LARGE IMAGE CARD */}
+              {activePreviewTab === 'twitter' && (
+                <div className="rounded-2xl overflow-hidden border border-line bg-surface shadow-xl max-w-sm mx-auto text-left">
+                  <div className="aspect-[1.91/1] w-full bg-canvas relative overflow-hidden">
+                    {ogImage ? (
+                      <img 
+                        src={ogImage} 
+                        alt="Twitter Card Preview" 
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-subtle p-4 bg-gradient-to-br from-canvas to-surface">
+                        <ImageIcon className="w-8 h-8 opacity-40 mb-1" />
+                        <span className="text-[10px]">No Open Graph Image Set</span>
+                      </div>
+                    )}
+                    <span className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-black/75 text-body backdrop-blur-xs">
+                      {canonicalDomain}
+                    </span>
+                  </div>
+                  <div className="p-3 space-y-1">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted">
+                      lynkflow.me
+                    </div>
+                    <div className="text-xs font-bold text-ink line-clamp-1">
+                      {title || activeProfile.displayName}
+                    </div>
+                    <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
+                      {description || activeProfile.bio}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* FACEBOOK & LINKEDIN SOCIAL CARD */}
+              {activePreviewTab === 'facebook' && (
+                <div className="rounded-xl overflow-hidden border border-line bg-surface shadow-xl max-w-sm mx-auto text-left">
+                  <div className="aspect-[1.91/1] w-full bg-canvas relative overflow-hidden">
+                    {ogImage ? (
+                      <img 
+                        src={ogImage} 
+                        alt="Social Card Preview" 
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-subtle p-4">
+                        <ImageIcon className="w-8 h-8 opacity-40 mb-1" />
+                        <span className="text-[10px]">No Open Graph Image</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 bg-surface/90 space-y-1 border-t border-line">
+                    <span className="text-[10px] font-mono uppercase text-muted">
+                      {canonicalDomain.toUpperCase()}
+                    </span>
+                    <h4 className="text-xs font-bold text-ink line-clamp-1">
+                      {title || activeProfile.displayName}
+                    </h4>
+                    <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
+                      {description || activeProfile.bio}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* DISCORD & SLACK RICH EMBED */}
+              {activePreviewTab === 'discord' && (
+                <div className="p-3 rounded-lg bg-[#2b2d31] border-l-4 border-l-indigo-500 max-w-sm mx-auto text-left space-y-2 shadow-lg">
+                  <div className="text-[11px] font-semibold text-muted">
+                    LynkFlow
+                  </div>
+                  <div className="text-xs font-bold text-accent hover:underline cursor-pointer line-clamp-1">
+                    {title || activeProfile.displayName}
+                  </div>
+                  <p className="text-[11px] text-body line-clamp-3 leading-relaxed">
+                    {description || activeProfile.bio}
+                  </p>
+                  {ogImage && (
+                    <div className="rounded-md overflow-hidden aspect-[1.91/1] bg-black/40 mt-2">
+                      <img src={ogImage} alt="Discord Embed" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+
+            {/* Collapsible Meta Tags Code Inspector */}
+            <div className="border border-line rounded-xl overflow-hidden bg-canvas">
+              <button
+                type="button"
+                onClick={() => setShowCodeInspector(!showCodeInspector)}
+                className="w-full flex items-center justify-between p-2.5 text-xs text-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                  <Code className="w-3.5 h-3.5 text-accent" />
+                  <span>Inspect Generated HTML &lt;head&gt; Tags</span>
+                </div>
+                <span className="text-[10px] text-accent font-medium">
+                  {showCodeInspector ? 'Hide Code' : 'View Code'}
+                </span>
+              </button>
+
+              {showCodeInspector && (
+                <div className="p-3 border-t border-line bg-black/60 relative">
+                  <button
+                    type="button"
+                    onClick={handleCopyMetaCode}
+                    className="absolute top-4 right-4 px-2 py-1 rounded bg-surface-2 hover:bg-surface-3 text-ink-strong text-[10px] font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    {copiedCode ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                  </button>
+                  <pre className="text-[10px] font-mono text-success overflow-x-auto leading-relaxed max-h-36 pr-14">
+                    {rawMetaHtml}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* Modal Footer Actions */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-line bg-canvas/80 shrink-0">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+            <span>Changes will apply immediately to your draft and live upon publishing.</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-muted hover:text-ink hover:bg-surface-2 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Save SEO Settings</span>
+            </button>
+          </div>
+        </div>
+
+    </Dialog>
+  );
+};
