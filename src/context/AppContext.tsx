@@ -730,6 +730,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Debounced Autosave Pipeline
   useEffect(() => {
+    // Supabase hydration replaces the local seed/draft with the authoritative
+    // profile rows. Never autosave the pre-hydration placeholder, which can
+    // lack the row-level id and username required by the API.
+    if (isSupabaseConfigured && !cloudReady.current) return;
     setSaveStatus('saving');
     const timer = setTimeout(async () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -768,7 +772,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }, 450);
 
     return () => clearTimeout(timer);
-  }, [draftProfile, forceSimulateNetworkError]);
+  }, [draftProfile, forceSimulateNetworkError, cloudHydrated]);
 
   // Re-run the authoritative autosave pipeline when connectivity returns.
   useEffect(() => {
@@ -2338,7 +2342,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { name } } });
       if (error || !data.user) {
-        const result = { success: false, error: error?.message || 'Failed to create account.' };
+        const providerMessage = error?.message?.toLowerCase() || '';
+        const message = providerMessage.includes('error sending confirmation email')
+          ? 'We could not send the confirmation email right now. Please try again later or contact support.'
+          : error?.message || 'Failed to create account.';
+        const result = { success: false, error: message };
         showToast(result.error);
         return result;
       }

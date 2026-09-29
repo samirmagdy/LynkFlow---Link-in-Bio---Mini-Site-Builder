@@ -246,6 +246,9 @@ export async function saveCloudProfile(profile: Profile, workspaceId: string): P
 /** Persist reusable design resources independently from the profile content snapshot. */
 export async function saveCloudDesignSystem(profile: Profile, workspaceId: string, brandKit?: BrandKit): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
+  if (!profile?.id?.trim() || !profile?.username?.trim()) {
+    throw new Error('Cannot save cloud design system: profile id and username are required.');
+  }
   const rawTheme = profile.standardTheme || normalizeTheme(profile.theme);
   const schemaResult = validateThemeSchema(rawTheme);
   if (!schemaResult.isValid) {
