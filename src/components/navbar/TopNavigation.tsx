@@ -150,13 +150,13 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
                   <span>Unverified</span>
                 </button>
               )}
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface border border-line text-xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span className="font-medium text-ink max-w-[120px] truncate">{user.name}</span>
+              <div className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-surface border border-line text-xs shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs" />
+                <span className="font-semibold text-ink max-w-[120px] truncate">{user.name}</span>
               </div>
               <button
                 onClick={logOut}
-                className="px-2.5 py-1 text-xs text-muted hover:text-ink transition-colors cursor-pointer"
+                className="h-9 px-2.5 rounded-lg text-xs font-medium text-muted hover:text-ink hover:bg-surface border border-transparent hover:border-line transition-colors cursor-pointer"
               >
                 Log Out
               </button>
@@ -174,7 +174,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
             onClick={handleOpenLiveDemo}
             onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
             onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-            className="relative hidden xl:inline-flex overflow-hidden px-3 py-1.5 text-xs font-medium text-body hover:text-ink transition-colors border border-line hover:border-line-strong rounded-lg whitespace-nowrap items-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            className="relative hidden xl:inline-flex h-9 overflow-hidden px-3 text-xs font-semibold text-body hover:text-ink transition-colors border border-line hover:border-line-strong bg-surface rounded-lg whitespace-nowrap items-center gap-1.5 cursor-pointer shadow-xs focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
           >
             <span>Live Demo</span>
             <span className="text-[10px] text-subtle font-mono">@{activeProfile.username}</span>
@@ -195,7 +195,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
               if (icon) animateIconBounce(icon);
             }}
             onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-            className="relative overflow-hidden px-4 py-2 text-xs font-bold text-inverse-text bg-inverse hover:bg-inverse-hover transition-colors rounded-lg whitespace-nowrap flex items-center gap-1.5 shadow-sm cursor-pointer group focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            className="relative h-9 overflow-hidden px-3.5 text-xs font-bold text-inverse-text bg-inverse hover:bg-inverse-hover transition-colors rounded-lg whitespace-nowrap flex items-center gap-1.5 shadow-xs cursor-pointer group focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
           >
             <span>{user.id !== 'usr-guest' ? 'Open Studio' : 'Create your page'}</span>
             <ArrowRight className="nav-arrow-icon w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />

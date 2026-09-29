@@ -935,57 +935,109 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
 
           {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <span role="status" title={saveErrorMessage || undefined} className={`mr-1 inline-flex max-w-[11rem] truncate rounded-full border px-2 py-1 text-[10px] font-semibold ${saveStatus === 'error' || saveStatus === 'conflict' ? 'border-danger/30 bg-danger-surface text-danger' : saveStatus === 'offline' ? 'border-warning/30 bg-warning-surface text-warning' : saveStatus === 'saving' ? 'border-warning/30 bg-warning-surface text-warning' : 'border-success/30 bg-success-surface text-success'}`}>
-              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? `Draft · ${savedRecency.toLowerCase()}` : savedRecency}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span role="status" title={saveErrorMessage || undefined} className={`inline-flex items-center max-w-[12rem] truncate rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${saveStatus === 'error' || saveStatus === 'conflict' ? 'border-danger/30 bg-danger-surface text-danger' : saveStatus === 'offline' ? 'border-warning/30 bg-warning-surface text-warning' : saveStatus === 'saving' ? 'border-warning/30 bg-warning-surface text-warning' : 'border-success/30 bg-success-surface text-success'}`}>
+              <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${saveStatus === 'error' || saveStatus === 'conflict' ? 'bg-danger' : saveStatus === 'saving' || saveStatus === 'offline' ? 'bg-warning' : 'bg-success'}`} />
+              <span className="truncate">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? `Draft · ${savedRecency.toLowerCase()}` : savedRecency}</span>
             </span>
-            {(saveStatus === 'error' || saveStatus === 'conflict') && <button type="button" onClick={() => void retrySave()} className="rounded-md border border-danger/30 px-2 py-1 text-[10px] font-semibold text-danger hover:bg-danger-surface cursor-pointer">Retry</button>}
+            {(saveStatus === 'error' || saveStatus === 'conflict') && (
+              <button 
+                type="button" 
+                onClick={() => void retrySave()} 
+                className="h-9 px-2.5 rounded-lg border border-danger/30 bg-danger-surface text-[11px] font-semibold text-danger hover:bg-danger/20 transition-colors cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
+            
+            <div className="flex items-center gap-1 bg-surface p-0.5 rounded-lg border border-line">
+              <button
+                type="button"
+                onClick={undoThemeChange}
+                disabled={!canUndoTheme}
+                aria-label="Undo last theme change"
+                title="Undo last token change"
+                className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
+                  canUndoTheme 
+                    ? 'text-ink hover:bg-surface-2 cursor-pointer' 
+                    : 'text-subtle/50 cursor-not-allowed'
+                }`}
+              >
+                <Undo2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={redoThemeChange}
+                disabled={!canRedoTheme}
+                aria-label="Redo last theme change"
+                title="Redo token change"
+                className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
+                  canRedoTheme 
+                    ? 'text-ink hover:bg-surface-2 cursor-pointer' 
+                    : 'text-subtle/50 cursor-not-allowed'
+                }`}
+              >
+                <Redo2 className="w-4 h-4" />
+              </button>
+            </div>
+
             <button
               type="button"
-              onClick={undoThemeChange}
-              disabled={!canUndoTheme}
-              aria-label="Undo last theme change"
-              title="Undo last token change"
-              className={`min-h-11 min-w-11 rounded-lg border p-2 transition-colors ${
-                canUndoTheme 
-                  ? 'bg-surface border-line-strong text-ink hover:bg-surface-2 cursor-pointer' 
-                  : 'bg-canvas border-line text-subtle cursor-not-allowed'
-              }`}
-            >
-              <Undo2 className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={redoThemeChange}
-              disabled={!canRedoTheme}
-              aria-label="Redo last theme change"
-              title="Redo token change"
-              className={`min-h-11 min-w-11 rounded-lg border p-2 transition-colors ${
-                canRedoTheme 
-                  ? 'bg-surface border-line-strong text-ink hover:bg-surface-2 cursor-pointer' 
-                  : 'bg-canvas border-line text-subtle cursor-not-allowed'
-              }`}
-            >
-              <Redo2 className="w-4 h-4" />
-            </button>
-            <button
               onClick={() => setShowSaveModal(true)}
-              className="min-h-11 rounded-lg bg-surface px-3 py-2 hover:bg-surface-2 border border-line-strong text-ink-strong text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="h-9 rounded-lg bg-surface px-3 hover:bg-surface-2 border border-line-strong text-ink text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
               <BookmarkPlus className="w-3.5 h-3.5 text-accent" />
               <span>Save Preset</span>
             </button>
-            <button type="button" onClick={() => setPreviewSource('draft')} className="rounded-lg border border-line-strong bg-surface px-2.5 py-2 text-xs font-semibold text-ink-strong hover:bg-surface-2 cursor-pointer">Preview</button>
-            <button type="button" onClick={() => { setComparisonSnapshot(null); setShowComparison(value => !value); }} className={`rounded-lg border px-2.5 py-2 text-xs font-semibold cursor-pointer ${showComparison ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line-strong bg-surface text-muted hover:bg-surface-2'}`}>{showComparison ? 'Exit compare' : 'Compare'}</button>
-            <button type="button" onClick={() => setIsPublishOpen(true)} disabled={!hasUnpublishedChanges || !a11y.canPublish} title={!hasUnpublishedChanges ? 'Make and save a change before publishing.' : !a11y.canPublish ? 'Resolve accessibility findings before publishing.' : 'Publish draft'} className="min-h-11 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">Publish</button>
+
+            <button 
+              type="button" 
+              onClick={() => setPreviewSource('draft')} 
+              className="h-9 rounded-lg border border-line-strong bg-surface px-3 text-xs font-semibold text-ink hover:bg-surface-2 transition-colors cursor-pointer shadow-xs"
+            >
+              Preview
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => { setComparisonSnapshot(null); setShowComparison(value => !value); }} 
+              className={`h-9 rounded-lg border px-3 text-xs font-semibold transition-colors cursor-pointer shadow-xs ${
+                showComparison 
+                  ? 'border-accent/40 bg-accent/10 text-accent font-bold' 
+                  : 'border-line-strong bg-surface text-muted hover:text-ink hover:bg-surface-2'
+              }`}
+            >
+              {showComparison ? 'Exit compare' : 'Compare'}
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => setIsPublishOpen(true)} 
+              disabled={!hasUnpublishedChanges || !a11y.canPublish} 
+              title={!hasUnpublishedChanges ? 'Make and save a change before publishing.' : !a11y.canPublish ? 'Resolve accessibility findings before publishing.' : 'Publish draft'} 
+              className="h-9 rounded-lg bg-accent px-4 text-xs font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 transition-opacity cursor-pointer shadow-xs"
+            >
+              Publish
+            </button>
+
             <div className="relative" ref={moreActionsRef}>
-              <button type="button" aria-label="More theme actions" aria-expanded={isMoreActionsOpen} onClick={() => setIsMoreActionsOpen(value => !value)} className="min-h-11 min-w-11 rounded-lg border border-line-strong bg-surface p-2 text-muted hover:bg-surface-2 hover:text-ink cursor-pointer"><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></button>
-              {isMoreActionsOpen && <div className="absolute right-0 top-full z-40 mt-2 w-48 rounded-xl border border-line bg-surface p-1.5 shadow-xl">
-                <button type="button" onClick={exportThemeJson} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer"><Download className="h-3.5 w-3.5" /> Export theme JSON</button>
-                <button type="button" onClick={() => themeImportRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer"><Upload className="h-3.5 w-3.5" /> Import theme JSON</button>
-                <button type="button" onClick={() => { resetThemeToPublished(); setIsMoreActionsOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer"><RotateCcw className="h-3.5 w-3.5" /> Reset unsaved theme</button>
-                <button type="button" onClick={() => { saveCustomPreset(`${standardTheme.name} Copy`); setIsMoreActionsOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer"><BookmarkPlus className="h-3.5 w-3.5" /> Duplicate as preset</button>
-              </div>}
+              <button 
+                type="button" 
+                aria-label="More theme actions" 
+                aria-expanded={isMoreActionsOpen} 
+                onClick={() => setIsMoreActionsOpen(value => !value)} 
+                className="h-9 w-9 rounded-lg border border-line-strong bg-surface flex items-center justify-center text-muted hover:bg-surface-2 hover:text-ink transition-colors cursor-pointer shadow-xs"
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              </button>
+              {isMoreActionsOpen && (
+                <div className="absolute right-0 top-full z-40 mt-1.5 w-48 rounded-xl border border-line bg-surface p-1 shadow-xl">
+                  <button type="button" onClick={exportThemeJson} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><Download className="h-3.5 w-3.5" /> Export theme JSON</button>
+                  <button type="button" onClick={() => themeImportRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><Upload className="h-3.5 w-3.5" /> Import theme JSON</button>
+                  <button type="button" onClick={() => { resetThemeToPublished(); setIsMoreActionsOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><RotateCcw className="h-3.5 w-3.5" /> Reset unsaved theme</button>
+                  <button type="button" onClick={() => { saveCustomPreset(`${standardTheme.name} Copy`); setIsMoreActionsOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><BookmarkPlus className="h-3.5 w-3.5" /> Duplicate as preset</button>
+                </div>
+              )}
             </div>
             <input ref={themeImportRef} type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importThemeJson(file); }} />
           </div>
