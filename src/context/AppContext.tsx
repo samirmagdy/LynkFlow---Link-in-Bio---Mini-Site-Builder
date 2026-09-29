@@ -119,7 +119,7 @@ const APP_VIEW_PATHS: Partial<Record<AppView, string>> = {
 
 const viewFromLocation = (): AppView => {
   if (typeof window === 'undefined') return 'marketing';
-  const pathname = window.location.pathname;
+  const pathname = window.location.pathname === '/' ? '/' : window.location.pathname.replace(/\/$/, '');
   const params = new URLSearchParams(window.location.search);
   if (pathname.startsWith('/@') || params.has('customDomain') || params.get('view') === 'public_standalone') return 'public_standalone';
   const route = Object.entries(APP_VIEW_PATHS).find(([, path]) => path === pathname)?.[0] as AppView | undefined;

@@ -44,6 +44,14 @@ const AppContent: React.FC = () => {
   const [reportTargetUser, setReportTargetUser] = useState('');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'create' | 'login' | 'forgot' | 'verify' | 'reset'>('create');
+  const isStudioRoute = currentView !== 'marketing' && currentView !== 'public_standalone';
+
+  React.useEffect(() => {
+    if (!isStudioRoute || user.id !== 'usr-guest') return;
+    setAuthModalMode('login');
+    setIsAuthModalOpen(true);
+  }, [isStudioRoute, user.id]);
+
   React.useEffect(() => {
     if (new URLSearchParams(window.location.search).get('password-recovery') === '1') {
       setAuthModalMode('reset');

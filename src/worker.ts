@@ -33,7 +33,7 @@ const JSON_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'camera=(), microphone=(), geolocation=()',
-  'content-security-policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https:; media-src 'self' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-0/i0OEH+9gRs/7hMkoctyu0/832qxgoWr8Op4uDGr2Q='; connect-src 'self' https://*.supabase.co https://api.stripe.com; frame-src https://checkout.stripe.com https://www.youtube-nocookie.com https://player.vimeo.com https://open.spotify.com; font-src 'self' data: https://fonts.gstatic.com"
+  'content-security-policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https:; media-src 'self' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-a8ky0ymeTUfWssXdCQZhiVmnzVP7h5n+nXH2lzGufw4='; connect-src 'self' https://*.supabase.co https://api.stripe.com; frame-src https://checkout.stripe.com https://www.youtube-nocookie.com https://player.vimeo.com https://open.spotify.com; font-src 'self' data: https://fonts.gstatic.com"
 };
 
 function json(body: Record<string, unknown>, status = 200): Response {
