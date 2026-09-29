@@ -428,6 +428,10 @@ export function normalizeTheme(raw: any): StandardTheme {
   const surfaceBase = safeColor(colors.surfaceBase, panelBg);
   const surfaceRaised = safeColor(colors.surfaceRaised, panelBg);
   const border = safeColor(colors.border || colors.borderSubtle || raw.cardBorder, '#30394D');
+  const cardBg = safeColor(colors.cardBg || colors.panelBackground || colors.surfaceRaised || raw.cardBg, panelBg);
+  const cardTextColor = safeColor(colors.cardTextColor || raw.cardTextColor, calculateContrastRatio(primaryText, cardBg) >= 4.0 ? primaryText : (calculateContrastRatio('#FFFFFF', cardBg) >= calculateContrastRatio('#000000', cardBg) ? '#FFFFFF' : '#000000'));
+  const cardSubtitleColor = safeColor(colors.cardSubtitleColor || raw.cardSubtitleColor, secondaryText);
+  const cardBorder = safeColor(colors.cardBorder || raw.cardBorder, border);
   const focusRing = safeColor(colors.focusRing, '#A5B4FC');
   const surfaceMuted = safeColor(colors.surfaceMuted, pageBg);
   const textDisabled = safeColor(colors.textDisabled, secondaryText);
@@ -483,10 +487,10 @@ export function normalizeTheme(raw: any): StandardTheme {
         accentText,
         border,
         focusRing,
-        cardBg: panelBg,
-        cardTextColor: primaryText,
-        cardSubtitleColor: secondaryText,
-        cardBorder: border,
+        cardBg,
+        cardTextColor,
+        cardSubtitleColor,
+        cardBorder,
         surfaceBase,
         surfaceRaised,
         surfaceMuted,
@@ -611,9 +615,9 @@ export function normalizeTheme(raw: any): StandardTheme {
       blur: Math.max(0, Math.min(32, Number(buttons.blur ?? 0)))
     },
     cards: {
-      background: safeColor(cards.background, panelBg),
-      text: safeColor(cards.text, primaryText),
-      border: safeColor(cards.border, border),
+      background: safeColor(cards.background, cardBg),
+      text: safeColor(cards.text, cardTextColor),
+      border: safeColor(cards.border, cardBorder),
       radius: Math.max(0, Math.min(48, Number(cards.radius ?? cardRad))),
       shadow: safeCssFragment(cards.shadow, elevation.card || 'none'),
       blur: Math.max(0, Math.min(32, Number(cards.blur ?? effects.blur ?? 0)))
@@ -814,9 +818,9 @@ export function compileThemeToCssVariables(theme: StandardTheme): Record<string,
     ,'--theme-button-border': theme.buttons?.border || colors.border
     ,'--theme-button-height': `${theme.buttons?.height || 56}px`
     ,'--theme-button-blur': `${theme.buttons?.blur || 0}px`
-    ,'--theme-card-bg': theme.cards?.background || colors.panelBackground
-    ,'--theme-card-text': theme.cards?.text || colors.primaryText
-    ,'--theme-card-border': theme.cards?.border || colors.border
+    ,'--theme-card-bg': theme.cards?.background || colors.cardBg || colors.panelBackground
+    ,'--theme-card-text': theme.cards?.text || colors.cardTextColor || colors.primaryText
+    ,'--theme-card-border': theme.cards?.border || colors.cardBorder || colors.border
     ,'--theme-card-radius-explicit': `${theme.cards?.radius ?? shape.cardRadius}px`
     ,'--theme-card-shadow': theme.cards?.shadow || elevation.card
     ,'--theme-card-blur': `${theme.cards?.blur || 0}px`
