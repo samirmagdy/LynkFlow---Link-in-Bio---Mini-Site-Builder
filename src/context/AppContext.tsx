@@ -48,9 +48,10 @@ import { domainService } from '../services/domainService';
 import { apiKeyService, ApiGatewayResult } from '../services/apiKeyService';
 import { ProfileMember, ProfileRole, ApiKey, ApiKeyScope, WebhookSubscription, WebhookEventTopic, ApiAuditEntry } from '../types';
 import { isSupabaseConfigured } from '../lib/supabaseConfig';
+import { supabase as configuredSupabase } from '../lib/supabase';
 import { createPublishedSnapshot } from '../utils/publishedSnapshot';
 
-let supabase: any = null;
+const supabase = configuredSupabase;
 type CloudSyncModule = typeof import('../services/supabaseSyncService');
 let cloudSyncPromise: Promise<CloudSyncModule> | null = null;
 const getCloudSync = () => cloudSyncPromise || (cloudSyncPromise = import('../services/supabaseSyncService'));
@@ -478,8 +479,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
     let cancelled = false;
     const hydrate = async () => {
-      const supabaseModule = await import('../lib/supabase');
-      supabase = supabaseModule.supabase;
       if (!supabase) {
         cloudReady.current = true;
         setCloudHydrated(true);

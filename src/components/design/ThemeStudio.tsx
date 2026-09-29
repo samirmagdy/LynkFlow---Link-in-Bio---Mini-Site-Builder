@@ -5,6 +5,7 @@ import { PublishedThemeSnapshot, StandardTheme } from '../../types/themeSchema';
 import { Block, BlockType, BrandKit, Profile } from '../../types';
 import { PERSONA_TEMPLATES, PersonaTemplate, composeStarterSiteTheme } from '../../data/personaTemplates';
 import { PhoneMockup } from '../preview/PhoneMockup';
+import { PublicProfileView } from '../preview/PublicProfileView';
 import { validateThemeAccessibility, validateProfileAccessibility, calculateContrastRatio, normalizeTheme, validateThemeSchema, calculateThemeQualityScore } from '../../utils/themeEngine';
 import { 
   Palette, 
@@ -36,9 +37,9 @@ import {
 } from 'lucide-react';
 import { ANIME_ENTRANCE_PRESETS, AnimeEntrancePreset } from '../../utils/animeAnimations';
 import { uploadBackgroundAsset, removeBackgroundAsset, listBackgroundAssets, BackgroundAsset } from '../../services/backgroundAssetService';
-import { ProductIllustration } from '../illustration/ProductIllustration';
 import { extractImageAccentGradient } from '../../utils/imageAccent';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
+import { Dialog } from '../common/Dialog';
 
 interface ThemeStudioProps {
   onOpenReportModal?: () => void;
@@ -60,6 +61,13 @@ type PexelsMedia = {
 };
 
 type ColorFormat = 'hex' | 'rgb' | 'hsl';
+type ThemeConfirmRequest = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  onConfirm: () => void | Promise<void>;
+};
 
 const normalizeHex = (value: string) => /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value.toUpperCase() : null;
 
@@ -166,36 +174,17 @@ const ColorTokenEditor: React.FC<{
   );
 };
 
-const ThemePreviewCard: React.FC<{ theme: StandardTheme; label?: string; content?: Pick<Profile, 'displayName' | 'bio' | 'avatarUrl' | 'tabs'> }> = ({ theme, label = 'Theme preview', content }) => {
+const ThemePreviewCard: React.FC<{ theme: StandardTheme; label?: string; profile: Profile }> = ({ theme, label = 'Theme preview', profile }) => {
   const preview = normalizeTheme(theme);
-  const colors = preview.tokens.colors;
-  const backgroundImage = preview.previewImage
-    ? `linear-gradient(rgba(15,23,42,.22), rgba(15,23,42,.22)), url(${preview.previewImage})`
-    : preview.background.gradientStops || undefined;
-  const displayName = content?.displayName?.trim() || 'Alex Vance';
-  const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AV';
-  const bio = content?.bio?.trim() || 'Creator, strategist, and storyteller sharing selected work.';
-  const blockTitles = (content?.tabs?.[0]?.blocks || []).filter(block => !block.isHidden).slice(0, 2).map(block => block.title || block.type);
-  const previewLinks = blockTitles.length ? blockTitles : ['Featured work', 'Start a conversation'];
+  const previewProfile: Profile = { ...profile, standardTheme: preview };
   return (
     <div
-      className="relative h-40 w-full overflow-hidden rounded-xl border border-ink/10 p-3 shadow-inner"
-      aria-label={`${label}: ${preview.name} using ${displayName}`}
-      style={{ backgroundColor: colors.pageBackground, backgroundImage, backgroundSize: preview.previewImage ? 'cover' : undefined, backgroundPosition: 'center', fontFamily: preview.tokens.typography.bodyFamily }}
+      className="relative aspect-[1.42] min-h-[220px] w-full overflow-hidden rounded-xl border border-line bg-canvas shadow-inner sm:min-h-0"
+      aria-label={`${label}: ${preview.name} using ${profile.displayName || profile.username}`}
     >
-      <div className="relative z-10 flex items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-[9px] font-bold" style={{ backgroundColor: colors.accent, borderColor: colors.accentText, color: colors.accentText }}>{initials}</div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[11px] font-bold" style={{ color: colors.primaryText }}>{displayName}</div>
-          <div className="truncate text-[8px]" style={{ color: colors.secondaryText }}>@creator</div>
-        </div>
-        <div className="h-5 w-5 rounded-full border" style={{ borderColor: colors.border, backgroundColor: colors.panelBackground }} />
+      <div aria-hidden="true" className="pointer-events-none absolute left-0 top-0 w-[312%] origin-top-left scale-[0.32]">
+        <PublicProfileView profile={previewProfile} />
       </div>
-      <p className="relative z-10 mt-2 line-clamp-2 text-[8px] leading-relaxed" style={{ color: colors.secondaryText }}>{bio}</p>
-      <div className="relative z-10 mt-2 grid gap-1.5">
-        {previewLinks.map((title, index) => <div key={`${title}-${index}`} className="truncate rounded-lg border px-2 py-1.5 text-[8px] font-semibold" style={{ backgroundColor: index === 0 ? colors.accent : colors.panelBackground, borderColor: index === 0 ? colors.accent : colors.border, color: index === 0 ? colors.accentText : colors.primaryText }}>{title}</div>)}
-      </div>
-      <span className="absolute bottom-1.5 right-2 z-10 text-[7px] font-semibold uppercase tracking-wider" style={{ color: colors.secondaryText }}>Live content preview</span>
     </div>
   );
 };
@@ -271,9 +260,12 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [activeStage, setActiveStage] = useState<StudioStage>('foundation');
   const [customPresetName, setCustomPresetName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [confirmRequest, setConfirmRequest] = useState<ThemeConfirmRequest | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [previewTheme, setPreviewTheme] = useState<StandardTheme | null>(null);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
+  const [themeImportError, setThemeImportError] = useState<string | null>(null);
   const [pexelsQuery, setPexelsQuery] = useState('abstract background');
   const [pexelsResults, setPexelsResults] = useState<PexelsMedia[]>([]);
   const [isSearchingPexels, setIsSearchingPexels] = useState(false);
@@ -290,16 +282,67 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const mobileBackgroundInputRef = useRef<HTMLInputElement>(null);
   const themeImportRef = useRef<HTMLInputElement>(null);
+  const moreActionsRef = useRef<HTMLDivElement>(null);
+  const saveModalRef = useRef<HTMLDivElement>(null);
   const brandKit = workspace.brandKit || {
     id: 'brand-kit-main', name: 'Workspace Brand Kit', primaryColor: '#111827', secondaryColor: '#64748B', accentColor: '#6366F1',
     latinFont: 'Inter, ui-sans-serif, system-ui, sans-serif', arabicFont: 'Noto Kufi Arabic, Tahoma, sans-serif', buttonStyle: 'filled' as const,
     imageStyle: 'rounded' as const, socialIconStyle: 'minimal' as const, updatedAt: new Date().toISOString()
   };
 
+  const requestConfirmation = (request: ThemeConfirmRequest) => setConfirmRequest(request);
+  const closeConfirmation = () => setConfirmRequest(null);
+  const confirmAndClose = async () => {
+    if (!confirmRequest) return;
+    const action = confirmRequest.onConfirm;
+    setConfirmRequest(null);
+    await action();
+  };
+
   useEffect(() => {
     const timer = window.setInterval(() => setRecencyTick(value => value + 1), 30000);
     return () => window.clearInterval(timer);
   }, [lastSavedAt]);
+
+  useEffect(() => {
+    if (!isMoreActionsOpen && !showSaveModal) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMoreActionsOpen(false);
+        setShowSaveModal(false);
+        return;
+      }
+      if (showSaveModal && event.key === 'Tab' && saveModalRef.current) {
+        const focusable = Array.from(saveModalRef.current.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(element => !element.hasAttribute('disabled'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (isMoreActionsOpen && moreActionsRef.current && !moreActionsRef.current.contains(target)) setIsMoreActionsOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [isMoreActionsOpen, showSaveModal]);
+
+  useEffect(() => {
+    if (!showSaveModal) return;
+    const firstField = saveModalRef.current?.querySelector<HTMLInputElement>('input');
+    firstField?.focus();
+  }, [showSaveModal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -323,6 +366,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   const importThemeJson = async (file: File) => {
+    setThemeImportError(null);
     try {
       const parsed = JSON.parse(await file.text());
       const validation = validateThemeSchema(parsed);
@@ -330,7 +374,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       updateStandardTheme(() => normalizeTheme({ ...parsed, source: 'imported' }));
       setIsMoreActionsOpen(false);
     } catch (error) {
-      setBackgroundUploadError(error instanceof Error ? error.message : 'Theme JSON could not be imported.');
+      setThemeImportError(error instanceof Error ? error.message : 'Theme JSON could not be imported.');
     } finally {
       if (themeImportRef.current) themeImportRef.current.value = '';
     }
@@ -371,6 +415,8 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       if (!value) return prev;
       return { ...prev, tokens: { ...prev.tokens, colors: { ...colors, [token]: value } } };
     });
+    setActionFeedback(`${issue.tokenKey} updated to a compliant value. Review the updated contrast before publishing.`);
+    window.setTimeout(() => setActionFeedback(null), 5000);
   };
 
   // Helpers to update token fields
@@ -527,15 +573,22 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   const deleteLibraryAsset = async (asset: BackgroundAsset) => {
-    if (!window.confirm('Delete this background asset from the workspace library? Existing themes using it may no longer display it.')) return;
-    try {
-      const wasSelected = standardTheme.background.assetId === asset.storagePath;
-      await removeBackgroundAsset(asset.storagePath);
-      setBackgroundAssets(prev => prev.filter(item => item.id !== asset.id));
-      if (wasSelected) updateStandardTheme(prev => ({ ...prev, background: { ...prev.background, type: 'solid', assetId: null, assetUrl: null, mobileAssetUrl: null, posterUrl: null } }));
-    } catch (error) {
-      setBackgroundUploadError(error instanceof Error ? error.message : 'Background asset deletion failed.');
-    }
+    requestConfirmation({
+      title: 'Delete background asset?',
+      message: 'Existing themes using this asset may no longer display it. This cannot be undone.',
+      confirmLabel: 'Delete asset',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const wasSelected = standardTheme.background.assetId === asset.storagePath;
+          await removeBackgroundAsset(asset.storagePath);
+          setBackgroundAssets(prev => prev.filter(item => item.id !== asset.id));
+          if (wasSelected) updateStandardTheme(prev => ({ ...prev, background: { ...prev.background, type: 'solid', assetId: null, assetUrl: null, mobileAssetUrl: null, posterUrl: null } }));
+        } catch (error) {
+          setBackgroundUploadError(error instanceof Error ? error.message : 'Background asset deletion failed.');
+        }
+      }
+    });
   };
 
   const searchPexels = async () => {
@@ -611,6 +664,8 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         ctaPosition: template.goal === 'Book or contact' || template.goal === 'Put appointments first' ? 'first' : 'priority-order'
       }
     }));
+    setActionFeedback(`${template.name} layout applied to the draft.`);
+    window.setTimeout(() => setActionFeedback(null), 4000);
   };
 
   const previewPreset = (preset: StandardTheme) => setPreviewTheme(normalizeTheme(preset));
@@ -629,6 +684,8 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       effects: next.effects,
       blockDefaults: next.blockDefaults
     }));
+    setActionFeedback(`${preset.name} appearance applied. Your content and layout were preserved.`);
+    window.setTimeout(() => setActionFeedback(null), 4000);
   };
   const applyLayoutOnly = (preset: StandardTheme) => {
     const next = normalizeTheme(preset);
@@ -643,6 +700,8 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       layout: next.layout,
       responsive: next.responsive
     }));
+    setActionFeedback(`${preset.name} layout applied. Your content was preserved.`);
+    window.setTimeout(() => setActionFeedback(null), 4000);
   };
 
   const applySavedPreset = (preset: StandardTheme) => {
@@ -652,9 +711,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     const summary = changesLayout
       ? `Apply “${preset.name}”? This changes the visual style and layout composition, but preserves your profile content and blocks.`
       : `Apply “${preset.name}”? This changes appearance only and preserves your layout and content.`;
-    if (includesContent) {
-      if (!window.confirm(`${summary}\n\nThis preset also contains starter content. Continue only if you want to replace the current content.`)) return;
-    } else if (changesLayout && !window.confirm(summary)) {
+    if (includesContent || changesLayout) {
+      requestConfirmation({
+        title: `Apply ${preset.name}?`,
+        message: includesContent ? `${summary} This preset also contains starter content and will replace the current content.` : summary,
+        confirmLabel: includesContent ? 'Replace content' : 'Apply preset',
+        destructive: includesContent,
+        onConfirm: () => applyTheme(preset)
+      });
       return;
     }
     applyTheme(preset);
@@ -736,10 +800,15 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   const applyPersonaTemplate = (template: PersonaTemplate) => {
-    if (!window.confirm(`Apply “${template.name}”? This replaces the current draft blocks with the persona starter structure.`)) return;
-    const stamp = Date.now();
-    applyTheme(composeStarterSiteTheme(template));
-    updateDraftProfile(prev => ({
+    requestConfirmation({
+      title: `Use ${template.name} starter?`,
+      message: 'This replaces the current draft blocks with the persona starter structure. Your published page will not change until you publish.',
+      confirmLabel: 'Use starter',
+      destructive: true,
+      onConfirm: () => {
+        const stamp = Date.now();
+        applyTheme(composeStarterSiteTheme(template));
+        updateDraftProfile(prev => ({
       ...prev,
       starterSiteId: template.id,
       category: template.category,
@@ -772,7 +841,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         noIndex: false
       },
       updatedAt: new Date().toISOString()
-    }));
+        }));
+        setActionFeedback(`${template.name} starter applied to the draft.`);
+        window.setTimeout(() => setActionFeedback(null), 4000);
+      }
+    });
   };
 
   return (
@@ -802,10 +875,12 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
             </span>
             {(saveStatus === 'error' || saveStatus === 'conflict') && <button type="button" onClick={() => void retrySave()} className="rounded-md border border-danger/30 px-2 py-1 text-[10px] font-semibold text-danger hover:bg-danger-surface cursor-pointer">Retry</button>}
             <button
+              type="button"
               onClick={undoThemeChange}
               disabled={!canUndoTheme}
+              aria-label="Undo last theme change"
               title="Undo last token change"
-              className={`p-2 rounded-lg border transition-colors ${
+              className={`min-h-11 min-w-11 rounded-lg border p-2 transition-colors ${
                 canUndoTheme 
                   ? 'bg-surface border-line-strong text-ink hover:bg-surface-2 cursor-pointer' 
                   : 'bg-canvas border-line text-subtle cursor-not-allowed'
@@ -814,10 +889,12 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <Undo2 className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={redoThemeChange}
               disabled={!canRedoTheme}
+              aria-label="Redo last theme change"
               title="Redo token change"
-              className={`p-2 rounded-lg border transition-colors ${
+              className={`min-h-11 min-w-11 rounded-lg border p-2 transition-colors ${
                 canRedoTheme 
                   ? 'bg-surface border-line-strong text-ink hover:bg-surface-2 cursor-pointer' 
                   : 'bg-canvas border-line text-subtle cursor-not-allowed'
@@ -827,16 +904,16 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
             </button>
             <button
               onClick={() => setShowSaveModal(true)}
-              className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-2 border border-line-strong text-ink-strong text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="min-h-11 rounded-lg bg-surface px-3 py-2 hover:bg-surface-2 border border-line-strong text-ink-strong text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <BookmarkPlus className="w-3.5 h-3.5 text-accent" />
               <span>Save Preset</span>
             </button>
-            <button type="button" onClick={() => setPreviewSource('draft')} className="hidden rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-strong hover:bg-surface-2 sm:inline-flex cursor-pointer">Preview</button>
-            <button type="button" onClick={() => { setComparisonSnapshot(null); setShowComparison(value => !value); }} className={`hidden rounded-lg border px-2.5 py-1.5 text-xs font-semibold sm:inline-flex cursor-pointer ${showComparison ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line-strong bg-surface text-muted hover:bg-surface-2'}`}>{showComparison ? 'Exit compare' : 'Compare'}</button>
-            <button type="button" onClick={() => setIsPublishOpen(true)} disabled={!hasUnpublishedChanges || !a11y.canPublish} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">Publish</button>
-            <div className="relative">
-              <button type="button" aria-label="More theme actions" aria-expanded={isMoreActionsOpen} onClick={() => setIsMoreActionsOpen(value => !value)} className="rounded-lg border border-line-strong bg-surface p-1.5 text-muted hover:bg-surface-2 hover:text-ink cursor-pointer"><MoreHorizontal className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setPreviewSource('draft')} className="rounded-lg border border-line-strong bg-surface px-2.5 py-2 text-xs font-semibold text-ink-strong hover:bg-surface-2 cursor-pointer">Preview</button>
+            <button type="button" onClick={() => { setComparisonSnapshot(null); setShowComparison(value => !value); }} className={`rounded-lg border px-2.5 py-2 text-xs font-semibold cursor-pointer ${showComparison ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line-strong bg-surface text-muted hover:bg-surface-2'}`}>{showComparison ? 'Exit compare' : 'Compare'}</button>
+            <button type="button" onClick={() => setIsPublishOpen(true)} disabled={!hasUnpublishedChanges || !a11y.canPublish} title={!hasUnpublishedChanges ? 'Make and save a change before publishing.' : !a11y.canPublish ? 'Resolve accessibility findings before publishing.' : 'Publish draft'} className="min-h-11 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">Publish</button>
+            <div className="relative" ref={moreActionsRef}>
+              <button type="button" aria-label="More theme actions" aria-expanded={isMoreActionsOpen} onClick={() => setIsMoreActionsOpen(value => !value)} className="min-h-11 min-w-11 rounded-lg border border-line-strong bg-surface p-2 text-muted hover:bg-surface-2 hover:text-ink cursor-pointer"><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></button>
               {isMoreActionsOpen && <div className="absolute right-0 top-full z-40 mt-2 w-48 rounded-xl border border-line bg-surface p-1.5 shadow-xl">
                 <button type="button" onClick={exportThemeJson} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer"><Download className="h-3.5 w-3.5" /> Export theme JSON</button>
                 <button type="button" onClick={() => themeImportRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer"><Upload className="h-3.5 w-3.5" /> Import theme JSON</button>
@@ -848,9 +925,19 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         </div>
 
-        <div className="max-w-xl rounded-2xl border border-indigo-500/15 bg-indigo-500/5 p-2">
-          <ProductIllustration variant="theme" />
-        </div>
+        {actionFeedback && (
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-success/30 bg-success-surface px-3 py-2 text-xs text-success">
+            <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{actionFeedback}</span>
+          </div>
+        )}
+        {themeImportError && (
+          <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-danger/30 bg-danger-surface px-3 py-2 text-xs text-danger">
+            <span>Theme import failed: {themeImportError}</span>
+            <button type="button" onClick={() => setThemeImportError(null)} aria-label="Dismiss theme import error" className="min-h-8 min-w-8 rounded-md hover:bg-danger/10 cursor-pointer">×</button>
+          </div>
+        )}
+
         {previewTheme && (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-xs">
             <span className="text-muted">Previewing <strong className="text-ink">{previewTheme.name}</strong>. Your draft has not changed.</span>
@@ -912,6 +999,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   type="button"
                   onClick={() => openStudioStage(stage)}
                   aria-current={isActive ? 'step' : undefined}
+                  aria-label={`${stage.label}: ${stage.description}`}
                   className={`min-h-14 min-w-[9.5rem] flex-1 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${isActive ? 'bg-ink text-white shadow-sm' : 'text-muted hover:bg-canvas hover:text-ink'}`}
                 >
                   <span className={`mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${isActive ? 'bg-white/15 text-white' : isComplete ? 'bg-success-surface text-success' : 'bg-canvas text-muted'}`}>
@@ -923,13 +1011,15 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               );
             })}
           </div>
-          <div className="mt-2 flex items-center gap-1 overflow-x-auto border-t border-line px-1 pt-2 scrollbar-none">
+          <div role="tablist" aria-label={`${currentStage.label} theme settings`} className="mt-2 flex items-center gap-1 overflow-x-auto border-t border-line px-1 pt-2 scrollbar-none">
             {currentStage.tabs.map(tab => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => openStudioTab(tab)}
-                className={`min-h-9 whitespace-nowrap rounded-lg px-3 text-[11px] font-semibold transition-colors cursor-pointer ${activeTab === tab ? 'bg-accent text-white' : 'text-muted hover:bg-canvas hover:text-ink'}`}
+                role="tab"
+                aria-selected={activeTab === tab}
+                className={`min-h-11 whitespace-nowrap rounded-lg px-3 text-[11px] font-semibold transition-colors cursor-pointer ${activeTab === tab ? 'bg-accent text-white' : 'text-muted hover:bg-canvas hover:text-ink'}`}
               >
                 {STUDIO_TAB_LABELS[tab]}{tab === 'snapshots' ? ` (${snapshots.length})` : ''}
               </button>
@@ -949,38 +1039,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         {/* Theme presets & custom library */}
         {activeTab === 'presets' && (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4 sm:p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Start with a persona</div>
-                  <h3 className="mt-1 text-base font-bold text-ink">Build from the job your page needs to do</h3>
-                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted">Each starter includes profile fields, socials, a matching visual system, and real blocks from your content model.</p>
-                </div>
-                <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[10px] font-semibold text-muted">{PERSONA_TEMPLATES.length} starters</span>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {PERSONA_TEMPLATES.map(persona => (
-                  <article key={persona.id} className="overflow-hidden rounded-xl border border-line bg-surface">
-                    <ThemePreviewCard theme={persona.theme} label="Starter theme preview" content={activeProfile} />
-                    <div className="p-3.5">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-accent">{persona.eyebrow}</div>
-                      <h4 className="mt-1 text-sm font-bold text-ink">{persona.name}</h4>
-                      <p className="mt-1.5 min-h-10 text-[11px] leading-relaxed text-muted">{persona.description}</p>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {persona.fields.slice(0, 4).map(field => <span key={field} className="rounded-full bg-canvas px-2 py-1 text-[10px] text-muted">{field}</span>)}
-                        <span className="rounded-full bg-canvas px-2 py-1 text-[10px] text-muted">+{Math.max(0, persona.fields.length - 4)} more</span>
-                      </div>
-                      <button type="button" onClick={() => applyPersonaTemplate(persona)} className="mt-3 min-h-10 w-full rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-ink/85 cursor-pointer">Use this starter</button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
             <div>
               <div className="text-xs font-semibold text-muted uppercase tracking-wider font-mono mb-3">
                 Specification Curated Presets
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {SPEC_THEME_PRESETS.map((preset) => {
                   const isSelected = standardTheme.presetId === preset.presetId || standardTheme.id === preset.id;
                   return (
@@ -992,7 +1055,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                           : 'border-line bg-surface/60 hover:border-line-strong'
                       }`}
                     >
-                      <ThemePreviewCard theme={preset} content={activeProfile} />
+                      <ThemePreviewCard theme={preset} profile={activeProfile} />
 
                       <div className="flex items-center justify-between">
                         <div>
@@ -1009,10 +1072,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                         {preset.mobileFirst !== false && <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">Mobile-first</span>}
                         <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[9px] font-medium text-muted">{preset.background.type}</span>
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-1.5">
-                        <button type="button" onClick={() => previewPreset(preset)} className="rounded-md border border-line px-1.5 py-1.5 text-[10px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer">Preview</button>
-                        <button type="button" onClick={() => applyVisualStyle(preset)} className="rounded-md bg-ink px-1.5 py-1.5 text-[10px] font-semibold text-white hover:opacity-90 cursor-pointer">Visual</button>
-                        <button type="button" onClick={() => applyLayoutOnly(preset)} className="rounded-md border border-accent/40 bg-accent/10 px-1.5 py-1.5 text-[10px] font-semibold text-accent hover:bg-accent/20 cursor-pointer">Layout</button>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <button type="button" onClick={() => previewPreset(preset)} className="min-h-11 rounded-lg border border-line px-2 py-2 text-[11px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer">Preview theme</button>
+                        <button type="button" onClick={() => applyVisualStyle(preset)} className="min-h-11 rounded-lg bg-ink px-2 py-2 text-[11px] font-semibold text-white hover:opacity-90 cursor-pointer">Apply appearance</button>
+                        <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-11 rounded-lg border border-accent/40 bg-accent/10 px-2 py-2 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer">Apply layout</button>
                       </div>
                     </div>
                   );
@@ -1026,7 +1089,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <div className="text-xs font-semibold text-muted uppercase tracking-wider font-mono mb-3">
                   Workspace Custom Presets ({customPresets.length})
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {customPresets.map((preset) => {
                     const isSelected = standardTheme.id === preset.id;
                     return (
@@ -1039,7 +1102,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                             : 'border-line bg-surface/60 hover:border-line-strong'
                         }`}
                       >
-                        <ThemePreviewCard theme={preset} label="Custom theme preview" content={activeProfile} />
+                        <ThemePreviewCard theme={preset} label="Custom theme preview" profile={activeProfile} />
                         <div className="flex items-center justify-between">
                           <div className="text-xs font-semibold text-ink truncate">{preset.name}</div>
                           {isSelected && <Check className="w-4 h-4 text-accent shrink-0" />}
@@ -1066,7 +1129,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               </div>
               <label className="flex items-center gap-2 text-[11px] text-muted">
                 <span>Theme mode</span>
-                <select value={standardTheme.mode || 'system'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, mode: e.target.value as 'light' | 'dark' | 'system' }))} className="rounded-lg border border-line bg-canvas px-2 py-1.5 text-xs font-semibold text-ink focus:outline-none">
+                <select aria-label="Theme mode" value={standardTheme.mode || 'system'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, mode: e.target.value as 'light' | 'dark' | 'system' }))} className="rounded-lg border border-line bg-canvas px-2 py-1.5 text-xs font-semibold text-ink focus:outline-none">
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                   <option value="system">System</option>
@@ -1079,12 +1142,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">surface.page (Page Background)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Page background color"
                     type="color"
                     value={standardTheme.tokens.colors.pageBackground}
                     onChange={(e) => handleUpdateColor('pageBackground', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="Page background HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.pageBackground}
                     onChange={(e) => handleUpdateColor('pageBackground', e.target.value)}
@@ -1097,12 +1162,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">surface.panel (Card & Folder Surface)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Panel surface color"
                     type="color"
                     value={standardTheme.tokens.colors.panelBackground}
                     onChange={(e) => handleUpdateColor('panelBackground', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="Panel surface HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.panelBackground}
                     onChange={(e) => handleUpdateColor('panelBackground', e.target.value)}
@@ -1115,12 +1182,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">content.primary (Headings & Titles)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Primary text color"
                     type="color"
                     value={standardTheme.tokens.colors.primaryText}
                     onChange={(e) => handleUpdateColor('primaryText', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="Primary text HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.primaryText}
                     onChange={(e) => handleUpdateColor('primaryText', e.target.value)}
@@ -1136,12 +1205,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">content.secondary (Subtitles & Notes)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Secondary text color"
                     type="color"
                     value={standardTheme.tokens.colors.secondaryText}
                     onChange={(e) => handleUpdateColor('secondaryText', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="Secondary text HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.secondaryText}
                     onChange={(e) => handleUpdateColor('secondaryText', e.target.value)}
@@ -1154,12 +1225,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">action.primary (CTA Accent)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="CTA accent color"
                     type="color"
                     value={standardTheme.tokens.colors.accent}
                     onChange={(e) => handleUpdateColor('accent', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="CTA accent HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.accent}
                     onChange={(e) => handleUpdateColor('accent', e.target.value)}
@@ -1172,12 +1245,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">action.primaryText (CTA Label)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="CTA text color"
                     type="color"
                     value={standardTheme.tokens.colors.accentText}
                     onChange={(e) => handleUpdateColor('accentText', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="CTA text HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.accentText}
                     onChange={(e) => handleUpdateColor('accentText', e.target.value)}
@@ -1193,12 +1268,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">border.default (Dividers & Outlines)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Border color"
                     type="color"
                     value={standardTheme.tokens.colors.border}
                     onChange={(e) => handleUpdateColor('border', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="Border HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.border}
                     onChange={(e) => handleUpdateColor('border', e.target.value)}
@@ -1211,12 +1288,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <label className="block text-xs font-medium text-body mb-1.5">focus.ring (Keyboard Indicator)</label>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Focus ring color"
                     type="color"
                     value={standardTheme.tokens.colors.focusRing}
                     onChange={(e) => handleUpdateColor('focusRing', e.target.value)}
                     className="w-8 h-8 rounded-lg border border-line-strong cursor-pointer bg-transparent"
                   />
                   <input
+                    aria-label="Focus ring HEX value"
                     type="text"
                     value={standardTheme.tokens.colors.focusRing}
                     onChange={(e) => handleUpdateColor('focusRing', e.target.value)}
@@ -1259,6 +1338,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Display Family (Headings)</label>
                 <select
+                  aria-label="Display font family"
                   value={standardTheme.tokens.typography.displayFamily}
                   onChange={(e) => handleUpdateTypography('displayFamily', e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
@@ -1274,6 +1354,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Body Family (Prose & Links)</label>
                 <select
+                  aria-label="Body font family"
                   value={standardTheme.tokens.typography.bodyFamily}
                   onChange={(e) => handleUpdateTypography('bodyFamily', e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
@@ -1287,6 +1368,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Arabic Family (RTL content)</label>
                 <select
+                  aria-label="Arabic font family"
                   value={standardTheme.tokens.typography.arabicFamily || 'Noto Kufi Arabic, Tahoma, sans-serif'}
                   onChange={(e) => handleUpdateTypography('arabicFamily', e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
@@ -1302,6 +1384,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Body Font Size</label>
                 <select
+                  aria-label="Body font size"
                   value={standardTheme.tokens.typography.bodySize}
                   onChange={(e) => handleUpdateTypography('bodySize', e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
@@ -1315,6 +1398,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Heading Weight</label>
                 <select
+                  aria-label="Heading weight"
                   value={standardTheme.tokens.typography.headingWeight}
                   onChange={(e) => handleUpdateTypography('headingWeight', Number(e.target.value))}
                   className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
@@ -1328,62 +1412,62 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Body Weight</label>
-                <select value={standardTheme.tokens.typography.bodyWeight} onChange={(e) => handleUpdateTypography('bodyWeight', Number(e.target.value))} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                <select aria-label="Body weight" value={standardTheme.tokens.typography.bodyWeight} onChange={(e) => handleUpdateTypography('bodyWeight', Number(e.target.value))} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                   {[300, 400, 500, 600, 700].map(weight => <option key={weight} value={weight}>{weight}</option>)}
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Heading Scale ({Math.round((standardTheme.tokens.typography.headingScale || 1) * 100)}%)</label>
-                <input type="range" min="75" max="150" value={Math.round((standardTheme.tokens.typography.headingScale || 1) * 100)} onChange={(e) => handleUpdateTypography('headingScale', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
+                <input aria-label="Heading scale" type="range" min="75" max="150" value={Math.round((standardTheme.tokens.typography.headingScale || 1) * 100)} onChange={(e) => handleUpdateTypography('headingScale', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Body Scale ({Math.round((standardTheme.tokens.typography.bodyScale || 1) * 100)}%)</label>
-                <input type="range" min="85" max="125" value={Math.round((standardTheme.tokens.typography.bodyScale || 1) * 100)} onChange={(e) => handleUpdateTypography('bodyScale', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
+                <input aria-label="Body scale" type="range" min="85" max="125" value={Math.round((standardTheme.tokens.typography.bodyScale || 1) * 100)} onChange={(e) => handleUpdateTypography('bodyScale', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Body line height ({standardTheme.tokens.typography.bodyLineHeight})</label>
-                <input type="range" min="110" max="220" value={Math.round(standardTheme.tokens.typography.bodyLineHeight * 100)} onChange={(e) => handleUpdateTypography('bodyLineHeight', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
+                <input aria-label="Body line height" type="range" min="110" max="220" value={Math.round(standardTheme.tokens.typography.bodyLineHeight * 100)} onChange={(e) => handleUpdateTypography('bodyLineHeight', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Heading line height ({standardTheme.tokens.typography.headingLineHeight})</label>
-                <input type="range" min="85" max="180" value={Math.round(standardTheme.tokens.typography.headingLineHeight * 100)} onChange={(e) => handleUpdateTypography('headingLineHeight', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
+                <input aria-label="Heading line height" type="range" min="85" max="180" value={Math.round(standardTheme.tokens.typography.headingLineHeight * 100)} onChange={(e) => handleUpdateTypography('headingLineHeight', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Letter spacing</label>
-                <select value={standardTheme.tokens.typography.letterSpacing || '0px'} onChange={(e) => handleUpdateTypography('letterSpacing', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                <select aria-label="Letter spacing" value={standardTheme.tokens.typography.letterSpacing || '0px'} onChange={(e) => handleUpdateTypography('letterSpacing', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                   <option value="-0.02em">Tight</option><option value="0px">Normal</option><option value="0.02em">Open</option><option value="0.05em">Wide</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Caption size</label>
-                <select value={standardTheme.tokens.typography.captionSize || '12px'} onChange={(e) => handleUpdateTypography('captionSize', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                <select aria-label="Caption size" value={standardTheme.tokens.typography.captionSize || '12px'} onChange={(e) => handleUpdateTypography('captionSize', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                   <option value="11px">Small (11px)</option><option value="12px">Standard (12px)</option><option value="14px">Large (14px)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Button text size</label>
-                <select value={standardTheme.tokens.typography.buttonTextSize || '14px'} onChange={(e) => handleUpdateTypography('buttonTextSize', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                <select aria-label="Button text size" value={standardTheme.tokens.typography.buttonTextSize || '14px'} onChange={(e) => handleUpdateTypography('buttonTextSize', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                   <option value="13px">Small (13px)</option><option value="14px">Standard (14px)</option><option value="16px">Large (16px)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Maximum text line length</label>
-                <select value={standardTheme.tokens.typography.maxLineLength || '68ch'} onChange={(e) => handleUpdateTypography('maxLineLength', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                <select aria-label="Maximum text line length" value={standardTheme.tokens.typography.maxLineLength || '68ch'} onChange={(e) => handleUpdateTypography('maxLineLength', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                   <option value="56ch">Compact (56ch)</option><option value="68ch">Comfortable (68ch)</option><option value="78ch">Wide (78ch)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Text transform</label>
-                <select value={standardTheme.tokens.typography.textTransform || 'none'} onChange={(e) => handleUpdateTypography('textTransform', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                <select aria-label="Text transform" value={standardTheme.tokens.typography.textTransform || 'none'} onChange={(e) => handleUpdateTypography('textTransform', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                   <option value="none">Default case</option><option value="capitalize">Capitalize</option><option value="uppercase">Uppercase</option>
                 </select>
               </div>
@@ -1405,14 +1489,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-body mb-1.5">Brand kit name</label>
-                <input value={brandKit.name} onChange={(e) => updateBrandKitField('name', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" />
+                <input aria-label="Brand kit name" value={brandKit.name} onChange={(e) => updateBrandKitField('name', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none" />
               </div>
               {([
                 ['logoUrl', 'Primary logo URL'], ['lightLogoUrl', 'Light logo URL'], ['darkLogoUrl', 'Dark logo URL'], ['faviconUrl', 'Favicon URL']
               ] as const).map(([key, label]) => (
                 <div key={key}>
                   <label className="block text-xs font-medium text-body mb-1.5">{label}</label>
-                  <input disabled={brandKit.lockedFields?.logo === true} value={brandKit[key] || ''} onChange={(e) => updateBrandKitField(key, e.target.value)} placeholder="https://…" className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50" />
+                  <input aria-label={label} disabled={brandKit.lockedFields?.logo === true} value={brandKit[key] || ''} onChange={(e) => updateBrandKitField(key, e.target.value)} placeholder="https://…" className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50" />
                 </div>
               ))}
               {([
@@ -1420,16 +1504,16 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               ] as const).map(([key, label]) => (
                 <div key={key}>
                   <label className="block text-xs font-medium text-body mb-1.5">{label}</label>
-                  <div className="flex gap-2"><input disabled={brandKit.lockedFields?.colors === true} type="color" value={brandKit[key]} onChange={(e) => updateBrandKitField(key, e.target.value)} className="h-9 w-10 rounded border border-line bg-canvas disabled:opacity-50" /><input disabled={brandKit.lockedFields?.colors === true} value={brandKit[key]} onChange={(e) => updateBrandKitField(key, e.target.value)} className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50" /></div>
+                  <div className="flex gap-2"><input aria-label={`${label} color picker`} disabled={brandKit.lockedFields?.colors === true} type="color" value={brandKit[key]} onChange={(e) => updateBrandKitField(key, e.target.value)} className="h-9 w-10 rounded border border-line bg-canvas disabled:opacity-50" /><input aria-label={`${label} value`} disabled={brandKit.lockedFields?.colors === true} value={brandKit[key]} onChange={(e) => updateBrandKitField(key, e.target.value)} className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50" /></div>
                 </div>
               ))}
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Latin font</label>
-                <select disabled={brandKit.lockedFields?.fonts === true} value={brandKit.latinFont} onChange={(e) => updateBrandKitField('latinFont', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"><option>Inter, ui-sans-serif, system-ui, sans-serif</option><option>Plus Jakarta Sans, ui-sans-serif, system-ui, sans-serif</option><option>DM Sans, ui-sans-serif, system-ui, sans-serif</option><option>Syne, Inter, ui-sans-serif, sans-serif</option></select>
+                <select aria-label="Latin font" disabled={brandKit.lockedFields?.fonts === true} value={brandKit.latinFont} onChange={(e) => updateBrandKitField('latinFont', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"><option>Inter, ui-sans-serif, system-ui, sans-serif</option><option>Plus Jakarta Sans, ui-sans-serif, system-ui, sans-serif</option><option>DM Sans, ui-sans-serif, system-ui, sans-serif</option><option>Syne, Inter, ui-sans-serif, sans-serif</option></select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-body mb-1.5">Arabic font</label>
-                <select disabled={brandKit.lockedFields?.fonts === true} value={brandKit.arabicFont} onChange={(e) => updateBrandKitField('arabicFont', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"><option>Noto Kufi Arabic, Tahoma, sans-serif</option><option>Tajawal, Tahoma, sans-serif</option><option>IBM Plex Sans Arabic, Tahoma, sans-serif</option></select>
+                <select aria-label="Arabic font" disabled={brandKit.lockedFields?.fonts === true} value={brandKit.arabicFont} onChange={(e) => updateBrandKitField('arabicFont', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"><option>Noto Kufi Arabic, Tahoma, sans-serif</option><option>Tajawal, Tahoma, sans-serif</option><option>IBM Plex Sans Arabic, Tahoma, sans-serif</option></select>
               </div>
               <div><label className="block text-xs font-medium text-body mb-1.5">Button style</label><select value={brandKit.buttonStyle} onChange={(e) => updateBrandKitField('buttonStyle', e.target.value as BrandKit['buttonStyle'])} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"><option value="filled">Filled</option><option value="outline">Outline</option><option value="soft">Soft</option><option value="pill">Pill</option></select></div>
               <div><label className="block text-xs font-medium text-body mb-1.5">Image style</label><select value={brandKit.imageStyle} onChange={(e) => updateBrandKitField('imageStyle', e.target.value as BrandKit['imageStyle'])} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"><option value="rounded">Rounded</option><option value="full-bleed">Full bleed</option><option value="polaroid">Polaroid</option></select></div>
@@ -1443,7 +1527,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               </div>
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="text-[11px] font-medium text-body">Collaborator editing mode
-                  <select value={brandKit.editingMode || 'full'} onChange={(e) => updateBrandKitField('editingMode', e.target.value as BrandKit['editingMode'])} className="mt-1.5 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-ink focus:outline-none">
+                  <select aria-label="Collaborator editing mode" value={brandKit.editingMode || 'full'} onChange={(e) => updateBrandKitField('editingMode', e.target.value as BrandKit['editingMode'])} className="mt-1.5 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-ink focus:outline-none">
                     <option value="full">Full theme editing</option>
                     <option value="content-only">Content-only editing</option>
                     <option value="selected-overrides">Selected theme overrides</option>
@@ -1742,7 +1826,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-body mb-1.5">Content language</label>
-                  <select value={standardTheme.language || 'en'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, language: e.target.value as 'en' | 'ar' | 'auto' }))} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                  <select aria-label="Content language" value={standardTheme.language || 'en'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, language: e.target.value as 'en' | 'ar' | 'auto' }))} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                     <option value="en">English</option>
                     <option value="ar">Arabic</option>
                     <option value="auto">Auto / future locale detection</option>
@@ -1750,7 +1834,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-body mb-1.5">Text direction</label>
-                  <select value={standardTheme.direction || 'ltr'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, direction: e.target.value as 'ltr' | 'rtl' | 'auto' }))} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                  <select aria-label="Text direction" value={standardTheme.direction || 'ltr'} onChange={(e) => updateStandardTheme(prev => ({ ...prev, direction: e.target.value as 'ltr' | 'rtl' | 'auto' }))} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                     <option value="ltr">Left-to-right</option>
                     <option value="rtl">Right-to-left</option>
                     <option value="auto">Automatic</option>
@@ -1767,13 +1851,13 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-medium text-body mb-1.5">Primary visitor goal</label>
-                  <select value={standardTheme.conversion?.goal || 'contact'} onChange={(e) => handleUpdateConversion('goal', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                  <select aria-label="Primary visitor goal" value={standardTheme.conversion?.goal || 'contact'} onChange={(e) => handleUpdateConversion('goal', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                     <option value="contact">Contact me</option><option value="book">Book an appointment</option><option value="buy">Buy a product</option><option value="portfolio">View my work</option><option value="newsletter">Join my newsletter</option><option value="whatsapp">Visit WhatsApp</option><option value="download">Download something</option><option value="social">Follow social channels</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-medium text-body mb-1.5">CTA placement</label>
-                  <select value={standardTheme.layout?.ctaPosition || 'priority-order'} onChange={(e) => handleUpdateLayout('ctaPosition', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"><option value="first">First after header</option><option value="after-header">After profile header</option><option value="priority-order">Use block priorities</option></select>
+                  <select aria-label="CTA placement" value={standardTheme.layout?.ctaPosition || 'priority-order'} onChange={(e) => handleUpdateLayout('ctaPosition', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"><option value="first">First after header</option><option value="after-header">After profile header</option><option value="priority-order">Use block priorities</option></select>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2231,17 +2315,24 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                         Compare
                       </button>
                       <button
-                        onClick={() => {
-                          if (window.confirm(`Restore only the visual theme from version ${snap.version}? Your profile content and blocks will stay unchanged.`)) rollbackToSnapshot(snap.snapshotId);
-                        }}
+                        onClick={() => requestConfirmation({
+                          title: `Restore theme v${snap.version}?`,
+                          message: 'Only the visual theme will be restored. Your profile content and blocks will stay unchanged.',
+                          confirmLabel: 'Restore theme',
+                          onConfirm: () => rollbackToSnapshot(snap.snapshotId)
+                        })}
                         className="px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 text-ink-strong text-xs font-medium transition-colors cursor-pointer"
                       >
                         Restore theme
                       </button>
                       <button
-                        onClick={() => {
-                          if (window.confirm(`Restore version ${snap.version} including profile content and theme? This creates a new safe rollback release.`)) void rollbackToPublishedSnapshot(snap.snapshotId, `Restored published version v${snap.version} from Theme Studio.`);
-                        }}
+                        onClick={() => requestConfirmation({
+                          title: `Restore all from v${snap.version}?`,
+                          message: 'This restores profile content and theme, then creates a new safe rollback release.',
+                          confirmLabel: 'Restore all',
+                          destructive: true,
+                          onConfirm: async () => { await rollbackToPublishedSnapshot(snap.snapshotId, `Restored published version v${snap.version} from Theme Studio.`); }
+                        })}
                         className="px-2.5 py-1 rounded-lg bg-danger/10 text-danger hover:bg-danger/20 text-xs font-medium transition-colors cursor-pointer"
                       >
                         Restore all
@@ -2254,16 +2345,32 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         )}
 
+        {confirmRequest && (
+          <Dialog open={true} onClose={closeConfirmation} labelledBy="theme-confirm-title" describedBy="theme-confirm-message" className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl">
+            <h3 id="theme-confirm-title" className="text-base font-bold text-ink">{confirmRequest.title}</h3>
+            <p id="theme-confirm-message" className="mt-2 text-sm leading-relaxed text-muted">{confirmRequest.message}</p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={closeConfirmation} className="min-h-11 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer">Cancel</button>
+              <button type="button" onClick={() => void confirmAndClose()} className={`min-h-11 rounded-lg px-4 py-2 text-sm font-semibold text-white cursor-pointer ${confirmRequest.destructive ? 'bg-danger hover:bg-danger/90' : 'bg-accent hover:opacity-90'}`}>{confirmRequest.confirmLabel}</button>
+            </div>
+          </Dialog>
+        )}
+
         {/* Save Custom Preset Modal */}
         {showSaveModal && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="save-preset-title">
-            <div className="w-full max-w-sm rounded-2xl bg-surface border border-line p-5 space-y-4 shadow-2xl">
-              <h3 id="save-preset-title" className="text-sm font-bold text-ink">Save Current Theme as Preset</h3>
+            <div ref={saveModalRef} className="w-full max-w-sm rounded-2xl bg-surface border border-line p-5 space-y-4 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <h3 id="save-preset-title" className="text-sm font-bold text-ink">Save Current Theme as Preset</h3>
+                <button type="button" onClick={() => setShowSaveModal(false)} aria-label="Close save preset dialog" className="min-h-11 min-w-11 rounded-lg text-xl leading-none text-muted hover:bg-canvas hover:text-ink cursor-pointer">×</button>
+              </div>
               <p className="text-xs text-muted">
                 Saves the theme, layout reference, brand-kit reference, and block variants. Applying it changes appearance and layout only; it does not replace profile content or blocks.
               </p>
               <form onSubmit={handleSaveCustom} className="space-y-3">
+                <label htmlFor="custom-preset-name" className="sr-only">Preset name</label>
                 <input
+                  id="custom-preset-name"
                   type="text"
                   placeholder="e.g., Midnight Minimalist"
                   value={customPresetName}

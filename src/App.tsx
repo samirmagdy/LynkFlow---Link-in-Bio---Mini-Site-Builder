@@ -10,6 +10,7 @@ import {
   ProfileSuspendedState, 
   ProfileLoadingSkeleton 
 } from './components/public/PublicProfileStates';
+import { publicProfileService } from './services/publicProfileService';
 import type { PublicProfileResolutionResult } from './services/publicProfileService';
 import { contentLifecycleService } from './services/contentLifecycleService';
 import { Profile } from './types';
@@ -64,7 +65,7 @@ const AppContent: React.FC = () => {
   React.useEffect(() => {
     if (currentView === 'public_standalone') {
       setIsResolvingPublic(true);
-      import('./services/publicProfileService').then(({ publicProfileService }) => publicProfileService.resolvePublicProfile(targetHandle, previewTokenParam, customDomainParam, publicDemo))
+      publicProfileService.resolvePublicProfile(targetHandle, previewTokenParam, customDomainParam, publicDemo)
         .then(result => {
           setResolutionResult(result);
           setIsResolvingPublic(false);
