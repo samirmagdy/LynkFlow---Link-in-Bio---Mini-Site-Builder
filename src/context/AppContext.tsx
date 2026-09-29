@@ -36,7 +36,7 @@ import {
 } from '../data/mockData';
 import { SPEC_THEME_PRESETS } from '../data/themePresets';
 import { StandardTheme, PublishedThemeSnapshot } from '../types/themeSchema';
-import { calculateContrastRatio, normalizeTheme, validateThemeAccessibility } from '../utils/themeEngine';
+import { calculateContrastRatio, normalizeTheme, validateThemeAccessibility, toLegacyCompatTheme } from '../utils/themeEngine';
 import { enforceBrandKitThemePolicy } from '../utils/brandKitPermissions';
 import { authService, AuthResponse, PasswordResetResponse } from '../services/authService';
 import { workspaceSyncService, SaveStatus, ConflictState } from '../services/workspaceSyncService';
@@ -1673,7 +1673,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
     updateDraftProfile(prev => ({
       ...prev,
-      standardTheme: previous
+      standardTheme: previous,
+      theme: toLegacyCompatTheme(previous)
     }));
     showToast('Undo theme change');
   };
@@ -1688,7 +1689,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
     updateDraftProfile(prev => ({
       ...prev,
-      standardTheme: next
+      standardTheme: next,
+      theme: toLegacyCompatTheme(next)
     }));
     showToast('Redo theme change');
   };

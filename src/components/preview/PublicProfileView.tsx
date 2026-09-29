@@ -268,7 +268,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   // Background styling behavior per Section 8
   const bgType = standardTheme.background.type;
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const videoFallbackImage = bgType === 'video' && prefersReducedMotion && standardTheme.background.reducedMotionFallback === 'image' && standardTheme.background.posterUrl
+  const videoFallbackImage = bgType === 'video' && prefersReducedMotion && (standardTheme.background.reducedMotionFallback === 'image' || standardTheme.background.reducedMotionFallback === 'poster') && standardTheme.background.posterUrl
     ? `url(${standardTheme.background.posterUrl})`
     : undefined;
   const imageBackground = bgType === 'image' && standardTheme.background.assetUrl

@@ -6,7 +6,7 @@ import { Block, BlockType, BrandKit, Profile } from '../../types';
 import { PERSONA_TEMPLATES, PersonaTemplate, composeStarterSiteTheme } from '../../data/personaTemplates';
 import { PhoneMockup } from '../preview/PhoneMockup';
 import { PublicProfileView } from '../preview/PublicProfileView';
-import { validateThemeAccessibility, validateProfileAccessibility, calculateContrastRatio, normalizeTheme, validateThemeSchema, calculateThemeQualityScore } from '../../utils/themeEngine';
+import { validateThemeAccessibility, validateProfileAccessibility, calculateContrastRatio, normalizeTheme, validateThemeSchema, calculateThemeQualityScore, migrateTheme } from '../../utils/themeEngine';
 import { 
   Palette, 
   Sparkles, 
@@ -368,10 +368,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const importThemeJson = async (file: File) => {
     setThemeImportError(null);
     try {
-      const parsed = JSON.parse(await file.text());
-      const validation = validateThemeSchema(parsed);
+      const raw = JSON.parse(await file.text());
+      const migrated = migrateTheme(raw);
+      const validation = validateThemeSchema(migrated);
       if (!validation.isValid) throw new Error(validation.errors[0]?.message || 'Unsupported theme schema.');
-      updateStandardTheme(() => normalizeTheme({ ...parsed, source: 'imported' }));
+      updateStandardTheme(() => normalizeTheme({ ...migrated, source: 'imported' }));
       setIsMoreActionsOpen(false);
     } catch (error) {
       setThemeImportError(error instanceof Error ? error.message : 'Theme JSON could not be imported.');
@@ -421,16 +422,26 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
 
   // Helpers to update token fields
   const handleUpdateColor = (key: keyof typeof standardTheme.tokens.colors, value: string) => {
-    updateStandardTheme(prev => ({
-      ...prev,
-      tokens: {
-        ...prev.tokens,
-        colors: {
-          ...prev.tokens.colors,
-          [key]: value
+    updateStandardTheme(prev => {
+      const colors = { ...prev.tokens.colors, [key]: value };
+      if (key === 'accent') {
+        const whiteContrast = calculateContrastRatio('#FFFFFF', value);
+        const darkContrast = calculateContrastRatio('#000000', value);
+        const bestText = darkContrast > whiteContrast ? '#09090B' : '#FFFFFF';
+        // Auto-synchronize text contrast if existing accentText fails 4.5:1
+        if (calculateContrastRatio(colors.accentText, value) < 4.5) {
+          colors.accentText = bestText;
+          colors.ctaText = bestText;
         }
       }
-    }));
+      return {
+        ...prev,
+        tokens: {
+          ...prev.tokens,
+          colors
+        }
+      };
+    });
   };
 
   const generateAccentPalette = () => {

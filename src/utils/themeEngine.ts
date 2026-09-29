@@ -1,4 +1,5 @@
 import { StandardTheme, ThemeValidationResult, ThemeAccessibilityIssue, PublishedThemeSnapshot, ViewportResponsiveRule } from '../types/themeSchema';
+import { ThemeConfig } from '../types';
 
 export const APPROVED_FONT_FAMILIES = [
   'Plus Jakarta Sans', 'Inter', 'Syne', 'DM Sans', 'Manrope', 'Space Grotesk',
@@ -424,6 +425,8 @@ export function normalizeTheme(raw: any): StandardTheme {
   // that migration case so an old `accentColor` cannot create an unusable button.
   const legacyAccentText = calculateContrastRatio('#FFFFFF', accent) >= calculateContrastRatio('#000000', accent) ? '#FFFFFF' : '#000000';
   const accentText = safeColor(colors.accentText || colors.ctaText || raw.buttonTextColor, legacyAccentText);
+  const surfaceBase = safeColor(colors.surfaceBase, panelBg);
+  const surfaceRaised = safeColor(colors.surfaceRaised, panelBg);
   const border = safeColor(colors.border || colors.borderSubtle || raw.cardBorder, '#30394D');
   const focusRing = safeColor(colors.focusRing, '#A5B4FC');
   const surfaceMuted = safeColor(colors.surfaceMuted, pageBg);
@@ -484,8 +487,8 @@ export function normalizeTheme(raw: any): StandardTheme {
         cardTextColor: primaryText,
         cardSubtitleColor: secondaryText,
         cardBorder: border,
-        surfaceBase: panelBg,
-        surfaceRaised: panelBg,
+        surfaceBase,
+        surfaceRaised,
         surfaceMuted,
         textPrimary: primaryText,
         textSecondary: secondaryText,
@@ -718,6 +721,36 @@ export function upgradeTheme(rawTheme: unknown, fromVersion: number, toVersion: 
 }
 
 /**
+ * Derives a legacy ThemeConfig representation from a StandardTheme
+ * ensuring backwards compatibility across undo/redo and legacy renderers.
+ */
+export function toLegacyCompatTheme(theme: StandardTheme): ThemeConfig {
+  const norm = normalizeTheme(theme);
+  return {
+    id: norm.id,
+    name: norm.name,
+    backgroundType: norm.background.type === 'gradient' ? 'gradient' : 'solid',
+    bgColor: norm.tokens.colors.pageBackground,
+    bgGradient: norm.background.gradientStops,
+    textColor: norm.tokens.colors.primaryText,
+    subtitleColor: norm.tokens.colors.secondaryText,
+    cardBg: norm.tokens.colors.panelBackground,
+    cardBorder: norm.tokens.colors.border,
+    cardTextColor: norm.tokens.colors.primaryText,
+    cardSubtitleColor: norm.tokens.colors.secondaryText,
+    cardShadow: norm.blockDefaults?.link?.shadow || 'sm',
+    cardRadius: norm.tokens.shape.buttonRadius > 20 ? 'full' : norm.tokens.shape.buttonRadius > 10 ? 'md' : 'sm',
+    cardStyle: norm.blockDefaults?.link?.variant === 'glass' ? 'glass' : norm.blockDefaults?.link?.variant === 'outline' ? 'outline' : 'solid',
+    fontDisplay: norm.tokens.typography.displayFamily,
+    fontBody: norm.tokens.typography.bodyFamily,
+    buttonHoverAnimation: (norm.tokens.motion.hoverEffect as any) || 'lift',
+    accentColor: norm.tokens.colors.accent,
+    animeEntrancePreset: (norm as any).animeEntrancePreset,
+    animeMicroInteractions: (norm as any).animeMicroInteractions
+  };
+}
+
+/**
  * Section 6.3 CSS Generation Strategy
  * Converts normalized theme into CSS custom properties dictionary at profile-root boundary
  */
@@ -855,4 +888,62 @@ export function resolveThemeTokens(
     elevation: mergedElevation,
     motion: mergedMotion
   };
+}
+
+/**
+ * Resolves full StandardTheme inheritance hierarchy:
+ * Platform Defaults -> Preset -> Profile Customizations -> Block/Local Overrides
+ */
+export function resolveStandardTheme(
+  presetTheme?: Partial<StandardTheme>,
+  profileCustomizations?: Partial<StandardTheme>,
+  blockOverrides?: Partial<StandardTheme>
+): StandardTheme {
+  const base = normalizeTheme({});
+
+  const tokens = resolveThemeTokens(
+    presetTheme?.tokens,
+    profileCustomizations?.tokens,
+    blockOverrides?.tokens
+  );
+
+  const background = {
+    ...base.background,
+    ...(presetTheme?.background || {}),
+    ...(profileCustomizations?.background || {}),
+    ...(blockOverrides?.background || {})
+  };
+
+  const effects = {
+    ...base.effects,
+    ...(presetTheme?.effects || {}),
+    ...(profileCustomizations?.effects || {}),
+    ...(blockOverrides?.effects || {})
+  };
+
+  const componentVariants = {
+    ...(base.componentVariants || { link: 'solid', image: 'rounded', socialIcons: 'line', form: 'card' }),
+    ...(presetTheme?.componentVariants || {}),
+    ...(profileCustomizations?.componentVariants || {}),
+    ...(blockOverrides?.componentVariants || {})
+  };
+
+  const blockDefaults = {
+    ...base.blockDefaults,
+    ...(presetTheme?.blockDefaults || {}),
+    ...(profileCustomizations?.blockDefaults || {}),
+    ...(blockOverrides?.blockDefaults || {})
+  };
+
+  return normalizeTheme({
+    ...base,
+    ...(presetTheme || {}),
+    ...(profileCustomizations || {}),
+    ...(blockOverrides || {}),
+    tokens,
+    background,
+    effects,
+    componentVariants,
+    blockDefaults
+  });
 }
