@@ -849,9 +849,9 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    <div className="min-w-0 min-h-0 flex-1 flex flex-col min-[900px]:flex-row overflow-hidden">
       {/* Controls Column */}
-      <div className="order-2 lg:order-1 w-full lg:w-[58%] xl:w-[60%] flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
+      <div className="order-2 min-[900px]:order-1 min-w-0 w-full min-[900px]:w-[58%] xl:w-[60%] flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
         
         {/* Header & Undo/Redo/Save Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-line">
@@ -2405,7 +2405,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           onClose={() => setIsPublishOpen(false)}
         />
 
-        <div className="sticky bottom-2 z-30 flex items-center justify-between gap-3 rounded-2xl border border-line-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur lg:hidden">
+        <div className="sticky bottom-2 z-30 flex items-center justify-between gap-3 rounded-2xl border border-line-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur min-[900px]:hidden">
           <span className="min-w-0 truncate text-[11px] font-medium text-muted" role="status">
             {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed — retry above' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? `Draft ready to publish · ${savedRecency.toLowerCase()}` : savedRecency}
           </span>
@@ -2415,7 +2415,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       </div>
 
       {/* Right Column: Live Phone Mockup Preview */}
-      <div className="order-1 lg:order-2 flex w-full lg:w-[42%] xl:w-[40%] h-[520px] lg:h-full shrink-0 border-b lg:border-b-0 lg:border-l border-line bg-canvas/40 p-4 xl:p-6 items-center justify-center overflow-hidden">
+      <div className="order-1 min-[900px]:order-2 flex min-w-0 w-full min-[900px]:w-[42%] xl:w-[40%] h-[min(58vh,520px)] min-[900px]:h-full shrink-0 border-b min-[900px]:border-b-0 min-[900px]:border-l border-line bg-canvas/40 p-3 sm:p-4 xl:p-6 items-center justify-center overflow-hidden">
         {showComparison ? (
           <div className="flex h-full w-full min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2">

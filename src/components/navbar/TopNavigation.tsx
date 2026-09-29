@@ -73,7 +73,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-line bg-canvas/90 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto min-w-0 px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
         {/* Zone 1: Single text element wordmark */}
         <button
           onClick={(e) => {
@@ -82,7 +82,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
           }}
           onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
           onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-          className="touch-target relative overflow-hidden px-2 py-1 rounded-lg text-lg font-bold tracking-tight text-ink font-['Syne'] hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+          className="touch-target relative shrink-0 overflow-hidden px-2 py-1 rounded-lg text-lg font-bold tracking-tight text-ink font-['Syne'] hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
         >
           LynkFlow
         </button>
@@ -90,7 +90,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
         {/* Zone 2: Clean navigation links with anchor preservation */}
         <nav 
           aria-label="Main Navigation" 
-          className="hidden md:flex items-center gap-6 text-xs font-medium text-muted"
+            className="hidden md:flex min-w-0 flex-1 items-center justify-center gap-3 xl:gap-6 text-xs font-medium text-muted"
         >
           <a
             href="#overview"
@@ -136,7 +136,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
         </nav>
 
         {/* Zone 3: Primary Actions (MKT-001 & Flow 3) */}
-        <div className="hidden sm:flex items-center gap-2.5">
+        <div className="hidden sm:flex shrink-0 items-center gap-1.5 xl:gap-2.5">
           <ThemeToggle className="shrink-0" />
           {user.id !== 'usr-guest' ? (
             <div className="flex items-center gap-2">
@@ -174,7 +174,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
             onClick={handleOpenLiveDemo}
             onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
             onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-            className="relative overflow-hidden px-3 py-1.5 text-xs font-medium text-body hover:text-ink transition-colors border border-line hover:border-line-strong rounded-lg whitespace-nowrap hidden lg:inline-flex items-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            className="relative hidden xl:inline-flex overflow-hidden px-3 py-1.5 text-xs font-medium text-body hover:text-ink transition-colors border border-line hover:border-line-strong rounded-lg whitespace-nowrap items-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
           >
             <span>Live Demo</span>
             <span className="text-[10px] text-subtle font-mono">@{activeProfile.username}</span>

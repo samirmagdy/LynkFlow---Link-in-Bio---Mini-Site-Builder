@@ -148,7 +148,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       </aside>
 
       {/* Main Workspace Body */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-canvas">
+      <main className="min-w-0 flex-1 flex flex-col h-full overflow-hidden bg-canvas">
         <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-subtle">Loading workspace…</div>}>
           {currentView === 'editor' && (
             <EditorView
