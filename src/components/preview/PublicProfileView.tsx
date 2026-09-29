@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Profile, Block, FormBlockPayload, FolderBlockPayload, FaqBlockPayload, LinkBlockPayload, MediaBlockPayload, GalleryBlockPayload, CarouselBlockPayload, ProductBlockPayload, TextBlockPayload, DividerBlockPayload, TestimonialBlockPayload, FileBlockPayload, ContactBlockPayload } from '../../types';
+import { Profile, ThemeConfig, Block, FormBlockPayload, FolderBlockPayload, FaqBlockPayload, LinkBlockPayload, MediaBlockPayload, GalleryBlockPayload, CarouselBlockPayload, ProductBlockPayload, TextBlockPayload, DividerBlockPayload, TestimonialBlockPayload, FileBlockPayload, ContactBlockPayload } from '../../types';
 import { Avatar } from '../common/Avatar';
 import { 
   ExternalLink, 
@@ -259,7 +259,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const standardTheme = renderModel.theme as StandardTheme;
   const cssVars = compileThemeToCssVariables(standardTheme);
   const colors = standardTheme.tokens.colors;
-  const legacyTheme = profile.theme;
+  // Older cloud profiles may only have `standardTheme` (or no legacy theme
+  // object at all). The renderer still supports the legacy animation preset,
+  // but it must never dereference a missing legacy payload.
+  const legacyTheme: Partial<ThemeConfig> = profile.theme || {};
   const currentTab = renderModel.currentTab as typeof profile.tabs[number] | undefined;
 
   // Background styling behavior per Section 8
