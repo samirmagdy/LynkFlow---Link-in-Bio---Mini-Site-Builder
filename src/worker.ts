@@ -1518,7 +1518,13 @@ async function getSupabaseUser(request: Request, env: Env): Promise<{ id: string
   if (!response.ok) return apiError('UNAUTHORIZED', 'Authentication expired. Please sign in again.', 401);
   const user = await response.json() as { id?: string; email?: string; email_confirmed_at?: string | null; user_metadata?: { email_verified?: boolean } };
   if (!user.id || !user.email) return apiError('UNAUTHORIZED', 'Authenticated user is incomplete.', 401);
-  return { id: user.id, email: user.email, emailConfirmed: Boolean(user.email_confirmed_at || user.user_metadata?.email_verified === true) };
+  let workspaceId = user.id;
+  if (env.SUPABASE_SERVICE_ROLE_KEY) {
+    const membershipResponse = await supabaseRequest(`workspace_members?user_id=eq.${encodeURIComponent(user.id)}&status=in.(pending,active)&select=workspace_id&order=created_at.asc&limit=1`, env);
+    const memberships = await membershipResponse.json() as Array<{ workspace_id?: string }>;
+    if (memberships[0]?.workspace_id) workspaceId = memberships[0].workspace_id;
+  }
+  return { id: workspaceId, email: user.email, emailConfirmed: Boolean(user.email_confirmed_at || user.user_metadata?.email_verified === true) };
 }
 
 async function issueApiKey(request: Request, env: Env): Promise<Response> {
@@ -1641,12 +1647,18 @@ async function inviteWorkspaceMember(request: Request, env: Env): Promise<Respon
     const inviteBody = await inviteResponse.json().catch(() => ({})) as { msg?: string; error_description?: string };
     return apiError('INVITE_DELIVERY_FAILED', inviteBody.error_description || inviteBody.msg || 'Supabase could not send the invitation email.', 503);
   }
+  const invitedUser = await inviteResponse.json().catch(() => ({})) as { id?: string };
 
   const member = {
     id: `mem-${crypto.randomUUID()}`, email, name, role, assignedProfileIds,
     addedAt: new Date().toISOString(), addedBy: user.email,
     pendingInviteExpiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
   };
+  const memberRecord = await supabaseRequest('workspace_members', env, {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id: member.id, workspace_id: user.id, user_id: invitedUser.id || null, email, name, role, assigned_profile_ids: assignedProfileIds, status: 'pending', added_by: user.id, invite_expires_at: member.pendingInviteExpiresAt, created_at: member.addedAt, updated_at: member.addedAt })
+  });
+  if (!memberRecord.ok) return apiError('PERSISTENCE_ERROR', 'Invitation was sent, but the membership record could not be saved. Retry member setup.', 503);
   const workspaceUpdate = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}`, env, {
     method: 'PATCH', headers: { prefer: 'return=minimal' },
     body: JSON.stringify({ settings: { ...settings, members: [...members, member] }, updated_at: new Date().toISOString() })

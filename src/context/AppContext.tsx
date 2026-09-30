@@ -585,11 +585,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   useEffect(() => {
     if (lightweight) return;
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void enqueueCloudWrite(
       () => Promise.all(profiles.map(profile => saveCloudProfile(profile, user.id))).then(() => undefined),
       'Supabase profile save failed'
     ).catch(() => undefined);
-  }, [profiles, user.id]);
+  }, [profiles, user.id, workspace.id]);
 
   useLocalStoragePersistence(STORAGE_KEYS.ACTIVE_PROFILE_ID, activeProfileId, !lightweight, 'Active profile');
   useLocalStoragePersistence(STORAGE_KEYS.WORKSPACE, workspace, !lightweight, 'Workspace');
@@ -597,30 +598,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   useEffect(() => {
     if (lightweight) return;
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void enqueueCloudWrite(() => saveCloudWorkspace(workspace), 'Supabase workspace save failed').catch(() => undefined);
-  }, [workspace, user.id]);
+  }, [workspace, user.id, workspace.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void enqueueCloudWrite(() => saveCloudAnalytics(analytics, user.id), 'Supabase analytics save failed').catch(() => undefined);
-  }, [analytics, user.id]);
+  }, [analytics, user.id, workspace.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void enqueueCloudWrite(() => saveCloudSubmissions(submissions, user.id), 'Supabase submissions save failed').catch(() => undefined);
     const subscribers = profiles.flatMap(profile => formSubmissionService.getSubscribers(profile.id));
     void enqueueCloudWrite(() => saveCloudSubscribers(subscribers, user.id), 'Supabase subscribers save failed').catch(() => undefined);
-  }, [submissions, profiles, user.id]);
+  }, [submissions, profiles, user.id, workspace.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void enqueueCloudWrite(() => saveCloudAuditLogs(auditLogs, user.id), 'Supabase audit save failed').catch(() => undefined);
-  }, [auditLogs, user.id]);
+  }, [auditLogs, user.id, workspace.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void enqueueCloudWrite(() => saveCloudReports(abuseReports, user.id), 'Supabase reports save failed').catch(() => undefined);
-  }, [abuseReports, user.id]);
+  }, [abuseReports, user.id, workspace.id]);
 
   useLocalStoragePersistence(STORAGE_KEYS.ANALYTICS, analytics, !lightweight, 'Analytics');
   useLocalStoragePersistence(STORAGE_KEYS.SUBMISSIONS, submissions, !lightweight, 'Submission');
@@ -1673,9 +1679,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
+    if (user.id !== workspace.id) return;
     void saveCloudApiKeys(apiKeys, user.id).catch(error => reportRecoverableError('Supabase API key save failed', error));
     void saveCloudWebhooks(webhookSubscriptions, user.id).catch(error => reportRecoverableError('Supabase webhook save failed', error));
-  }, [apiKeys, webhookSubscriptions, user.id]);
+  }, [apiKeys, webhookSubscriptions, user.id, workspace.id]);
 
   const refreshApiState = () => {
     setApiKeys(apiKeyService.listKeys(workspace.id));

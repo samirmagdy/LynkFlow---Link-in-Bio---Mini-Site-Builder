@@ -45,7 +45,7 @@ export interface CloudState {
   subscribers: Subscriber[];
 }
 
-function mapUser(user: { id: string; email?: string; email_confirmed_at?: string | null; user_metadata?: Record<string, unknown>; created_at: string }, hasProfiles: boolean): UserAccount {
+function mapUser(user: { id: string; email?: string; email_confirmed_at?: string | null; user_metadata?: Record<string, unknown>; created_at: string }, hasProfiles: boolean, workspaceId: string): UserAccount {
   const name = String(user.user_metadata?.name || user.email?.split('@')[0] || 'Creator');
   return {
     id: user.id,
@@ -56,7 +56,7 @@ function mapUser(user: { id: string; email?: string; email_confirmed_at?: string
     lastLoginAt: new Date().toISOString(),
     onboardingCompleted: hasProfiles || Boolean(user.user_metadata?.onboardingCompleted),
     onboardingStep: hasProfiles || Boolean(user.user_metadata?.onboardingCompleted) ? 'completed' : 'category',
-    workspaceId: user.id,
+    workspaceId,
   };
 }
 
@@ -64,6 +64,16 @@ export async function loadCloudState(): Promise<CloudState | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) return null;
+  const { data: membershipRow, error: membershipError } = await supabase
+    .from('workspace_members')
+    .select('workspace_id,role,assigned_profile_ids,status')
+    .eq('user_id', authData.user.id)
+    .in('status', ['pending', 'active'])
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (membershipError) throw membershipError;
+  const workspaceId = membershipRow?.workspace_id || authData.user.id;
 
   const [
     { data: workspaceData, error: workspaceError },
@@ -81,23 +91,29 @@ export async function loadCloudState(): Promise<CloudState | null> {
     { data: webhookRows, error: webhooksError },
     { data: subscriberRows, error: subscribersError },
   ] = await Promise.all([
-    supabase.from('workspaces').select('id,name,plan,settings,billing_cycle,subscription_status,current_period_start,current_period_end,cancel_at_period_end,trial_ends_at,provider_customer_id,provider_subscription_id').eq('id', authData.user.id).single(),
-    supabase.from('profiles').select('id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id').eq('workspace_id', authData.user.id).order('created_at'),
-    supabase.from('analytics_events').select('*').eq('workspace_id', authData.user.id),
-    supabase.from('form_submissions').select('*').eq('workspace_id', authData.user.id),
-    supabase.from('audit_logs').select('*').eq('workspace_id', authData.user.id).order('occurred_at', { ascending: false }).limit(500),
-    supabase.from('abuse_reports').select('*').eq('workspace_id', authData.user.id),
-    supabase.from('custom_themes').select('*').eq('workspace_id', authData.user.id),
-    supabase.from('brand_kits').select('id,tokens_json,locked_fields_json,updated_at').eq('workspace_id', authData.user.id).order('updated_at', { ascending: false }).limit(1),
-    supabase.from('themes').select('id,definition_json,updated_at').eq('workspace_id', authData.user.id).eq('is_active', true),
-    supabase.from('layouts').select('id,definition_json,updated_at').eq('workspace_id', authData.user.id).eq('is_active', true),
-    supabase.from('theme_versions').select('id,profile_id,theme_id,layout_id,overrides_json,status,created_at').eq('workspace_id', authData.user.id).in('status', ['draft', 'published']).order('created_at', { ascending: false }),
-    supabase.from('api_keys').select('*').eq('workspace_id', authData.user.id),
-    supabase.from('webhook_subscriptions').select('id,workspace_id,url,description,topics,signing_secret_prefix,status,created_at,created_by,last_delivery_at,last_delivery_status,consecutive_failures').eq('workspace_id', authData.user.id),
-    supabase.from('subscribers').select('*').eq('workspace_id', authData.user.id),
+    supabase.from('workspaces').select('id,name,plan,settings,billing_cycle,subscription_status,current_period_start,current_period_end,cancel_at_period_end,trial_ends_at,provider_customer_id,provider_subscription_id').eq('id', workspaceId).single(),
+    supabase.from('profiles').select('id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id').eq('workspace_id', workspaceId).order('created_at'),
+    supabase.from('analytics_events').select('*').eq('workspace_id', workspaceId),
+    supabase.from('form_submissions').select('*').eq('workspace_id', workspaceId),
+    supabase.from('audit_logs').select('*').eq('workspace_id', workspaceId).order('occurred_at', { ascending: false }).limit(500),
+    supabase.from('abuse_reports').select('*').eq('workspace_id', workspaceId),
+    supabase.from('custom_themes').select('*').eq('workspace_id', workspaceId),
+    supabase.from('brand_kits').select('id,tokens_json,locked_fields_json,updated_at').eq('workspace_id', workspaceId).order('updated_at', { ascending: false }).limit(1),
+    supabase.from('themes').select('id,definition_json,updated_at').eq('workspace_id', workspaceId).eq('is_active', true),
+    supabase.from('layouts').select('id,definition_json,updated_at').eq('workspace_id', workspaceId).eq('is_active', true),
+    supabase.from('theme_versions').select('id,profile_id,theme_id,layout_id,overrides_json,status,created_at').eq('workspace_id', workspaceId).in('status', ['draft', 'published']).order('created_at', { ascending: false }),
+    supabase.from('api_keys').select('*').eq('workspace_id', workspaceId),
+    supabase.from('webhook_subscriptions').select('id,workspace_id,url,description,topics,signing_secret_prefix,status,created_at,created_by,last_delivery_at,last_delivery_status,consecutive_failures').eq('workspace_id', workspaceId),
+    supabase.from('subscribers').select('*').eq('workspace_id', workspaceId),
   ]);
   const firstError = workspaceError || profileError || analyticsError || submissionsError || auditError || reportsError || themesError || brandKitError || designThemesError || layoutsError || themeVersionsError || apiKeysError || webhooksError || subscribersError;
   if (firstError || !workspaceData) throw firstError;
+  const assignedProfileIds = Array.isArray(membershipRow?.assigned_profile_ids)
+    ? membershipRow.assigned_profile_ids.filter((id): id is string => typeof id === 'string')
+    : [];
+  const visibleProfileRows = membershipRow
+    ? (profileRows || []).filter(row => assignedProfileIds.includes(row.id))
+    : (profileRows || []);
 
   const cloudWorkspace = workspaceData as CloudWorkspaceRow;
   const workspace: Workspace = {
@@ -127,7 +143,7 @@ export async function loadCloudState(): Promise<CloudState | null> {
   for (const version of themeVersionRows || []) {
     if (!latestDesignVersionByProfile.has(version.profile_id)) latestDesignVersionByProfile.set(version.profile_id, version);
   }
-  const profiles = (profileRows as CloudProfileRow[]).map(row => {
+  const profiles = (visibleProfileRows as CloudProfileRow[]).map(row => {
     // The normalized identity lives in the Supabase row. Older records may
     // not have copied id/username into the JSON data payload, so always merge
     // the row values back before the profile enters React state and autosave.
@@ -165,7 +181,7 @@ export async function loadCloudState(): Promise<CloudState | null> {
     return { ...base, starterSiteId: row.active_starter_site_id || base.starterSiteId, standardTheme: resolvedTheme };
   });
   return {
-    user: mapUser(authData.user, (profileRows || []).length > 0),
+    user: mapUser(authData.user, visibleProfileRows.length > 0, workspaceId),
     workspace,
     profiles,
     analytics: (analyticsRows || []).map(row => ({
