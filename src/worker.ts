@@ -1387,6 +1387,7 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
   const mutableProfileFields = new Set(['username', 'displayName', 'bio', 'avatarUrl', 'category', 'socialLinks', 'seo', 'qrConfig', 'directLinkMode', 'socialPosition']);
   const invalidFields = Object.keys(input.data).filter(field => !mutableProfileFields.has(field) && field !== 'theme' && field !== 'standardTheme');
   if (invalidFields.length) return apiError('VALIDATION_ERROR', `Fields cannot be changed through this endpoint: ${invalidFields.join(', ')}.`, 422);
+  if (input.data.username !== undefined && typeof input.data.username !== 'string') return apiError('VALIDATION_ERROR', 'username must be a string.', 422);
   if (typeof input.data.username === 'string' && !/^[a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?$/i.test(input.data.username.trim())) return apiError('VALIDATION_ERROR', 'Username must use 3-30 letters, numbers, underscores, or hyphens.', 422);
   for (const field of ['displayName', 'bio', 'category', 'avatarUrl'] as const) {
     if (field in input.data && typeof input.data[field] !== 'string') return apiError('VALIDATION_ERROR', `${field} must be a string.`, 422);
@@ -1395,6 +1396,12 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
   const requestHash = await sha256(JSON.stringify(input.data));
   const replay = await idempotentReplay(env, auth, request, requestHash);
   if (replay) return replay;
+  if (typeof input.data.username === 'string') {
+    const normalizedUsername = input.data.username.trim().toLowerCase();
+    const duplicateResponse = await supabaseRequest(`profiles?username=eq.${encodeURIComponent(normalizedUsername)}&id=neq.${encodeURIComponent(profileId)}&select=id`, env);
+    if (((await duplicateResponse.json()) as unknown[]).length) return apiError('CONFLICT', 'That username is already in use.', 409);
+    input.data.username = normalizedUsername;
+  }
   const nextData = { ...visible[0].data, ...input.data };
   if (Object.prototype.hasOwnProperty.call(input.data, 'theme') || Object.prototype.hasOwnProperty.call(input.data, 'standardTheme')) {
     const currentTheme = (visible[0].data.standardTheme || normalizeTheme(visible[0].data.theme || {})) as unknown as Record<string, unknown>;
@@ -1408,7 +1415,7 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
     nextData.theme = normalizedTheme;
   }
   await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, {
-    method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() })
+    method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ ...(typeof input.data.username === 'string' ? { username: input.data.username } : {}), data: nextData, updated_at: new Date().toISOString() })
   });
   const result = { data: profileApiResource({ ...visible[0], data: nextData }), requestId: crypto.randomUUID() };
   await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
@@ -1452,6 +1459,7 @@ async function issueApiKey(request: Request, env: Env): Promise<Response> {
   const name = input.name?.trim();
   const scopes = Array.isArray(input.scopes) ? input.scopes.filter(scope => typeof scope === 'string') : [];
   if (!name || !scopes.length) return apiError('VALIDATION_ERROR', 'Key name and at least one scope are required.', 422);
+  if (input.expiresAt !== undefined && (!input.expiresAt || Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) <= Date.now())) return apiError('VALIDATION_ERROR', 'expiresAt must be a valid future timestamp.', 422);
   if (scopes.some(scope => !ALL_API_SCOPES.includes(scope as typeof ALL_API_SCOPES[number]))) return apiError('VALIDATION_ERROR', 'One or more API scopes are invalid.', 422);
   const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=id,plan`, env);
   const workspaces = await workspaceResponse.json() as Array<{ id: string; plan: string }>;
@@ -1497,9 +1505,10 @@ async function rotateApiKey(request: Request, env: Env, keyId: string): Promise<
 async function revokeApiKey(request: Request, env: Env, keyId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
-  await supabaseRequest(`api_keys?id=eq.${encodeURIComponent(keyId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.active`, env, {
-    method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'revoked', revoked_at: new Date().toISOString() })
+  const revokeResponse = await supabaseRequest(`api_keys?id=eq.${encodeURIComponent(keyId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.active&select=id`, env, {
+    method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: 'revoked', revoked_at: new Date().toISOString() })
   });
+  if (!((await revokeResponse.json()) as unknown[]).length) return apiError('NOT_FOUND', 'Active API key not found.', 404);
   return json({ success: true });
 }
 
