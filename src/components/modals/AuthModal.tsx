@@ -455,7 +455,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <div className="relative z-10 mt-6 md:mt-auto">
             <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-300/80">One link. More momentum.</p>
-            <h4 className="mt-2 max-w-xs font-['Syne'] text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
+            <h4 className="mt-2 max-w-xs font-display text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
               Your best work deserves a better home.
             </h4>
             <p className="mt-3 max-w-xs text-xs leading-relaxed text-white/60">

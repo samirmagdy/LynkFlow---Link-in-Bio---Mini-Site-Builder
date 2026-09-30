@@ -235,7 +235,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-canvas text-ink selection:bg-indigo-500/30 selection:text-accent-soft">
+    <div className="app-shell min-h-screen flex flex-col bg-canvas text-ink selection:bg-indigo-500/30 selection:text-accent-soft">
       <TopNavigation onOpenAuth={handleOpenAuth} />
 
       <main className="flex-1 flex flex-col">

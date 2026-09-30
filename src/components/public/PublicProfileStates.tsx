@@ -40,7 +40,7 @@ export const ProfileNotFoundState: React.FC<PublicProfileStateProps> = ({ userna
           404 · Page Not Found
         </span>
 
-        <h1 className="text-2xl font-bold tracking-tight mb-2 text-ink font-['Syne']">
+        <h1 className="text-2xl font-bold tracking-tight mb-2 text-ink font-display">
           Profile Unavailable
         </h1>
 
@@ -104,7 +104,7 @@ export const ProfileUnpublishedState: React.FC<PublicProfileStateProps> = ({ use
           Private · Draft Profile
         </span>
 
-        <h1 className="text-2xl font-bold tracking-tight mb-2 text-ink font-['Syne']">
+        <h1 className="text-2xl font-bold tracking-tight mb-2 text-ink font-display">
           Profile Not Published
         </h1>
 
@@ -186,7 +186,7 @@ export const ProfileSuspendedState: React.FC<PublicProfileStateProps> = ({ usern
           Suspended Profile
         </span>
 
-        <h1 className="text-2xl font-bold tracking-tight mb-2 text-ink font-['Syne']">
+        <h1 className="text-2xl font-bold tracking-tight mb-2 text-ink font-display">
           Profile Suspended
         </h1>
 

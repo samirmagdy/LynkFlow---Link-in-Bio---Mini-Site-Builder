@@ -72,7 +72,7 @@ export const OnboardingModal: React.FC = () => {
               <Sparkles className="w-3 h-3" />
               <span>Step {step} of 3</span>
             </div>
-            <h2 id="onboarding-modal-title" className="text-xl font-extrabold text-ink font-['Syne'] tracking-tight">
+            <h2 id="onboarding-modal-title" className="text-xl font-extrabold text-ink font-display tracking-tight">
               {step === 1 && 'What is your primary goal?'}
               {step === 2 && 'Claim your handle & profile'}
               {step === 3 && 'Choose your starting visual system'}

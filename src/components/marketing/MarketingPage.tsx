@@ -247,7 +247,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       >
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="featured-anime-header text-center max-w-2xl mx-auto space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-bold text-ink font-display tracking-tight">
               Crafted for creators, studios & modern brands.
             </h2>
             <p className="text-sm sm:text-base leading-relaxed text-muted">
@@ -349,7 +349,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
         className="py-20 px-4 sm:px-6 max-w-7xl mx-auto space-y-12 focus:outline-none"
       >
         <div className="feature-anime-header text-center max-w-2xl mx-auto space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink font-display tracking-tight">
             Engineered for conversion, not just navigation.
           </h2>
           <p className="text-sm sm:text-base leading-relaxed text-muted">
@@ -460,7 +460,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       >
         <div className="max-w-6xl mx-auto space-y-12">
           <div className="comparison-anime-header text-center max-w-2xl mx-auto space-y-3">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-['Syne'] tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-display tracking-tight">
               Simple, transparent pricing for every creator.
             </h2>
             <p className="text-xs sm:text-sm text-muted">
@@ -598,7 +598,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           </div>
           {showComparison && <div className="pt-4 space-y-4">
             <div className="text-center space-y-1">
-              <h3 className="text-xl font-bold text-ink font-['Syne']">Detailed Plan Capability Comparison</h3>
+              <h3 className="text-xl font-bold text-ink font-display">Detailed Plan Capability Comparison</h3>
               <p className="text-xs text-muted">Concrete limits without ambiguous or misleading promises.</p>
             </div>
 
@@ -674,7 +674,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
         className="py-20 px-4 sm:px-6 max-w-4xl mx-auto space-y-8 focus:outline-none"
       >
         <div className="faq-anime-header text-center space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink font-display tracking-tight">
             Frequently Asked Questions
           </h2>
           <p className="text-sm leading-relaxed text-muted">Everything you need to know before publishing.</p>
@@ -738,7 +738,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             <span>Start Building in 60 Seconds</span>
           </div>
 
-          <h2 className="cta-anime-item text-3xl sm:text-5xl font-extrabold text-ink font-['Syne'] tracking-tight">
+          <h2 className="cta-anime-item text-3xl sm:text-5xl font-extrabold text-ink font-display tracking-tight">
             Ready to build your link-in-bio page?
           </h2>
           <p className="cta-anime-item text-sm text-muted max-w-xl mx-auto">
@@ -798,7 +798,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   <Sparkles className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
                   Product notes for creators
                 </div>
-                <h2 className="mt-4 max-w-xl font-['Syne'] text-3xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl">
+                <h2 className="mt-4 max-w-xl font-display text-3xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl">
                   Build less busywork into your next page.
                 </h2>
                 <p className="mt-4 max-w-lg text-sm leading-relaxed text-muted">
@@ -865,7 +865,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="space-y-3">
-              <div className="font-['Syne'] font-bold text-ink text-base">
+              <div className="font-display font-bold text-ink text-base">
                 LynkFlow
               </div>
               <p className="text-subtle leading-relaxed text-sm">

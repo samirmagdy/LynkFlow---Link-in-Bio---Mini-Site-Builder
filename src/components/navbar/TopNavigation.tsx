@@ -83,7 +83,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
           }}
           onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
           onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-          className="touch-target relative shrink-0 overflow-hidden px-2 py-1 rounded-lg text-lg font-bold tracking-tight text-ink font-['Syne'] hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+          className="touch-target relative shrink-0 overflow-hidden px-2 py-1 rounded-lg text-lg font-bold tracking-tight text-ink font-display hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
         >
           LynkFlow
         </button>
