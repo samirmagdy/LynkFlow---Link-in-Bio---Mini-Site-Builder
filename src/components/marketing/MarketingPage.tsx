@@ -11,7 +11,6 @@ import {
   ChevronDown, 
   ChevronUp, 
   Sparkles,
-  Smartphone,
   Flame,
   CheckCircle2
 } from 'lucide-react';
@@ -264,114 +263,11 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     <div className="relative isolate w-full bg-canvas text-ink overflow-x-hidden">
       <LandingMotionBackground />
       {/* Hero Section (MKT-001 & Flow 1/2) */}
-      <section 
-        id="overview"
-        tabIndex={-1}
-        ref={heroContainerRef}
-        className="relative pt-16 pb-20 sm:pt-24 sm:pb-32 px-4 sm:px-6 max-w-7xl mx-auto focus:outline-none"
-      >
-        <div className="text-center max-w-3xl mx-auto space-y-6">
-          {/* Eyebrow Pill */}
-          <div className="anime-hero-item inline-flex items-center gap-2 text-xs text-muted font-medium px-4 py-1.5 rounded-full bg-surface/80 border border-line shadow-sm backdrop-blur-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Branded link-in-bio pages for creators, studios, and brands</span>
-            <span aria-hidden="true" className="text-subtle">·</span>
-            <span>Publish in minutes</span>
-          </div>
-
-          {/* Main Headline */}
-          <h1 className="anime-hero-item text-4xl sm:text-6xl font-extrabold tracking-tight text-ink font-['Syne'] leading-[1.1] text-balance">
-            Build a branded link-in-bio page that turns clicks into clients.
-          </h1>
-
-          {/* Subtitle */}
-          <p className="anime-hero-item text-base sm:text-lg text-muted max-w-2xl mx-auto leading-relaxed">
-            Consolidate links, video reels, client intake forms, and digital downloads in minutes. Fast, beautiful, and measurable.
-          </p>
-
-          {/* Primary CTA Cluster (MKT-001 & Primary Flow 3) */}
-          <div className="anime-hero-item flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-4">
-            <a
-              href="/signup"
-              onClick={(e) => {
-                e.preventDefault();
-                triggerAnimeRipple(e, e.currentTarget, 'rgba(0, 0, 0, 0.25)');
-                triggerSuccessBurst(e.currentTarget);
-                if (onOpenAuth) {
-                  onOpenAuth('create');
-                } else {
-                  setTimeout(() => setCurrentView('editor'), 220);
-                }
-              }}
-              onMouseEnter={(e) => {
-                animateHoverEnter(e.currentTarget);
-                const icon = e.currentTarget.querySelector<HTMLElement>('.hero-arrow-icon');
-                if (icon) animateIconBounce(icon);
-              }}
-              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-              className="touch-target relative overflow-hidden w-full sm:w-auto px-7 py-3 text-sm font-bold text-inverse-text bg-inverse hover:bg-inverse-hover transition-colors rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer group focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
-            >
-              <span>Create your page</span>
-              <ArrowRight className="hero-arrow-icon w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </a>
-
-            <a
-              href="/login"
-              onClick={(e) => {
-                e.preventDefault();
-                onOpenAuth ? onOpenAuth('login') : setCurrentView('editor');
-              }}
-              className="touch-target relative overflow-hidden w-full sm:w-auto px-6 py-3 text-sm font-semibold text-body hover:text-ink bg-surface hover:bg-surface-2 border border-line hover:border-line-strong rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
-            >
-              <span>Log in to Studio</span>
-            </a>
-
-            <a
-              href="#features"
-              onMouseEnter={(e) => {
-                animateHoverEnter(e.currentTarget);
-                const icon = e.currentTarget.querySelector<HTMLElement>('.hero-phone-icon');
-                if (icon) animateIconBounce(icon);
-              }}
-              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-              className="relative overflow-hidden w-full sm:w-auto px-5 py-3 text-sm font-medium text-muted hover:text-ink-strong transition-colors flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
-            >
-              <Smartphone className="hero-phone-icon w-4 h-4 text-subtle" />
-              <span>See product preview</span>
-            </a>
-          </div>
-          <p className="anime-hero-item text-xs text-subtle">Free to start · no credit card required · publish when you’re ready</p>
-
-          <HeroProductStage />
-
-          {/* Product proof row: concrete capabilities instead of unverified metrics. */}
-          <div className="anime-hero-item pt-8 flex flex-wrap items-center justify-center gap-4 text-xs text-muted font-mono">
-            <div 
-              onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
-              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-              className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-emerald-500/40 transition-colors"
-            >
-              <span className="font-bold text-success">Publish</span>
-              <span>in minutes</span>
-            </div>
-            <div 
-              onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
-              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-              className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-indigo-500/40 transition-colors"
-            >
-              <span className="font-bold text-accent">Custom</span>
-              <span>domain ready</span>
-            </div>
-            <div 
-              onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
-              onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-              className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-cyan-500/40 transition-colors"
-            >
-              <span className="font-bold text-info">Privacy-first</span>
-              <span>analytics</span>
-            </div>
-          </div>
-        </div>
+      <section id="overview" tabIndex={-1} ref={heroContainerRef} className="relative mx-auto max-w-7xl px-4 pb-20 pt-12 focus:outline-none sm:px-6 sm:pb-28 sm:pt-20">
+        <HeroProductStage
+          onOpenAuth={onOpenAuth || (() => setCurrentView('editor'))}
+          onOpenPreview={() => { window.location.assign('/@alexvance?demo=1'); }}
+        />
       </section>
 
       {/* Featured Profiles Live Showcase Section */}

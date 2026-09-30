@@ -2112,7 +2112,10 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await sitemapResponse(request, env); } catch { return new Response('Sitemap temporarily unavailable.', { status: 503 }); }
     }
-    if (url.pathname.startsWith('/@')) {
+    let publicHandlePath = '';
+    try { publicHandlePath = url.pathname.startsWith('/@') ? decodeURIComponent(url.pathname.slice(2)) : ''; } catch { publicHandlePath = ''; }
+    const isPublicHandlePath = /^[a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?$/i.test(publicHandlePath);
+    if (isPublicHandlePath) {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       if (url.searchParams.get('demo') === '1') {
         const demoResponse = await env.ASSETS.fetch(new Request(new URL('/', request.url), { method: 'GET', headers: request.headers }));
@@ -2120,7 +2123,7 @@ export default {
         headers.set('x-robots-tag', 'noindex, nofollow');
         return secureAssetResponse(new Response(demoResponse.body, { status: demoResponse.status, statusText: demoResponse.statusText, headers }));
       }
-      try { return await publicProfileResponse(request, env, decodeURIComponent(url.pathname.slice(2))); } catch (error) {
+      try { return await publicProfileResponse(request, env, publicHandlePath); } catch (error) {
         console.error('Public profile SEO rendering failed', error);
         return new Response('Profile temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
       }
