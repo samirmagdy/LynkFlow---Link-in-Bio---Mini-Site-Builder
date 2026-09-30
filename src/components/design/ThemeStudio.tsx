@@ -38,6 +38,8 @@ import {
 import { ANIME_ENTRANCE_PRESETS, AnimeEntrancePreset } from '../../utils/animeAnimations';
 import { uploadBackgroundAsset, removeBackgroundAsset, listBackgroundAssets, registerRemoteBackgroundAsset, BackgroundAsset } from '../../services/backgroundAssetService';
 import { extractImageAccentGradient } from '../../utils/imageAccent';
+import { COLOR_TOKEN_LABELS, colorToFormat, mixHex, normalizeHex, parseColorInput } from '../../utils/themeColorUtils';
+import type { ColorFormat } from '../../utils/themeColorUtils';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
 import { Dialog } from '../common/Dialog';
 
@@ -60,7 +62,6 @@ type PexelsMedia = {
   height?: number | null;
 };
 
-type ColorFormat = 'hex' | 'rgb' | 'hsl';
 type ThemeConfirmRequest = {
   title: string;
   message: string;
@@ -68,70 +69,6 @@ type ThemeConfirmRequest = {
   destructive?: boolean;
   onConfirm: () => void | Promise<void>;
 };
-
-const normalizeHex = (value: string) => /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value.toUpperCase() : null;
-
-const hexRgb = (value: string) => {
-  const hex = normalizeHex(value);
-  if (!hex) return null;
-  const raw = hex.slice(1).length === 3 ? hex.slice(1).split('').map(char => char + char).join('') : hex.slice(1);
-  return { r: parseInt(raw.slice(0, 2), 16), g: parseInt(raw.slice(2, 4), 16), b: parseInt(raw.slice(4, 6), 16) };
-};
-
-const colorToFormat = (value: string, format: ColorFormat) => {
-  const rgb = hexRgb(value);
-  if (!rgb || format === 'hex') return normalizeHex(value) || value;
-  if (format === 'rgb') return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-  const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
-  let h = 0;
-  if (delta) {
-    if (max === r) h = ((g - b) / delta) % 6;
-    else if (max === g) h = (b - r) / delta + 2;
-    else h = (r - g) / delta + 4;
-    h = Math.round(h * 60);
-    if (h < 0) h += 360;
-  }
-  const l = (max + min) / 2;
-  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
-  return `hsl(${h}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
-};
-
-const parseColorInput = (value: string, format: ColorFormat) => {
-  const trimmed = value.trim();
-  if (format === 'hex') return normalizeHex(trimmed);
-  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
-  if (format === 'rgb' && rgbMatch) {
-    const channels = rgbMatch.slice(1).map(Number);
-    if (channels.every(channel => channel >= 0 && channel <= 255)) return `#${channels.map(channel => channel.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
-  }
-  const hslMatch = trimmed.match(/^hsla?\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(\d{1,3})%\s*,\s*(\d{1,3})%\s*\)$/i);
-  if (format === 'hsl' && hslMatch) {
-    const h = ((Number(hslMatch[1]) % 360) + 360) % 360;
-    const s = Math.max(0, Math.min(100, Number(hslMatch[2]))) / 100;
-    const l = Math.max(0, Math.min(100, Number(hslMatch[3]))) / 100;
-    const chroma = (1 - Math.abs(2 * l - 1)) * s;
-    const x = chroma * (1 - Math.abs((h / 60) % 2 - 1));
-    const m = l - chroma / 2;
-    const [r, g, b] = h < 60 ? [chroma, x, 0] : h < 120 ? [x, chroma, 0] : h < 180 ? [0, chroma, x] : h < 240 ? [0, x, chroma] : h < 300 ? [x, 0, chroma] : [chroma, 0, x];
-    return `#${[r, g, b].map(channel => Math.round((channel + m) * 255).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
-  }
-  return null;
-};
-
-const mixHex = (source: string, target: string, amount: number) => {
-  const from = hexRgb(source), to = hexRgb(target);
-  if (!from || !to) return source;
-  return `#${(['r', 'g', 'b'] as const).map(channel => Math.round(from[channel] + (to[channel] - from[channel]) * amount).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
-};
-
-const COLOR_TOKEN_LABELS: Array<[keyof StandardTheme['tokens']['colors'], string]> = [
-  ['pageBackground', 'Page background'], ['panelBackground', 'Panel surface'], ['primaryText', 'Primary text'], ['secondaryText', 'Secondary text'],
-  ['accent', 'CTA accent'], ['accentText', 'CTA text'], ['border', 'Border'], ['focusRing', 'Focus ring'], ['surfaceBase', 'Surface base'],
-  ['surfaceRaised', 'Raised surface'], ['surfaceMuted', 'Muted surface'], ['textDisabled', 'Disabled text'], ['borderSubtle', 'Subtle border'],
-  ['borderStrong', 'Strong border'], ['accentHover', 'Accent hover'], ['accentPressed', 'Accent pressed'], ['accentDisabled', 'Accent disabled'],
-  ['success', 'Success'], ['warning', 'Warning'], ['danger', 'Danger']
-];
 
 const ColorTokenEditor: React.FC<{
   token: keyof StandardTheme['tokens']['colors'];

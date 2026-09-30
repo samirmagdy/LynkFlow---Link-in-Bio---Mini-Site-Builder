@@ -25,144 +25,26 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { sanitizeMediaEmbed, validateUrl } from '../../utils/blockValidator';
-import { 
-  AnimeBlockEffect, 
-  AnimeHoverEffect, 
-  AnimeClickEffect 
-} from '../../types';
 import { compileThemeToCssVariables } from '../../utils/themeEngine';
 import type { StandardTheme } from '../../types/themeSchema';
 import { getBlockVariantDefinition, resolveLinkVariant } from '../../utils/blockVariantRegistry';
 import { resolveProfileRenderModel, selectInitialProfileTab } from '../../utils/profileRenderModel';
 import { ThemeProvider } from './ThemeProvider';
+import { AnimatedProfileBlock } from './AnimatedProfileBlock';
+import type { AnimationTheme } from './AnimatedProfileBlock';
 import { 
   runStaggeredEntrance, 
   triggerAnimeRipple, 
   animateHoverEnter, 
   animateHoverLeave, 
   triggerSuccessBurst,
-  AnimeEntrancePreset,
-  applyBlockContinuousAnimation,
-  triggerBlockEntranceAnimation,
-  triggerBlockHoverEnter,
-  triggerBlockHoverLeave,
-  triggerBlockClickFx,
-  triggerBlockTextAnimation,
-  stopBlockAnimation
+  AnimeEntrancePreset
 } from '../../utils/animeAnimations';
 
 const safePublicHref = (value: unknown, allowRelative = false): string | null => {
   if (typeof value !== 'string' || !value.trim()) return null;
   const result = validateUrl(value, allowRelative);
   return result.isValid ? result.sanitizedValue || value.trim() : null;
-};
-
-interface AnimatedBlockItemProps {
-  block: Block;
-  theme: AnimationTheme;
-  className?: string;
-  'data-variant-id'?: string;
-  children: React.ReactNode;
-}
-
-interface AnimationTheme extends StandardTheme {
-  accentColor?: string;
-  animeMicroInteractions?: boolean;
-}
-
-const AnimatedBlockItem: React.FC<AnimatedBlockItemProps> = ({
-  block,
-  theme,
-  className = '',
-  'data-variant-id': dataVariantId,
-  children
-}) => {
-  const blockElRef = useRef<HTMLDivElement>(null);
-  const { animationTrigger } = useApp();
-
-  const legacyAnimation = (block.payload as Partial<LinkBlockPayload>).animation;
-  const effect: AnimeBlockEffect = 
-    block.animationConfig?.effect || 
-    block.animation || 
-    (legacyAnimation === 'pulse' ? 'pulseGlow' :
-     legacyAnimation === 'shimmer' ? 'shimmerGleam' :
-     legacyAnimation === 'bounce' ? 'springBounce' :
-     legacyAnimation || 'none');
-
-  const hoverEffect = block.animationConfig?.hoverEffect || (theme.animeMicroInteractions !== false ? 'magneticLift' : 'none');
-  const clickEffect = block.animationConfig?.clickEffect || 'rippleWave';
-  const speed = block.animationConfig?.speed || 'normal';
-  const intensity = block.animationConfig?.intensity || 'medium';
-
-  useEffect(() => {
-    const el = blockElRef.current;
-    if (!el) return;
-
-    stopBlockAnimation(el);
-
-    if (effect === 'none') return;
-
-    const timer = setTimeout(() => {
-      if (!blockElRef.current) return;
-      if (effect === 'scrambleDecode' || effect === 'typewriterStagger' || effect === 'waveLetters') {
-        const titleEl = el.querySelector('h1, h2, h3, h4, span.font-semibold') as HTMLElement;
-        if (titleEl) {
-          triggerBlockTextAnimation(titleEl, titleEl.textContent || block.title, effect);
-        }
-      } else if (
-        effect === 'springPop' || 
-        effect === 'elasticWave' || 
-        effect === 'backZoom' || 
-        effect === 'kineticDrop' || 
-        effect === 'cinematicGlide' || 
-        effect === 'flip3dX' || 
-        effect === 'flip3dY' || 
-        effect === 'spiralUnfold' || 
-        effect === 'blurFocus' || 
-        effect === 'slideSkew'
-      ) {
-        triggerBlockEntranceAnimation(el, effect);
-      } else {
-        applyBlockContinuousAnimation(el, effect, speed, intensity, theme.accentColor || '#6366f1');
-      }
-    }, 220);
-
-    return () => {
-      clearTimeout(timer);
-      stopBlockAnimation(el);
-    };
-  }, [block.id, effect, speed, intensity, theme.accentColor, animationTrigger]);
-
-  const handleMouseEnter = () => {
-    if (theme.animeMicroInteractions === false || !blockElRef.current) return;
-    triggerBlockHoverEnter(blockElRef.current, hoverEffect, theme.accentColor);
-  };
-
-  const handleMouseLeave = () => {
-    if (theme.animeMicroInteractions === false || !blockElRef.current) return;
-    triggerBlockHoverLeave(blockElRef.current, hoverEffect);
-  };
-
-  const handleClick = (e: React.MouseEvent<HTMLElement>) => {
-    if (blockElRef.current && clickEffect !== 'none') {
-      triggerBlockClickFx(e, blockElRef.current, clickEffect, theme.accentColor);
-    }
-  };
-
-  return (
-    <div
-      ref={blockElRef}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onClick={handleClick}
-      className={`anime-profile-item ${className}`}
-      data-block-id={block.id}
-      data-variant-id={dataVariantId}
-      data-anime-effect={effect}
-    >
-      {children}
-    </div>
-  );
 };
 
 interface PublicProfileViewProps {
@@ -1452,7 +1334,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           };
 
           return (
-            <AnimatedBlockItem
+            <AnimatedProfileBlock
               key={block.id || `block-${blockIdx}`}
               block={block}
               theme={animationTheme}
@@ -1460,7 +1342,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               data-variant-id={registeredVariant?.id || 'default'}
             >
               {renderBlockContent()}
-            </AnimatedBlockItem>
+            </AnimatedProfileBlock>
           );
         })}
         </main>

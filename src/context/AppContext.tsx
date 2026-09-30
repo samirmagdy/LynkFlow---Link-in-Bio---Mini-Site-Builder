@@ -11,16 +11,7 @@ import {
   Block, 
   PlanType, 
   BillingCycle,
-  LinkBlockPayload,
-  MediaBlockPayload,
-  TextBlockPayload,
-  DividerBlockPayload,
-  FolderBlockPayload,
-  FaqBlockPayload,
-  TestimonialBlockPayload,
-  FileBlockPayload,
   FormBlockPayload,
-  ContactBlockPayload,
   UserAccount,
   BrandKit,
   StarterProfileBlueprint,
@@ -50,6 +41,18 @@ import { isSupabaseConfigured } from '../lib/supabaseConfig';
 import { supabase as configuredSupabase } from '../lib/supabase';
 import { createPublishedSnapshot } from '../utils/publishedSnapshot';
 import { reportRecoverableError } from '../utils/reportError';
+import { useLocalStoragePersistence } from '../hooks/useLocalStoragePersistence';
+import {
+  addBlock as addProfileBlock,
+  updateBlock as updateProfileBlock,
+  removeBlock as removeProfileBlock,
+  duplicateBlock as duplicateProfileBlock,
+  reorderBlocks as reorderProfileBlocks,
+  addTab as addProfileTab,
+  updateTab as updateProfileTab,
+  removeTab as removeProfileTab
+} from '../services/profileMutationService';
+import { createProfile as createProfileRecord, duplicateProfile as duplicateProfileRecord } from '../services/profileFactoryService';
 import {
   signUp as signUpWithSupabase,
   logIn as logInWithSupabase,
@@ -564,33 +567,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         unsubscribeAuth = () => authSubscription.data.subscription.unsubscribe();
       }
     }).catch(error => {
-      console.error('Supabase hydration failed', error);
+      reportRecoverableError('Supabase hydration failed', error);
       cloudReady.current = true;
       setCloudHydrated(true);
     });
     return () => { cancelled = true; unsubscribeAuth?.(); };
   }, [lightweight]);
 
-  // Synchronize profiles and localStorage
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [profiles, lightweight]);
-
-  // Keep the working draft separate from the published profile cache so theme
-  // edits survive navigation and refresh without making unpublished changes live.
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${draftProfile.id}`, JSON.stringify(draftProfile));
-    } catch (e) {
-      console.error('Draft storage write error', e);
-    }
-  }, [draftProfile, lightweight]);
+  useLocalStoragePersistence(STORAGE_KEYS.PROFILES, profiles, !lightweight, 'Profile');
+  useLocalStoragePersistence(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${draftProfile.id}`, draftProfile, !lightweight, 'Draft');
 
   useEffect(() => {
     if (lightweight) return;
@@ -601,23 +586,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     ).catch(() => undefined);
   }, [profiles, user.id]);
 
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE_ID, activeProfileId);
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [activeProfileId, lightweight]);
-
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.WORKSPACE, JSON.stringify(workspace));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [workspace, lightweight]);
+  useLocalStoragePersistence(STORAGE_KEYS.ACTIVE_PROFILE_ID, activeProfileId, !lightweight, 'Active profile');
+  useLocalStoragePersistence(STORAGE_KEYS.WORKSPACE, workspace, !lightweight, 'Workspace');
 
   useEffect(() => {
     if (lightweight) return;
@@ -647,41 +617,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     void enqueueCloudWrite(() => saveCloudReports(abuseReports, user.id), 'Supabase reports save failed').catch(() => undefined);
   }, [abuseReports, user.id]);
 
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.ANALYTICS, JSON.stringify(analytics));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [analytics, lightweight]);
-
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [submissions, lightweight]);
-
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(auditLogs));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [auditLogs, lightweight]);
-
-  useEffect(() => {
-    if (lightweight) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(abuseReports));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [abuseReports, lightweight]);
+  useLocalStoragePersistence(STORAGE_KEYS.ANALYTICS, analytics, !lightweight, 'Analytics');
+  useLocalStoragePersistence(STORAGE_KEYS.SUBMISSIONS, submissions, !lightweight, 'Submission');
+  useLocalStoragePersistence(STORAGE_KEYS.AUDIT, auditLogs, !lightweight, 'Audit');
+  useLocalStoragePersistence(STORAGE_KEYS.REPORTS, abuseReports, !lightweight, 'Abuse report');
 
   // When activeProfileId changes, sync draftProfile
   useEffect(() => {
@@ -1148,100 +1087,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       return '';
     }
 
-    const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
     const selectedTheme = THEME_PRESETS.find(t => t.id === themeId) || THEME_PRESETS[0];
-
-    const newProfile: Profile = {
-      id: `prof-${Date.now()}`,
-      username: cleanUsername || `user_${Math.floor(Math.random() * 10000)}`,
-      displayName: displayName || cleanUsername,
-      bio: 'Welcome to my official links, portfolio, and projects.',
-      avatarUrl: '',
-      category: category || 'Creator',
-      verified: false,
-      status: 'draft',
-      publishedVersion: 1,
-      directLinkMode: false,
-      socialPosition: 'top',
-      socialLinks: [
-        { id: `soc-${Date.now()}-1`, platform: 'instagram', url: 'https://instagram.com', active: true },
-        { id: `soc-${Date.now()}-2`, platform: 'twitter', url: 'https://x.com', active: true },
-        { id: `soc-${Date.now()}-3`, platform: 'email', url: 'mailto:contact@domain.com', active: true }
-      ],
-      theme: selectedTheme,
-      tabs: [
-        {
-          id: `tab-${Date.now()}`,
-          title: 'Main',
-          slug: 'main',
-          position: 0,
-          blocks: [
-            {
-              id: `blk-${Date.now()}-1`,
-              type: 'link',
-              title: 'My Official Website',
-              position: 0,
-              isHidden: false,
-              clicks: 0,
-              payload: {
-                url: 'https://example.com',
-                subtitle: 'Portfolio, client inquiries and store',
-                highlightBadge: 'Official',
-                animation: 'none'
-              }
-            },
-            {
-              id: `blk-${Date.now()}-2`,
-              type: 'link',
-              title: 'Featured Project / Recent Work',
-              position: 1,
-              isHidden: false,
-              clicks: 0,
-              payload: {
-                url: 'https://example.com/project',
-                subtitle: 'Check out our latest release',
-                highlightBadge: 'New',
-                animation: 'shimmer'
-              }
-            },
-            {
-              id: `blk-${Date.now()}-3`,
-              type: 'form',
-              title: 'Get In Touch',
-              position: 2,
-              isHidden: false,
-              clicks: 0,
-              payload: {
-                formType: 'contact',
-                description: 'Send a direct message or booking inquiry',
-                fields: [
-                  { id: 'f-name', label: 'Your Name', type: 'text', required: true },
-                  { id: 'f-email', label: 'Email', type: 'email', required: true },
-                  { id: 'f-msg', label: 'Message', type: 'textarea', required: true }
-                ],
-                submitButtonText: 'Send Message',
-                successMessage: 'Message received! Will respond shortly.'
-              }
-            }
-          ]
-        }
-      ],
-      qrConfig: {
-        fgColor: selectedTheme.textColor,
-        bgColor: selectedTheme.bgColor,
-        pattern: 'dots',
-        showLogo: true,
-        dynamicTargetUrl: `https://lynkflow.me/${cleanUsername}`
-      },
-      seo: {
-        title: `${displayName || cleanUsername} | Official Link in Bio`,
-        description: `Explore links, projects, and contact channels for ${displayName || cleanUsername}.`,
-        noIndex: false
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      publishedAt: new Date().toISOString()
-    };
+    const newProfile = createProfileRecord({ username, displayName, category, theme: selectedTheme });
 
     setProfiles(prev => [...prev, newProfile]);
     setActiveProfileId(newProfile.id);
@@ -1269,49 +1116,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     const source = profiles.find(p => p.id === profileId);
     if (!source) return;
 
-    // PRO-002: Generate new unique IDs for every nested entity
-    const now = new Date().toISOString();
-    const idMap = new Map<string, string>();
-    const newId = (old: string) => {
-      if (!idMap.has(old)) idMap.set(old, `${old.split('-')[0]}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`);
-      return idMap.get(old)!;
-    };
-
-    const newTabs = source.tabs.map(tab => ({
-      ...tab,
-      id: newId(tab.id),
-      blocks: tab.blocks.map(block => ({
-        ...block,
-        id: newId(block.id),
-        clicks: 0 // reset engagement counters
-      }))
-    }));
-
-    const newSocialLinks = source.socialLinks.map(sl => ({
-      ...sl,
-      id: newId(sl.id)
-    }));
-
-    const copyUsername = `${source.username}_copy_${Date.now().toString().slice(-4)}`;
-    const newProfile: Profile = {
-      ...JSON.parse(JSON.stringify(source)),
-      id: `prof-${Date.now()}`,
-      username: copyUsername,
-      displayName: `${source.displayName} (Copy)`,
-      status: 'draft',
-      publishedVersion: 1,
-      publishedSnapshot: undefined,
-      snapshotHistory: [],
-      activePreviewTokens: [],
-      scheduledPublish: null,
-      // PRO-002: Do NOT carry over the original custom domain — each profile owns its own domain
-      customDomain: undefined,
-      tabs: newTabs,
-      socialLinks: newSocialLinks,
-      createdAt: now,
-      updatedAt: now,
-      publishedAt: undefined
-    };
+    const newProfile = duplicateProfileRecord(source);
 
     setProfiles(prev => [...prev, newProfile]);
     setActiveProfileId(newProfile.id);
@@ -1320,7 +1125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       ...prev,
       profiles: [...prev.profiles, newProfile.id]
     }));
-    showToast(`Duplicated to @${copyUsername}`);
+    showToast(`Duplicated to @${newProfile.username}`);
   };
 
   const deleteProfile = (profileId: string): boolean => {
@@ -1340,7 +1145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }));
     if (isSupabaseConfigured && user.id !== 'usr-guest') {
       void deleteCloudRecord('profiles', profileId, user.id).catch(error => {
-        console.error('Supabase profile deletion failed', error);
+        reportRecoverableError('Supabase profile deletion failed', error);
         showToast('Profile removed locally, but server deletion needs a retry.');
       });
     }
@@ -1350,246 +1155,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Block management
   const addBlock = (tabId: string, blockType: BlockType, customTitle?: string) => {
-    updateDraftProfile(prev => {
-      const tabs = [...prev.tabs];
-      const targetTab = tabs.find(t => t.id === tabId) || tabs[0];
-      if (!targetTab) return prev;
-
-      let defaultPayload: Block['payload'];
-      let title = customTitle || 'New Block';
-
-      switch (blockType) {
-        case 'link':
-          title = customTitle || 'My Link Title';
-          defaultPayload = {
-            url: 'https://',
-            subtitle: 'Add brief context or call to action',
-            highlightBadge: '',
-            animation: 'none',
-            openInNewTab: true
-          } as LinkBlockPayload;
-          break;
-        case 'media':
-          title = customTitle || 'Watch Featured Video';
-          defaultPayload = {
-            mediaType: 'video',
-            url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-            caption: 'Video description or notes',
-            aspectRatio: '16:9'
-          } as MediaBlockPayload;
-          break;
-        case 'gallery':
-          title = customTitle || 'Featured Gallery';
-          defaultPayload = { columns: 2, items: [
-            { id: 'gallery-1', image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=1200', title: 'Gallery image 1' },
-            { id: 'gallery-2', image: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=1200', title: 'Gallery image 2' }
-          ] };
-          break;
-        case 'carousel':
-          title = customTitle || 'Image Carousel';
-          defaultPayload = { autoplay: false, items: [
-            { id: 'carousel-1', image: 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=1200', title: 'Carousel image 1' },
-            { id: 'carousel-2', image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200', title: 'Carousel image 2' }
-          ] };
-          break;
-        case 'product':
-          title = customTitle || 'Featured Product';
-          defaultPayload = { image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1200', description: 'Add a product description', price: '49', currency: 'USD', url: 'https://example.com', buttonLabel: 'Shop now' };
-          break;
-        case 'text':
-          title = customTitle || 'Heading Text';
-          defaultPayload = {
-            textType: 'h2',
-            content: 'Write an announcement or introductory message for your audience.',
-            alignment: 'center'
-          } as TextBlockPayload;
-          break;
-        case 'divider':
-          title = 'Divider';
-          defaultPayload = {
-            style: 'hairline',
-            height: 'md'
-          } as DividerBlockPayload;
-          break;
-        case 'folder':
-          title = customTitle || 'Resource Collection';
-          defaultPayload = {
-            description: 'Group of related links & resources',
-            items: [
-              { id: `item-1`, title: 'Resource #1', url: 'https://example.com' },
-              { id: `item-2`, title: 'Resource #2', url: 'https://example.com' }
-            ]
-          } as FolderBlockPayload;
-          break;
-        case 'faq':
-          title = customTitle || 'Frequently Asked Questions';
-          defaultPayload = {
-            items: [
-              { id: 'f-1', question: 'How can I collaborate with you?', answer: 'Reach out via our inquiry form below!' },
-              { id: 'f-2', question: 'What is your turnaround time?', answer: 'Typical project timelines run 2 to 4 weeks.' }
-            ]
-          } as FaqBlockPayload;
-          break;
-        case 'testimonial':
-          title = customTitle || 'Client Feedback';
-          defaultPayload = {
-            quote: 'Working with this team transformed our brand metrics completely.',
-            authorName: 'Sarah Jenkins',
-            authorRole: 'Founder & CEO',
-            company: 'Lumina Studio',
-            rating: 5
-          } as TestimonialBlockPayload;
-          break;
-        case 'file':
-          title = customTitle || 'Download Media Kit';
-          defaultPayload = {
-            fileName: 'Media_Kit_2026.pdf',
-            fileSize: '2.8 MB',
-            fileUrl: '#',
-            description: 'Full portfolio, reach statistics, and booking pricing',
-            downloadCount: 0
-          } as FileBlockPayload;
-          break;
-        case 'form':
-          title = customTitle || 'Join Newsletter';
-          defaultPayload = {
-            formType: 'newsletter',
-            description: 'Subscribe to receive exclusive drops and weekly thoughts.',
-            fields: [
-              { id: 'f-email', label: 'Email', type: 'email', required: true, placeholder: 'name@email.com' }
-            ],
-            submitButtonText: 'Subscribe',
-            successMessage: 'Welcome to the circle! Check your email.',
-            consentText: 'I agree to receive occasional updates.'
-          } as FormBlockPayload;
-          break;
-        case 'emailSignup':
-          title = customTitle || 'Join the Email List';
-          defaultPayload = {
-            formType: 'newsletter',
-            description: 'Get updates directly in your inbox.',
-            fields: [{ id: 'signup-email', label: 'Email', type: 'email', required: true, placeholder: 'you@example.com' }],
-            submitButtonText: 'Subscribe',
-            successMessage: 'You are subscribed.',
-            consentText: 'I agree to receive updates.',
-            subscriberMode: true
-          } as FormBlockPayload;
-          break;
-        case 'contact':
-          title = customTitle || 'Direct Contact';
-          defaultPayload = {
-            contactType: 'email',
-            value: 'hello@mybrand.com',
-            presetSubject: 'Inquiry via LynkFlow'
-          } as ContactBlockPayload;
-          break;
-      }
-
-      const newBlock: Block = {
-        id: `blk-${Date.now()}`,
-        type: blockType,
-        title,
-        payload: defaultPayload,
-        position: targetTab.blocks.length,
-        isHidden: false,
-        clicks: 0
-      };
-
-      targetTab.blocks.push(newBlock);
-      return { ...prev, tabs };
-    });
-
+    updateDraftProfile(prev => addProfileBlock(prev, tabId, blockType, customTitle));
     showToast(`Added ${blockType} block`);
   };
 
   const updateBlock = (tabId: string, blockId: string, updates: Partial<Block>) => {
-    updateDraftProfile(prev => {
-      const tabs = prev.tabs.map(tab => {
-        if (tab.id !== tabId) return tab;
-        return {
-          ...tab,
-          blocks: tab.blocks.map(b => (b.id === blockId ? { ...b, ...updates } : b))
-        };
-      });
-      return { ...prev, tabs };
-    });
+    updateDraftProfile(prev => updateProfileBlock(prev, tabId, blockId, updates));
   };
 
   const removeBlock = (tabId: string, blockId: string) => {
-    updateDraftProfile(prev => {
-      const tabs = prev.tabs.map(tab => {
-        if (tab.id !== tabId) return tab;
-        return {
-          ...tab,
-          blocks: tab.blocks.filter(b => b.id !== blockId)
-        };
-      });
-      return { ...prev, tabs };
-    });
+    updateDraftProfile(prev => removeProfileBlock(prev, tabId, blockId));
     showToast('Block removed');
   };
 
   const duplicateBlock = (tabId: string, blockId: string) => {
-    updateDraftProfile(prev => {
-      const tabs = prev.tabs.map(tab => {
-        if (tab.id !== tabId) return tab;
-        const index = tab.blocks.findIndex(b => b.id === blockId);
-        if (index === -1) return tab;
-        const source = tab.blocks[index];
-        const clone: Block = {
-          ...JSON.parse(JSON.stringify(source)),
-          id: `blk-${Date.now()}`,
-          title: `${source.title} (Copy)`,
-          position: index + 1,
-          clicks: 0
-        };
-        const nextBlocks = [...tab.blocks];
-        nextBlocks.splice(index + 1, 0, clone);
-        return { ...tab, blocks: nextBlocks };
-      });
-      return { ...prev, tabs };
-    });
+    updateDraftProfile(prev => duplicateProfileBlock(prev, tabId, blockId));
     showToast('Block duplicated');
   };
 
   const reorderBlocks = (tabId: string, fromIndex: number, toIndex: number) => {
-    updateDraftProfile(prev => {
-      const tabs = prev.tabs.map(tab => {
-        if (tab.id !== tabId) return tab;
-        const blocks = [...tab.blocks];
-        const [moved] = blocks.splice(fromIndex, 1);
-        blocks.splice(toIndex, 0, moved);
-        const reindexed = blocks.map((b, idx) => ({ ...b, position: idx }));
-        return { ...tab, blocks: reindexed };
-      });
-      return { ...prev, tabs };
-    });
+    updateDraftProfile(prev => reorderProfileBlocks(prev, tabId, fromIndex, toIndex));
   };
 
   // Tabs
   const addTab = (title: string) => {
-    const slug = title.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    updateDraftProfile(prev => ({
-      ...prev,
-      tabs: [
-        ...prev.tabs,
-        {
-          id: `tab-${Date.now()}`,
-          title,
-          slug: slug || `tab-${prev.tabs.length + 1}`,
-          position: prev.tabs.length,
-          blocks: []
-        }
-      ]
-    }));
+    updateDraftProfile(prev => addProfileTab(prev, title));
     showToast(`Added tab "${title}"`);
   };
 
   const updateTab = (tabId: string, title: string) => {
-    updateDraftProfile(prev => ({
-      ...prev,
-      tabs: prev.tabs.map(t => (t.id === tabId ? { ...t, title } : t))
-    }));
+    updateDraftProfile(prev => updateProfileTab(prev, tabId, title));
   };
 
   const removeTab = (tabId: string) => {
@@ -1597,10 +1192,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       showToast('Profile must have at least one tab');
       return;
     }
-    updateDraftProfile(prev => ({
-      ...prev,
-      tabs: prev.tabs.filter(t => t.id !== tabId)
-    }));
+    updateDraftProfile(prev => removeProfileTab(prev, tabId));
     showToast('Tab removed');
   };
 
@@ -1748,7 +1340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       try {
         if (!isSupabaseConfigured) localStorage.setItem(STORAGE_KEYS.CUSTOM_THEMES, JSON.stringify(next));
       } catch (e) {
-        console.error(e);
+        reportRecoverableError('Custom preset local storage write failed', e);
       }
       return next;
     });
@@ -1993,8 +1585,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudApiKeys(apiKeys, user.id).catch(error => console.error('Supabase API key save failed', error));
-    if (!isSupabaseConfigured) saveCloudWebhooks(webhookSubscriptions, user.id).catch(error => console.error('Supabase webhook save failed', error));
+    void saveCloudApiKeys(apiKeys, user.id).catch(error => reportRecoverableError('Supabase API key save failed', error));
+    void saveCloudWebhooks(webhookSubscriptions, user.id).catch(error => reportRecoverableError('Supabase webhook save failed', error));
   }, [apiKeys, webhookSubscriptions, user.id]);
 
   const refreshApiState = () => {

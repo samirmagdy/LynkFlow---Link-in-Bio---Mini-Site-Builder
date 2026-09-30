@@ -324,7 +324,7 @@ interface BlockStyleOverride {
   fontFamily?: string;
 }
 
-interface Tab {
+export interface Tab {
   id: string;
   title: string;
   slug: string;

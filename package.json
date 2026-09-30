@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
-    "predeploy": "npm run lint && npm run check:themes && npm run check:theme-engine && npm run check:block-variants && npm run check:public-render && npm run check:theme-render && npm run check:theme-migrations && npm run check:render-model && npm run check:preset-composition && npm run check:starter-sites && npm run check:brand-policy && npm run check:design-persistence && npm run check:lifecycle && npm run check:theme-a11y && npm run check:qa-analytics && npm run check:qa-billing && npm run check:qa-forms && npm run check:qa-pro",
+    "predeploy": "npm run lint && npm run check:themes && npm run check:theme-engine && npm run check:block-variants && npm run check:profile-mutations && npm run check:public-render && npm run check:theme-render && npm run check:theme-migrations && npm run check:render-model && npm run check:preset-composition && npm run check:starter-sites && npm run check:brand-policy && npm run check:design-persistence && npm run check:lifecycle && npm run check:theme-a11y && npm run check:qa-analytics && npm run check:qa-billing && npm run check:qa-forms && npm run check:qa-pro",
     "deploy": "npm run build && wrangler deploy",
     "cf:dev": "wrangler dev",
     "preview": "vite preview",
@@ -21,6 +21,7 @@
     "check:starter-sites": "tsx scripts/starter-site-contract.ts",
     "check:lifecycle": "tsx src/qaTestSuite.ts",
     "check:block-variants": "tsx scripts/block-variant-contract.ts",
+    "check:profile-mutations": "tsx scripts/profile-mutation-contract.ts",
     "check:public-render": "tsx scripts/public-render-contract.ts",
     "check:brand-policy": "tsx scripts/brand-kit-policy-contract.ts",
     "check:design-persistence": "tsx scripts/design-system-persistence-contract.ts",
