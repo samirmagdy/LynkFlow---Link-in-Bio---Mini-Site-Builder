@@ -65,6 +65,13 @@ const AppContent: React.FC = () => {
       setAuthModalMode('reset');
       setIsAuthModalOpen(true);
     }
+    if (window.location.pathname === '/signup') {
+      setAuthModalMode('create');
+      setIsAuthModalOpen(true);
+    } else if (window.location.pathname === '/login') {
+      setAuthModalMode('login');
+      setIsAuthModalOpen(true);
+    }
   }, []);
 
   // Async public resolution state for standalone route

@@ -29,6 +29,25 @@ paths:
         '422': {description: Invalid email or missing consent}
         '429': {description: Rate limited}
         '503': {description: Service unavailable}
+  /api/public/newsletter/unsubscribe:
+    post:
+      operationId: unsubscribe-marketing-newsletter
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {type: string, format: email, maxLength: 320}
+      responses:
+        '200': {description: Unsubscribe request processed}
+        '405': {description: Method not allowed}
+        '422': {description: Invalid email}
+        '429': {description: Rate limited}
+        '503': {description: Service unavailable}
   /api/health:
     get:
       operationId: get-health

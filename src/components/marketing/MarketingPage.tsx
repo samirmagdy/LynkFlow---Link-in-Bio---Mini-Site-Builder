@@ -48,9 +48,10 @@ interface MarketingPageProps {
 }
 
 export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
-  const { setCurrentView, switchActiveProfile, profiles, setPublicViewingUsername, setPublicDemo, workspace, upgradePlan } = useApp();
+  const { setCurrentView, workspace, upgradePlan } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
+  const [selectedThemeId, setSelectedThemeId] = useState(SPEC_THEME_PRESETS[0]?.id || '');
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [newsletterMessage, setNewsletterMessage] = useState<string | null>(null);
@@ -171,20 +172,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     }
   };
 
-  const handleInspectProfile = (username: string, e?: React.MouseEvent<HTMLElement>) => {
-    if (e) {
-      triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.35)');
-    }
-    const prof = profiles.find(p => p.username === username);
-    if (prof) {
-      switchActiveProfile(prof.id);
-    }
-    setPublicViewingUsername(username);
-    setPublicDemo(true);
-    window.history.replaceState({}, '', `/@${encodeURIComponent(username)}?demo=1`);
-    setCurrentView('public_standalone');
-  };
-
   const handleCardMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
     animateHoverEnter(e.currentTarget);
     const icon = e.currentTarget.querySelector<HTMLElement>('.anime-icon-target');
@@ -249,6 +236,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       a: 'Agency Studio plans support multi-profile workspace management, allowing you to create, duplicate, and operate isolated profiles for different brands and clients from a single login.'
     }
   ];
+  const selectedTheme = SPEC_THEME_PRESETS.find((theme) => theme.id === selectedThemeId) || SPEC_THEME_PRESETS[0];
 
 
   return (
@@ -282,8 +270,10 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
           {/* Primary CTA Cluster (MKT-001 & Primary Flow 3) */}
           <div className="anime-hero-item flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-4">
-            <button
+            <a
+              href="/signup"
               onClick={(e) => {
+                e.preventDefault();
                 triggerAnimeRipple(e, e.currentTarget, 'rgba(0, 0, 0, 0.25)');
                 triggerSuccessBurst(e.currentTarget);
                 if (onOpenAuth) {
@@ -302,17 +292,21 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             >
               <span>Create your page</span>
               <ArrowRight className="hero-arrow-icon w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </button>
+            </a>
 
-            <button
-              onClick={() => onOpenAuth ? onOpenAuth('login') : setCurrentView('editor')}
+            <a
+              href="/login"
+              onClick={(e) => {
+                e.preventDefault();
+                onOpenAuth ? onOpenAuth('login') : setCurrentView('editor');
+              }}
               className="touch-target relative overflow-hidden w-full sm:w-auto px-6 py-3 text-sm font-semibold text-body hover:text-ink bg-surface hover:bg-surface-2 border border-line hover:border-line-strong rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
             >
               <span>Log in to Studio</span>
-            </button>
+            </a>
 
-            <button
-              onClick={(e) => handleInspectProfile('alexvance', e)}
+            <a
+              href="#features"
               onMouseEnter={(e) => {
                 animateHoverEnter(e.currentTarget);
                 const icon = e.currentTarget.querySelector<HTMLElement>('.hero-phone-icon');
@@ -322,8 +316,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               className="relative overflow-hidden w-full sm:w-auto px-5 py-3 text-sm font-medium text-muted hover:text-ink-strong transition-colors flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
             >
               <Smartphone className="hero-phone-icon w-4 h-4 text-subtle" />
-              <span>Live Demo</span>
-            </button>
+              <span>See product preview</span>
+            </a>
           </div>
 
           <HeroProductStage />
@@ -370,15 +364,14 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               Crafted for creators, studios & modern brands.
             </h2>
             <p className="text-xs sm:text-sm text-muted">
-              Click any profile below to experience full standalone performance and conversion tools.
+              Explore example LynkFlow sites built for different creator and agency goals.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Alex Vance */}
             <a
-              href="/@alexvance"
-              onClick={(e) => handleInspectProfile('alexvance', e)}
+              href="#get-started"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
               className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
@@ -396,7 +389,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               </p>
               <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
                 <span className="flex items-center gap-1">
-                  View Live Page 
+                  Use this creator direction
                   <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </span>
                 <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Onyx Minimal</span>
@@ -405,8 +398,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
             {/* Studio Nova */}
             <a
-              href="/@studionova_agency"
-              onClick={(e) => handleInspectProfile('studionova_agency', e)}
+              href="#get-started"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
               className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
@@ -424,7 +416,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               </p>
               <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
                 <span className="flex items-center gap-1">
-                  View Live Page 
+                  Use this agency direction
                   <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </span>
                 <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Nordic Clean</span>
@@ -433,8 +425,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
             {/* Chef Maya Lin */}
             <a
-              href="/@mayakitchen"
-              onClick={(e) => handleInspectProfile('mayakitchen', e)}
+              href="#get-started"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
               className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
@@ -452,7 +443,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               </p>
               <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
                 <span className="flex items-center gap-1">
-                  View Live Page 
+                  Use this professional direction
                   <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </span>
                 <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Editorial Cream</span>
@@ -554,7 +545,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             <div className="anime-icon-target p-2.5 rounded-xl bg-rose-500/10 text-danger w-fit">
               <Globe className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-ink">Custom Domains & Free SSL</h3>
+            <h3 className="text-base font-bold text-ink">Custom Domains &amp; Automated SSL</h3>
             <p className="text-xs text-muted leading-relaxed">
               Point your domain or subdomain directly with automatic CNAME diagnostics, verification checks, and automated TLS certificate issuance.
             </p>
@@ -609,7 +600,10 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                     <button
                       key={theme.id}
                       type="button"
-                      className="group rounded-2xl border border-line p-2 text-left transition-all hover:border-line-strong cursor-pointer"
+                      aria-label={`Preview ${theme.name} theme`}
+                      aria-pressed={selectedThemeId === theme.id}
+                      onClick={() => setSelectedThemeId(theme.id)}
+                      className={`group rounded-2xl border p-2 text-left transition-all cursor-pointer ${selectedThemeId === theme.id ? 'border-accent ring-2 ring-accent/20' : 'border-line hover:border-line-strong'}`}
                     >
                       <div className="h-20 rounded-xl p-2" style={{ background: theme.background.type === 'gradient' && theme.background.gradientStops ? theme.background.gradientStops : theme.tokens.colors.pageBackground }}>
                         <div className="flex items-center gap-1.5">
@@ -626,6 +620,16 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   );
                 })}
               </div>
+              {selectedTheme && (
+                <div className="mt-4 grid gap-4 rounded-2xl border border-line bg-canvas/70 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div>
+                    <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-accent">Live theme preview</p>
+                    <h3 className="mt-1 text-base font-bold text-ink">{selectedTheme.name}</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">Preview the visual direction before opening Studio. Your selection is not saved until you apply it inside the builder.</p>
+                  </div>
+                  <a href="/signup" onClick={(event) => { event.preventDefault(); onOpenAuth ? onOpenAuth('create') : setCurrentView('editor'); }} className="inline-flex min-h-10 items-center justify-center rounded-xl bg-inverse px-4 text-xs font-bold text-inverse-text hover:bg-inverse-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Use this direction <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></a>
+                </div>
+              )}
             </div>
 
           </div>
@@ -779,8 +783,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   <tr>
                     <th className="py-3 px-4 font-semibold">Capability</th>
                     <th className="py-3 px-4 font-medium text-center">Starter ($0)</th>
-                    <th className="py-3 px-4 font-bold text-ink bg-accent-surface text-center">Creator Pro ($7/mo)</th>
-                    <th className="py-3 px-4 font-medium text-center">Agency ($19/mo)</th>
+                    <th className="py-3 px-4 font-bold text-ink bg-accent-surface text-center">Creator Pro ({formatPlanPrice(PRICING_PLANS.find((plan) => plan.id === 'pro')!, billingCycle)}/mo)</th>
+                    <th className="py-3 px-4 font-medium text-center">Agency ({formatPlanPrice(PRICING_PLANS.find((plan) => plan.id === 'agency')!, billingCycle)}/mo)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/60">
@@ -918,8 +922,10 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             <ProductIllustration variant="assembly" />
           </div>
           <div className="cta-anime-item pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
+            <a
+              href="/signup"
               onClick={(e) => {
+                e.preventDefault();
                 triggerAnimeRipple(e, e.currentTarget, 'rgba(0, 0, 0, 0.25)');
                 triggerSuccessBurst(e.currentTarget);
                 if (onOpenAuth) {
@@ -938,14 +944,18 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             >
               <span>Create your page</span>
               <ArrowRight className="cta-arrow-icon w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </button>
+            </a>
 
-            <button
-              onClick={() => onOpenAuth ? onOpenAuth('login') : setCurrentView('editor')}
+            <a
+              href="/login"
+              onClick={(e) => {
+                e.preventDefault();
+                onOpenAuth ? onOpenAuth('login') : setCurrentView('editor');
+              }}
               className="touch-target relative overflow-hidden w-full sm:w-auto px-6 py-3.5 text-sm font-semibold text-body hover:text-ink bg-surface hover:bg-surface-2 border border-line rounded-xl transition-colors inline-flex items-center justify-center gap-2 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
             >
               <span>Log in to your account</span>
-            </button>
+            </a>
           </div>
         </div>
       </section>
@@ -1011,7 +1021,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                     }}
                     className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--lf-accent)]"
                   />
-                  <span>Keep me updated about LynkFlow. I can unsubscribe anytime.</span>
+                  <span>Keep me updated about LynkFlow. <a href="/unsubscribe" className="text-accent underline underline-offset-2">Unsubscribe anytime.</a></span>
                 </label>
                 {newsletterSubmitted && (
                   <p id="newsletter-status" role="status" className="mt-3 rounded-lg border border-success/30 bg-success-surface px-3 py-2 text-[11px] leading-relaxed text-success">
@@ -1038,7 +1048,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             </div>
 
             <div className="space-y-2">
-              <div className="font-semibold text-ink uppercase text-[10px] tracking-wider">Product</div>
+              <h3 className="font-semibold text-ink uppercase text-[10px] tracking-wider">Product</h3>
               <ul className="space-y-1.5 text-muted text-xs">
                 <li>
                   <a href="#features" className="hover:text-ink transition-colors">Features & Blocks</a>
@@ -1058,7 +1068,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             </div>
 
             <div className="space-y-2">
-              <div className="font-semibold text-ink uppercase text-[10px] tracking-wider">Platform & Dev</div>
+              <h3 className="font-semibold text-ink uppercase text-[10px] tracking-wider">Platform &amp; Dev</h3>
               <ul className="space-y-1.5 text-muted text-xs">
                 <li>
                   <button onClick={() => setCurrentView('api')} className="hover:text-ink transition-colors cursor-pointer">
@@ -1071,16 +1081,13 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   </button>
                 </li>
                 <li>
-                  <span className="text-subtle">Privacy-first analytics</span>
-                </li>
-                <li>
                   <span className="text-subtle">Automated SSL Edge DNS</span>
                 </li>
               </ul>
             </div>
 
             <div className="space-y-2">
-              <div className="font-semibold text-ink uppercase text-[10px] tracking-wider">Help & Legal</div>
+              <h3 className="font-semibold text-ink uppercase text-[10px] tracking-wider">Help &amp; Legal</h3>
               <ul className="space-y-1.5 text-muted text-xs">
                 <li>
                   <a href="#faq" className="hover:text-ink transition-colors">Help Center & FAQ</a>

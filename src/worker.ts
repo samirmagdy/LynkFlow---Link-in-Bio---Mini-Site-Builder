@@ -584,6 +584,7 @@ async function submitMarketingNewsletter(request: Request, env: Env): Promise<Re
         source,
         consent_given: true,
         subscribed_at: subscribedAt,
+        unsubscribed_at: null,
         updated_at: subscribedAt
       })
     });
@@ -593,6 +594,42 @@ async function submitMarketingNewsletter(request: Request, env: Env): Promise<Re
   }
 
   return json({ data: { subscribed: true } });
+}
+
+async function unsubscribeMarketingNewsletter(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return apiError('SERVICE_UNAVAILABLE', 'Newsletter service is not configured.', 503);
+  }
+  let input: { email?: string };
+  try {
+    input = await request.json();
+  } catch {
+    return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400);
+  }
+  const email = String(input.email || '').trim().toLowerCase();
+  if (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return apiError('VALIDATION_ERROR', 'A valid email address is required.', 422);
+  }
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const rateKey = await hashValue('marketing-unsubscribe:' + ip, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL);
+  const rate = await consumePublicRateLimit(env, 'marketing-unsubscribe:' + rateKey, 5);
+  if (!rate.allowed) {
+    const response = apiError('RATE_LIMITED', 'Too many unsubscribe attempts. Please try again later.', 429);
+    response.headers.set('retry-after', String(Math.max(1, rate.retryAfterSeconds)));
+    return response;
+  }
+  const now = new Date().toISOString();
+  try {
+    await supabaseRequest(`marketing_subscribers?email=eq.${encodeURIComponent(email)}`, env, {
+      method: 'PATCH',
+      headers: { prefer: 'return=minimal' },
+      body: JSON.stringify({ unsubscribed_at: now, updated_at: now })
+    });
+  } catch (error) {
+    console.error('Marketing newsletter unsubscribe failed', error);
+    return apiError('PERSISTENCE_ERROR', 'We could not process your unsubscribe request. Please try again.', 503);
+  }
+  return json({ data: { unsubscribed: true } });
 }
 
 
@@ -1894,6 +1931,13 @@ export default {
         return apiError('INTERNAL_ERROR', 'Newsletter submission failed. Please try again.', 500);
       }
     }
+    if (url.pathname === '/api/public/newsletter/unsubscribe') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await unsubscribeMarketingNewsletter(request, env); } catch (error) {
+        console.error('Marketing newsletter unsubscribe failed', error);
+        return apiError('INTERNAL_ERROR', 'Newsletter unsubscribe failed. Please try again.', 500);
+      }
+    }
     if (url.pathname === '/api/public/abuse-reports') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await submitPublicAbuseReport(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Report submission failed.' }, 500); }
@@ -1968,6 +2012,6 @@ export default {
     if (request.method === 'GET' && url.pathname !== '/' && !url.pathname.includes('.')) {
       return secureAssetResponse(new Response('Not found.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8' } }));
     }
-    return secureAssetResponse(await env.ASSETS.fetch(request), url.pathname.startsWith('/assets/') || ['/favicon.svg', '/og-default.svg'].includes(url.pathname));
+    return secureAssetResponse(await env.ASSETS.fetch(request), url.pathname.startsWith('/assets/') || ['/favicon.svg', '/og-default.svg', '/og-default.png'].includes(url.pathname));
   },
 };
