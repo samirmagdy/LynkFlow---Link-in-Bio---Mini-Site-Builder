@@ -187,7 +187,7 @@ interface AppContextType {
   switchActiveProfile: (id: string) => void;
   createNewProfile: (username: string, displayName: string, category: string, themeId?: string) => string;
   duplicateProfile: (profileId: string) => void;
-  deleteProfile: (profileId: string) => boolean;
+  deleteProfile: (profileId: string) => Promise<boolean>;
 
   // Block Actions
   addBlock: (tabId: string, blockType: BlockType, customTitle?: string) => void;
@@ -1138,10 +1138,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     showToast(`Duplicated to @${newProfile.username}`);
   };
 
-  const deleteProfile = (profileId: string): boolean => {
+  const deleteProfile = async (profileId: string): Promise<boolean> => {
     if (profiles.length <= 1) {
       showToast('Cannot delete the only profile in the workspace');
       return false;
+    }
+
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await deleteCloudRecord('profiles', profileId, user.id);
+      } catch (error) {
+        reportRecoverableError('Supabase profile deletion failed', error);
+        showToast('Profile could not be deleted. Try again.');
+        return false;
+      }
     }
 
     const remaining = profiles.filter(p => p.id !== profileId);
@@ -1153,12 +1163,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       ...prev,
       profiles: prev.profiles.filter(id => id !== profileId)
     }));
-    if (isSupabaseConfigured && user.id !== 'usr-guest') {
-      void deleteCloudRecord('profiles', profileId, user.id).catch(error => {
-        reportRecoverableError('Supabase profile deletion failed', error);
-        showToast('Profile removed locally, but server deletion needs a retry.');
-      });
-    }
     showToast('Profile deleted');
     return true;
   };

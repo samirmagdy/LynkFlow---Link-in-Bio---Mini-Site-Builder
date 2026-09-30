@@ -197,7 +197,7 @@ function DeleteProfileModal({
 }: {
   username: string;
   hasDomain: boolean;
-  onConfirm: () => void;
+  onConfirm: () => Promise<boolean>;
   onClose: () => void;
 }) {
   return (
@@ -220,7 +220,7 @@ function DeleteProfileModal({
         )}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-xs font-medium text-muted hover:text-ink bg-surface-2 rounded-lg cursor-pointer">Keep Profile</button>
-          <button onClick={() => { onConfirm(); onClose(); }} className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg cursor-pointer">Confirm Delete</button>
+          <button onClick={async () => { if (await onConfirm()) onClose(); }} className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg cursor-pointer">Confirm Delete</button>
         </div>
       </div>
     </div>
@@ -249,13 +249,13 @@ export const MultiProfileManager: React.FC = () => {
     setNewUsername(''); setNewDisplayName(''); setNewCategory('Creator');
   };
 
-  const handleDelete = (profileId: string) => {
+  const handleDelete = async (profileId: string): Promise<boolean> => {
     const profile = profiles.find(p => p.id === profileId);
-    if (!profile) return;
+    if (!profile) return false;
     if (profile.customDomain?.status === 'verified') {
       removeDomain(profileId); // PRO-003: disconnect domain before deletion
     }
-    deleteProfile(profileId);
+    return deleteProfile(profileId);
   };
 
   return (
