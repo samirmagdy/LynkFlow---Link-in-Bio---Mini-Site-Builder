@@ -19,6 +19,11 @@ const failures: string[] = [];
 try {
   for (const viewport of viewports) {
     const page = await browser.newPage({ viewport });
+    // Keep consent UI from intercepting the interaction used by this smoke
+    // test. Production still shows the banner until visitor makes a choice.
+    await page.addInitScript(() => {
+      window.localStorage.setItem('lynkflow_cookie_consent_v1', 'rejected');
+    });
     // The public page may keep media/font requests open; DOM readiness is the
     // relevant gate for layout, while the explicit settle delay below lets the
     // shared renderer mount before measurements and screenshots.
