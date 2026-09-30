@@ -35,7 +35,7 @@ const RECENT = [
 // Use a real shipped preset in the product mock so the landing page demonstrates
 // the same theme model as the public renderer. The video is a muted Pexels CDN
 // asset; the preset image remains the poster and visual fallback.
-const HERO_THEME = SPEC_THEME_PRESETS.find(theme => theme.id === 'preset-botanical-forest') ?? SPEC_THEME_PRESETS[0];
+const HERO_THEME = SPEC_THEME_PRESETS.find(theme => theme.id === 'preset-midnight-studio') ?? SPEC_THEME_PRESETS[0];
 const HERO_VIDEO_URL = 'https://videos.pexels.com/video-files/34715630/14715594_360_640_30fps.mp4';
 const HERO_VIDEO_POSTER = 'https://images.pexels.com/videos/34715630/pexels-photo-34715630.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630';
 const HERO_THEME_COLORS = HERO_THEME.tokens.colors;
@@ -124,7 +124,7 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
                 preload="metadata"
                 aria-hidden="true"
               />
-              <div className="absolute inset-0 bg-[#061A14]/70" aria-hidden="true" />
+              <div className="absolute inset-0" style={{ backgroundColor: `${HERO_THEME_COLORS.pageBackground}cc` }} aria-hidden="true" />
               <div className="relative z-10">
               <div className="absolute left-1/2 top-2 z-20 h-5 w-24 -translate-x-1/2 rounded-full bg-[#111117]" aria-hidden="true" />
               <div className="flex items-center justify-between px-6 pt-3.5 text-[10px] font-semibold"><span>9:41</span><span className="flex items-center gap-1"><Signal className="h-3 w-3" /><Wifi className="h-3 w-3" /><BatteryFull className="h-3.5 w-3.5" /></span></div>
