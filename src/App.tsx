@@ -228,8 +228,23 @@ const AppContent: React.FC = () => {
       <TopNavigation onOpenAuth={handleOpenAuth} />
 
       <main className="flex-1 flex flex-col">
-        {currentView === 'marketing' || user.id === 'usr-guest' ? (
+        {isStudioRoute && !authReady ? (
+          <div className="flex min-h-[calc(100vh-64px)] flex-1 items-center justify-center bg-canvas px-6">
+            <div className="w-full max-w-sm rounded-2xl border border-line bg-surface/70 p-6 text-center shadow-sm">
+              <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-xl bg-accent/15" aria-hidden="true" />
+              <p className="text-sm font-semibold text-ink">Loading your studio</p>
+              <p className="mt-1 text-xs text-muted">Restoring your workspace and theme settings…</p>
+            </div>
+          </div>
+        ) : currentView === 'marketing' ? (
         <Suspense fallback={<div className="min-h-screen bg-canvas" />}><MarketingPage onOpenAuth={handleOpenAuth} /></Suspense>
+        ) : user.id === 'usr-guest' ? (
+          <div className="flex min-h-[calc(100vh-64px)] flex-1 items-center justify-center bg-canvas px-6">
+            <div className="w-full max-w-sm rounded-2xl border border-line bg-surface/70 p-6 text-center shadow-sm">
+              <p className="text-sm font-semibold text-ink">Sign in to open Studio</p>
+              <p className="mt-1 text-xs text-muted">Your studio route is ready. Sign in to continue.</p>
+            </div>
+          </div>
         ) : (
           <Suspense fallback={<div className="flex-1 min-h-screen bg-canvas" />}>
             <DashboardLayout

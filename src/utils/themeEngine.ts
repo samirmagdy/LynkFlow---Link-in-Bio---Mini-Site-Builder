@@ -824,6 +824,11 @@ export function compileThemeToCssVariables(theme: StandardTheme): Record<string,
     ,'--theme-card-radius-explicit': `${theme.cards?.radius ?? shape.cardRadius}px`
     ,'--theme-card-shadow': theme.cards?.shadow || elevation.card
     ,'--theme-card-blur': `${theme.cards?.blur || 0}px`
+    // Muted secondary text on the card surface — computed per card-text so it
+    // contrasts correctly on both light (white card) and dark panel themes.
+    // Falls back to the theme's secondaryText, then to a 65%-opacity blend of
+    // card-text against card-bg so it's always readable without theme authoring.
+    ,'--theme-card-subtitle': colors.secondaryText || `color-mix(in srgb, var(--theme-card-text) 65%, var(--theme-card-bg))`
     ,'--theme-social-color': theme.socialIcons?.color || colors.primaryText
     ,'--theme-social-size': `${theme.socialIcons?.size || 36}px`
     ,'--theme-surface-blur': `${theme.effects?.blur || 0}px`

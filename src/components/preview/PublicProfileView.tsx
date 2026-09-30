@@ -304,7 +304,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     backgroundPosition: standardTheme.background.focalPoint
       ? `${standardTheme.background.focalPoint.x}% ${standardTheme.background.focalPoint.y}%`
       : (standardTheme.background.position || 'center'),
-    color: 'var(--theme-text-primary, #F8FAFC)',
+    color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))',
     colorScheme: standardTheme.mode === 'dark' ? 'dark' : standardTheme.mode === 'light' ? 'light' : 'light dark',
     fontFamily: direction === 'rtl' ? 'var(--theme-arabic-font, var(--theme-body-font, sans-serif))' : 'var(--theme-body-font, sans-serif)',
     boxShadow: standardTheme.effects?.glow ? 'inset 0 0 180px color-mix(in srgb, var(--theme-accent, #6366F1) 18%, transparent)' : undefined,
@@ -619,7 +619,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           {profile.bio && (
             <p 
               className="text-xs sm:text-sm max-w-xs leading-relaxed mb-4 anime-profile-item"
-              style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}
+              style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}
             >
               {profile.bio}
             </p>
@@ -658,7 +658,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               role="tablist"
               aria-label="Profile sections"
               style={{
-                backgroundColor: 'var(--theme-panel-bg, #151B2A)',
+                backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
                 border: `1px solid var(--theme-border, #30394D)`
               }}
             >
@@ -710,7 +710,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           {(!currentTab || currentTab.blocks.length === 0) && (
             <div 
               className="text-center py-10 px-4 rounded-xl text-xs"
-              style={{ color: 'var(--theme-text-secondary, #94A3B8)', border: `1px dashed var(--theme-border, #30394D)` }}
+              style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))', border: `1px dashed var(--theme-border, #30394D)` }}
             >
               No content published in this tab yet.
             </div>
@@ -746,13 +746,20 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       onMouseLeave={(e) => legacyTheme.animeMicroInteractions !== false && animateHoverLeave(e.currentTarget)}
                       className="p-4 cursor-pointer flex items-center justify-between group relative transition-all duration-200 overflow-hidden outline-none focus-visible:ring-3 focus-visible:ring-[var(--theme-focus-ring)]"
                       style={{
-                        backgroundColor: block.style?.backgroundColor || (linkVariant === 'outline' ? 'transparent' : linkVariant === 'soft-card' ? 'color-mix(in srgb, var(--theme-panel-bg, #151B2A) 82%, transparent)' : linkVariant === 'glass' ? 'rgba(255,255,255,0.08)' : 'var(--theme-panel-bg, #151B2A)'),
+                        backgroundColor: block.style?.backgroundColor || (
+                          linkVariant === 'outline' ? 'transparent'
+                          : linkVariant === 'soft-card' ? 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))'
+                          : linkVariant === 'glass' ? 'rgba(255,255,255,0.08)'
+                          : 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))'
+                        ),
                         backgroundImage: block.style?.backgroundImage ? `url(${block.style.backgroundImage})` : undefined,
-                        border: `1px solid var(--theme-border, #30394D)`,
-                        color: block.style?.textColor || 'var(--theme-text-primary, #F8FAFC)',
+                        border: `1px solid var(--theme-card-border, var(--theme-border, #30394D))`,
+                        // Use card-text so the token is correct for the panel surface on both light
+                        // and dark themes. Falls back to the page primaryText only as a last resort.
+                        color: block.style?.textColor || 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))',
                         borderRadius: block.style?.borderRadius !== undefined ? `${block.style.borderRadius}px` : 'var(--theme-button-radius, 12px)',
                         boxShadow: linkVariant === 'solid' ? 'var(--theme-card-shadow, var(--theme-card-elevation, none))' : 'var(--theme-card-elevation, none)',
-                        borderColor: linkVariant === 'solid' ? 'var(--theme-button-border, var(--theme-border, #30394D))' : 'var(--theme-border, #30394D)',
+                        borderColor: linkVariant === 'solid' ? 'var(--theme-card-border, var(--theme-button-border, var(--theme-border, #30394D)))' : 'var(--theme-card-border, var(--theme-border, #30394D))',
                         backdropFilter: linkVariant === 'glass' || (standardTheme.buttons?.blur || standardTheme.effects?.blur || 0) > 0 ? `blur(var(--theme-button-blur, var(--theme-surface-blur, 0px)))` : undefined,
                         minHeight: block.style?.height ? `${block.style.height}px` : minH,
                         textAlign: block.style?.alignment || undefined,
@@ -783,7 +790,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                         {payload.subtitle && (
                           <p 
                             className="text-xs truncate"
-                            style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}
+                            style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}
                           >
                             {payload.subtitle}
                           </p>
@@ -791,7 +798,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       </div>
                       <ExternalLink 
                         className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                        style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}
+                        style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}
                       />
                     </a>
                   );
@@ -812,7 +819,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     style={{
                       backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
                       border: `1px solid var(--theme-card-border, var(--theme-border, #30394D))`,
-                      color: 'var(--theme-text-primary, #F8FAFC)',
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))',
                       borderRadius: standardTheme.blockDefaults?.media?.radius === 'none' ? 0 : standardTheme.blockDefaults?.media?.radius === 'sm' ? '8px' : standardTheme.blockDefaults?.media?.radius === 'md' ? '14px' : standardTheme.blockDefaults?.media?.radius === 'full' ? '999px' : 'var(--theme-card-radius, 16px)'
                     }}
                   >
@@ -871,7 +878,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     <div className="p-3">
                       <h4 className="text-xs font-semibold">{block.title}</h4>
                       {payload.caption && (
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                           {payload.caption}
                         </p>
                       )}
@@ -909,7 +916,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       if (!imageHref) return null;
                       const itemHref = safePublicHref(item.url);
                       const image = <img src={imageHref} alt={item.alt || item.title || block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px)' }} />;
-                      return <div key={item.id || `${block.id}-carousel-${itemIdx}`} className="min-w-[82%] snap-center">{itemHref ? <a href={itemHref} target="_blank" rel="noopener noreferrer">{image}</a> : image}{item.title && <p className="text-xs mt-2" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{item.title}</p>}</div>;
+                      return <div key={item.id || `${block.id}-carousel-${itemIdx}`} className="min-w-[82%] snap-center">{itemHref ? <a href={itemHref} target="_blank" rel="noopener noreferrer">{image}</a> : image}{item.title && <p className="text-xs mt-2" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{item.title}</p>}</div>;
                     })}
                   </div>
                 );
@@ -922,7 +929,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 return (
                   <a key={block.id} href={productHref || '#'} target="_blank" rel="noopener noreferrer" className={`${cardClasses} overflow-hidden block`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
                     {productImageHref && <img src={productImageHref} alt={block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px) var(--theme-card-radius, 16px) 0 0' }} />}
-                    <div className="p-4"><div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-sm">{block.title}</h4>{payload.price && <span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || '$'} {payload.price}</span>}</div>{payload.description && <p className="text-xs mt-1" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>{payload.description}</p>}<span className="inline-flex mt-3 text-xs font-semibold" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.buttonLabel || 'View product'} <ExternalLink className="w-3 h-3 ml-1" /></span></div>
+                    <div className="p-4"><div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-sm">{block.title}</h4>{payload.price && <span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || '$'} {payload.price}</span>}</div>{payload.description && <p className="text-xs mt-1" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{payload.description}</p>}<span className="inline-flex mt-3 text-xs font-semibold" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.buttonLabel || 'View product'} <ExternalLink className="w-3 h-3 ml-1" /></span></div>
                   </a>
                 );
               }
@@ -948,7 +955,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       </blockquote>
                     )}
                     {payload.textType === 'p' && (
-                      <p className="text-xs leading-relaxed" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                      <p className="text-xs leading-relaxed" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                         {payload.content}
                       </p>
                     )}
@@ -989,7 +996,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     style={{
                       backgroundColor: standardTheme.blockDefaults?.folder?.variant === 'glass' ? 'rgba(255,255,255,0.08)' : 'var(--theme-panel-bg, #151B2A)',
                       border: `1px solid var(--theme-border, #30394D)`,
-                      color: 'var(--theme-text-primary, #F8FAFC)',
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))',
                       backdropFilter: standardTheme.blockDefaults?.folder?.variant === 'glass' ? 'blur(16px)' : undefined
                     }}
                   >
@@ -1003,15 +1010,15 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       <div>
                         <div className="font-semibold text-sm">{block.title}</div>
                         {payload.description && (
-                          <div className="text-xs mt-0.5" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                          <div className="text-xs mt-0.5" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                             {payload.description}
                           </div>
                         )}
                       </div>
                       {isOpen ? (
-                        <ChevronUp className="w-4 h-4 shrink-0" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }} />
+                        <ChevronUp className="w-4 h-4 shrink-0" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }} />
                       ) : (
-                        <ChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }} />
+                        <ChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }} />
                       )}
                     </button>
 
@@ -1053,11 +1060,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     style={{
                       backgroundColor: standardTheme.componentVariants?.form === 'glass' ? 'rgba(255,255,255,0.08)' : 'var(--theme-panel-bg, #151B2A)',
                       border: `1px solid var(--theme-border, #30394D)`,
-                      color: 'var(--theme-text-primary, #F8FAFC)',
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))',
                       backdropFilter: standardTheme.componentVariants?.form === 'glass' ? 'blur(16px)' : undefined
                     }}
                   >
-                    <h4 className="font-semibold text-xs tracking-wider uppercase mb-3" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                    <h4 className="font-semibold text-xs tracking-wider uppercase mb-3" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                       {block.title}
                     </h4>
                     <div className="space-y-2">
@@ -1087,7 +1094,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                               <div 
                                 id={`faq-answer-${faq.id}`}
                                 className="px-2.5 pb-2.5 text-[11px] leading-relaxed border-t pt-2"
-                                style={{ color: 'var(--theme-text-secondary, #94A3B8)', borderColor: 'var(--theme-border, #30394D)' }}
+                                style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))', borderColor: 'var(--theme-border, #30394D)' }}
                               >
                                 {faq.answer}
                               </div>
@@ -1107,9 +1114,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     key={block.id}
                     className={`${cardClasses} p-4 relative`}
                     style={{
-                      backgroundColor: 'var(--theme-panel-bg, #151B2A)',
+                      backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
                       border: `1px solid var(--theme-border, #30394D)`,
-                      color: 'var(--theme-text-primary, #F8FAFC)'
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                     }}
                   >
                     <p className="text-xs italic leading-relaxed mb-3">
@@ -1119,7 +1126,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       <div>
                         <div className="font-semibold">{payload.authorName}</div>
                         {(payload.authorRole || payload.company) && (
-                          <div className="text-[11px]" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                          <div className="text-[11px]" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                             {payload.authorRole} {payload.company ? `• ${payload.company}` : ''}
                           </div>
                         )}
@@ -1146,16 +1153,16 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     onClick={(e) => handleLinkClick(block.id, fileHref || '', e)}
                     className={`${cardClasses} p-4 cursor-pointer flex items-center justify-between group`}
                     style={{
-                      backgroundColor: 'var(--theme-panel-bg, #151B2A)',
+                      backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
                       border: `1px solid var(--theme-border, #30394D)`,
-                      color: 'var(--theme-text-primary, #F8FAFC)'
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                     }}
                   >
                     <div className="min-w-0 pr-3">
                       <div className="font-semibold text-sm truncate group-hover:underline">
                         {block.title}
                       </div>
-                      <div className="text-xs flex items-center gap-2 mt-0.5" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                      <div className="text-xs flex items-center gap-2 mt-0.5" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                         <span>{payload.fileName}</span>
                         <span>•</span>
                         <span>{payload.fileSize}</span>
@@ -1183,14 +1190,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     key={block.id}
                     className={`${cardClasses} p-4`}
                     style={{
-                      backgroundColor: 'var(--theme-panel-bg, #151B2A)',
+                      backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
                       border: `1px solid var(--theme-border, #30394D)`,
-                      color: 'var(--theme-text-primary, #F8FAFC)'
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                     }}
                   >
                     <h4 className="font-bold text-sm tracking-tight mb-1">{block.title}</h4>
                     {payload.description && (
-                      <p className="text-xs mb-3" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                      <p className="text-xs mb-3" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                         {payload.description}
                       </p>
                     )}
@@ -1234,7 +1241,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
                           return (
                           <div key={field.id || `${block.id}-field-${fieldIdx}`} className="space-y-1">
-                              <label htmlFor={`form-${block.id}-${field.id}`} className="block text-sm sm:text-[11px] font-medium" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                              <label htmlFor={`form-${block.id}-${field.id}`} className="block text-sm sm:text-[11px] font-medium" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                                 {field.label} {field.required && <span className="text-danger">*</span>}
                               </label>
 
@@ -1247,12 +1254,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                                   rows={3}
                                   value={currentValue}
                                   onChange={(e) => handleFormInputChange(block.id, field.id, e.target.value)}
-                                  className={`w-full text-xs p-2 rounded-lg bg-black/20 border focus:outline-none transition-colors ${
+                                  className={`w-full text-xs p-2 rounded-lg border focus:outline-none transition-colors ${
                                     fieldError ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500' : 'focus:ring-1 focus:ring-ink/40'
                                   }`}
                                   style={{ 
-                                    borderColor: fieldError ? '#F43F5E' : 'var(--theme-border, #30394D)', 
-                                    color: 'var(--theme-text-primary, #F8FAFC)' 
+                                    backgroundColor: 'color-mix(in srgb, var(--theme-card-bg, var(--theme-panel-bg, #1E2636)) 90%, transparent)',
+                                    borderColor: fieldError ? '#F43F5E' : 'var(--theme-card-border, var(--theme-border, #30394D))',
+                                    color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                                   }}
                                 />
                               ) : field.type === 'select' ? (
@@ -1262,12 +1270,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                                   aria-invalid={fieldError ? 'true' : undefined}
                                   value={currentValue}
                                   onChange={(e) => handleFormInputChange(block.id, field.id, e.target.value)}
-                                  className={`w-full text-xs p-2 rounded-lg bg-black/20 border focus:outline-none transition-colors ${
+                                  className={`w-full text-xs p-2 rounded-lg border focus:outline-none transition-colors ${
                                     fieldError ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500' : 'focus:ring-1 focus:ring-ink/40'
                                   }`}
                                   style={{ 
-                                    borderColor: fieldError ? '#F43F5E' : 'var(--theme-border, #30394D)', 
-                                    color: 'var(--theme-text-primary, #F8FAFC)' 
+                                    backgroundColor: 'color-mix(in srgb, var(--theme-card-bg, var(--theme-panel-bg, #1E2636)) 90%, transparent)',
+                                    borderColor: fieldError ? '#F43F5E' : 'var(--theme-card-border, var(--theme-border, #30394D))',
+                                    color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                                   }}
                                 >
                                   <option value="">{field.placeholder || 'Select an option...'}</option>
@@ -1278,7 +1287,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                                   ))}
                                 </select>
                               ) : field.type === 'checkbox' ? (
-                                <label className="flex items-center gap-2 text-xs cursor-pointer py-1" style={{ color: 'var(--theme-text-primary, #F8FAFC)' }}>
+                                <label className="flex items-center gap-2 text-xs cursor-pointer py-1" style={{ color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
                                   <input
                                     id={`form-${block.id}-${field.id}`}
                                     name={field.id}
@@ -1299,18 +1308,19 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                                   placeholder={field.placeholder || ''}
                                   value={currentValue}
                                   onChange={(e) => handleFormInputChange(block.id, field.id, e.target.value)}
-                                  className={`w-full text-xs p-2 rounded-lg bg-black/20 border focus:outline-none transition-colors ${
+                                  className={`w-full text-xs p-2 rounded-lg border focus:outline-none transition-colors ${
                                     fieldError ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500' : 'focus:ring-1 focus:ring-ink/40'
                                   }`}
                                   style={{ 
-                                    borderColor: fieldError ? '#F43F5E' : 'var(--theme-border, #30394D)', 
-                                    color: 'var(--theme-text-primary, #F8FAFC)' 
+                                    backgroundColor: 'color-mix(in srgb, var(--theme-card-bg, var(--theme-panel-bg, #1E2636)) 90%, transparent)',
+                                    borderColor: fieldError ? '#F43F5E' : 'var(--theme-card-border, var(--theme-border, #30394D))',
+                                    color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                                   }}
                                 />
                               )}
 
                               {field.helpText && !fieldError && (
-                                <p className="text-xs sm:text-[10px]" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                                <p className="text-xs sm:text-[10px]" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                                   {field.helpText}
                                 </p>
                               )}
@@ -1326,7 +1336,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
                         {payload.consentText && (
                           <div className="space-y-1 mt-1">
-                            <label className="flex items-start gap-2 text-xs sm:text-[10px] cursor-pointer" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                            <label className="flex items-start gap-2 text-xs sm:text-[10px] cursor-pointer" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                               <input
                                 type="checkbox"
                                 checked={formConsents[block.id] !== false}
@@ -1386,9 +1396,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     })}
                     className={`${cardClasses} p-4 flex items-center justify-between group cursor-pointer`}
                     style={{
-                      backgroundColor: 'var(--theme-panel-bg, #151B2A)',
+                      backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
                       border: `1px solid var(--theme-border, #30394D)`,
-                      color: 'var(--theme-text-primary, #F8FAFC)'
+                      color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
                     }}
                   >
                     <div className="flex items-center gap-3">
@@ -1397,7 +1407,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       </div>
                       <div>
                         <div className="font-semibold text-sm">{block.title}</div>
-                        <div className="text-xs" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+                        <div className="text-xs" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
                           {payload.value}
                         </div>
                       </div>
@@ -1453,7 +1463,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         {/* Public Footer */}
         {layout.showFooter !== false && (
           <footer className="mt-12 text-center text-xs pb-4">
-            <div className="flex items-center justify-center gap-3" style={{ color: 'var(--theme-text-secondary, #94A3B8)' }}>
+            <div className="flex items-center justify-center gap-3" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
               <span className="font-medium">
                 Powered by <span className="font-bold text-ink tracking-tight">LynkFlow</span>
               </span>
