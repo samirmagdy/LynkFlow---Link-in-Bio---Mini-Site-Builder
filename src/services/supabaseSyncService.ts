@@ -1,6 +1,6 @@
 import {
   AbuseReport, AnalyticsEvent, ApiKey, AuditLog, FormSubmission,
-  Profile, Subscriber, StandardTheme, WebhookSubscription, Workspace, UserAccount, BrandKit
+  Profile, Subscriber, StandardTheme, WebhookSubscription, Workspace, UserAccount, BrandKit, ProfileMember, ProfileRole
 } from '../types';
 import { normalizeTheme, validateThemeSchema } from '../utils/themeEngine';
 import { mergeSparseOverride } from '../utils/designSystemPersistence';
@@ -370,6 +370,23 @@ export async function saveCloudWorkspace(workspace: Workspace): Promise<void> {
     });
     if (brandError) throw brandError;
   }
+}
+
+export async function inviteCloudWorkspaceMember(input: { email: string; name: string; role: ProfileRole; assignedProfileIds: string[] }): Promise<ProfileMember> {
+  if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is required for team invitations.');
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in before inviting a team member.');
+  const response = await fetch('/api/workspace/invite', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json().catch(() => ({})) as { data?: { member?: ProfileMember }; error?: string | { message?: string } };
+  if (!response.ok || !body.data?.member) {
+    const message = typeof body.error === 'string' ? body.error : body.error?.message;
+    throw new Error(message || 'Team invitation could not be sent.');
+  }
+  return body.data.member;
 }
 
 export async function saveCloudAnalytics(events: AnalyticsEvent[], workspaceId: string): Promise<void> {

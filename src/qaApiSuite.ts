@@ -8,6 +8,7 @@ const checks = [
   ['theme read', '/api/v1/profiles/example/themes', 'GET'],
   ['publish', '/api/v1/profiles/example/publish', 'POST'],
   ['webhook create', '/api/webhooks', 'POST'],
+  ['workspace invite', '/api/workspace/invite', 'POST'],
   ['domain verify', '/api/domains/verify', 'POST'],
   ['domain remove', '/api/domains/remove', 'POST'],
   ['checkout', '/api/stripe/checkout', 'POST'],

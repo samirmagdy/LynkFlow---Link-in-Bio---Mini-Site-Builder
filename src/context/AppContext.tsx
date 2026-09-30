@@ -82,6 +82,7 @@ const saveCloudWebhooks = lazyCall<CloudSyncModule['saveCloudWebhooks']>(getClou
 const saveCloudApiKeys = lazyCall<CloudSyncModule['saveCloudApiKeys']>(getCloudSync, 'saveCloudApiKeys');
 const saveCloudSubscribers = lazyCall<CloudSyncModule['saveCloudSubscribers']>(getCloudSync, 'saveCloudSubscribers');
 const saveCloudWorkspace = lazyCall<CloudSyncModule['saveCloudWorkspace']>(getCloudSync, 'saveCloudWorkspace');
+const inviteCloudWorkspaceMember = lazyCall<CloudSyncModule['inviteCloudWorkspaceMember']>(getCloudSync, 'inviteCloudWorkspaceMember');
 const deleteCloudRecord = lazyCall<CloudSyncModule['deleteCloudRecord']>(getCloudSync, 'deleteCloudRecord');
 const publishCloudProfile = lazyCall<CloudSyncModule['publishCloudProfile']>(getCloudSync, 'publishCloudProfile');
 const rollbackCloudProfile = lazyCall<CloudSyncModule['rollbackCloudProfile']>(getCloudSync, 'rollbackCloudProfile');
@@ -1600,7 +1601,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   const addMember = async (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]): Promise<{ success: boolean; error?: string }> => {
     const existing = workspace.members?.find(m => m.email === email);
     if (existing) return { success: false, error: `${email} is already a workspace member.` };
-    const member: ProfileMember = {
+    let member: ProfileMember = {
       id: `mem-${Date.now()}`,
       email,
       name,
@@ -1610,16 +1611,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       addedBy: user.email,
       pendingInviteExpiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
     };
-    const nextWorkspace = { ...workspace, members: [...(workspace.members || []), member] };
     try {
-      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudWorkspace(nextWorkspace);
+      if (isSupabaseConfigured && user.id !== 'usr-guest') {
+        member = await inviteCloudWorkspaceMember({ email, name, role, assignedProfileIds });
+      }
+      const nextWorkspace = { ...workspace, members: [...(workspace.members || []), member] };
+      if (!isSupabaseConfigured || user.id === 'usr-guest') await saveCloudWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Member could not be saved.';
       showToast(message);
       return { success: false, error: message };
     }
-    showToast(`Pending team member saved for ${email}`);
+    showToast(`Invitation sent to ${email}`);
     return { success: true };
   };
 

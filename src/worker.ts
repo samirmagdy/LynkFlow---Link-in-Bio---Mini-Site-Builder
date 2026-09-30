@@ -1605,6 +1605,56 @@ async function requirePaidWorkspace(request: Request, env: Env): Promise<{ user:
   return { user, plan: rows[0].plan };
 }
 
+async function inviteWorkspaceMember(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before inviting team members.', 403);
+  if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.SUPABASE_URL) return apiError('SERVICE_UNAVAILABLE', 'Team invitations are not configured.', 503);
+
+  let input: { email?: string; name?: string; role?: string; assignedProfileIds?: unknown[] };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const email = input.email?.trim().toLowerCase() || '';
+  const name = input.name?.trim() || '';
+  const role = input.role === 'viewer' ? 'viewer' : input.role === 'manager' ? 'manager' : '';
+  const assignedProfileIds = Array.isArray(input.assignedProfileIds) ? input.assignedProfileIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim())).map(id => id.trim()) : [];
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !name || !role) return apiError('VALIDATION_ERROR', 'A valid email, name and role are required.', 422);
+  if (!assignedProfileIds.length) return apiError('VALIDATION_ERROR', 'Assign at least one profile to the team member.', 422);
+
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=id,settings`, env);
+  const workspaces = await workspaceResponse.json() as Array<{ id: string; settings?: Record<string, unknown> }>;
+  const workspace = workspaces[0];
+  if (!workspace) return apiError('NOT_FOUND', 'Workspace not found.', 404);
+  const profileResponse = await supabaseRequest(`profiles?workspace_id=eq.${encodeURIComponent(user.id)}&id=in.(${assignedProfileIds.map(encodeURIComponent).join(',')})&select=id`, env);
+  const profileRows = await profileResponse.json() as Array<{ id: string }>;
+  if (profileRows.length !== new Set(assignedProfileIds).size) return apiError('NOT_FOUND', 'One or more assigned profiles were not found.', 404);
+  const settings = workspace.settings || {};
+  const members = Array.isArray(settings.members) ? settings.members as Array<Record<string, unknown>> : [];
+  if (members.some(member => String(member.email || '').toLowerCase() === email)) return apiError('CONFLICT', 'This email is already a workspace member.', 409);
+
+  const redirectTo = `${new URL(request.url).origin}/login`;
+  const inviteResponse = await fetch(`${env.SUPABASE_URL}/auth/v1/invite`, {
+    method: 'POST',
+    headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ email, data: { name, workspaceId: user.id, role, assignedProfileIds }, redirect_to: redirectTo })
+  });
+  if (!inviteResponse.ok) {
+    const inviteBody = await inviteResponse.json().catch(() => ({})) as { msg?: string; error_description?: string };
+    return apiError('INVITE_DELIVERY_FAILED', inviteBody.error_description || inviteBody.msg || 'Supabase could not send the invitation email.', 503);
+  }
+
+  const member = {
+    id: `mem-${crypto.randomUUID()}`, email, name, role, assignedProfileIds,
+    addedAt: new Date().toISOString(), addedBy: user.email,
+    pendingInviteExpiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+  };
+  const workspaceUpdate = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}`, env, {
+    method: 'PATCH', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ settings: { ...settings, members: [...members, member] }, updated_at: new Date().toISOString() })
+  });
+  if (!workspaceUpdate.ok) return apiError('PERSISTENCE_ERROR', 'Invitation was sent, but the workspace member record could not be saved. Retry member setup.', 503);
+  return json({ data: { member }, requestId: crypto.randomUUID() });
+}
+
 async function createWebhookSubscription(request: Request, env: Env): Promise<Response> {
   if (!env.WEBHOOK_ENCRYPTION_KEY) return apiError('SERVICE_UNAVAILABLE', 'Webhook delivery is not configured.', 503);
   const access = await requirePaidWorkspace(request, env);
@@ -2089,6 +2139,10 @@ export default {
     if (url.pathname === '/api/webhooks') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await createWebhookSubscription(request, env); } catch (error) { return internalApiError('Create webhook failed', error, 'Unable to create webhook.'); }
+    }
+    if (url.pathname === '/api/workspace/invite') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await inviteWorkspaceMember(request, env); } catch (error) { return internalApiError('Invite workspace member failed', error, 'Unable to send team invitation.'); }
     }
     if (url.pathname.startsWith('/api/webhooks/') && url.pathname.endsWith('/test')) {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
