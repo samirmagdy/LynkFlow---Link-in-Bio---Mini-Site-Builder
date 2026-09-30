@@ -12,12 +12,14 @@ try {
   // the shared renderer mount without making the test depend on network idle.
   const response = await page.goto(`${baseUrl}/@alexvance?demo=1`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.waitForTimeout(500);
-  await page.locator('[data-profile-theme]').waitFor({ state: 'attached', timeout: 10_000 }).catch(() => undefined);
+  const renderedProfile = page.locator('[data-profile-theme][dir]');
+  await renderedProfile.waitFor({ state: 'attached', timeout: 10_000 }).catch(() => undefined);
   const essentialOnly = page.getByRole('button', { name: 'Essential Only' });
   // The consent panel intentionally sits above the public page and can cover
   // the first keyboard target. Resolve it before running focus/overflow checks.
   if (await essentialOnly.isVisible().catch(() => false)) await essentialOnly.click({ force: true });
   if (!response || response.status() !== 200) failures.push(`expected HTTP 200, received ${response?.status() ?? 'no response'}`);
+  if (!(await renderedProfile.count())) failures.push('shared profile renderer did not expose a language direction attribute');
 
   const result = await page.evaluate(() => {
     const actionable = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role="button"]')).filter(element => element.getAttribute('aria-hidden') !== 'true' && (element as HTMLElement).offsetParent !== null);
