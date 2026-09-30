@@ -224,7 +224,8 @@ interface AppContextType {
     formPayload: FormBlockPayload, 
     data: Record<string, string>, 
     consent: boolean,
-    honeypotTrap?: string
+    honeypotTrap?: string,
+    idempotencyKey?: string
   ) => Promise<{ success: boolean; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }>;
   deleteSubmission: (id: string) => Promise<void>;
 
@@ -1388,11 +1389,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     formPayload: FormBlockPayload, 
     data: Record<string, string>, 
     consent: boolean,
-    honeypotTrap?: string
+    honeypotTrap?: string,
+    idempotencyKey?: string
   ): Promise<{ success: boolean; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }> => {
     // 1. Authoritative server-side validation, spam & rate-limit check, audience sync
     if (isSupabaseConfigured && user.id === 'usr-guest') {
-      return submitPublicForm({ profileId, blockId, formTitle, formPayload, data, consentGiven: consent, honeypotTrap });
+      return submitPublicForm({ profileId, blockId, formTitle, formPayload, data, consentGiven: consent, honeypotTrap, idempotencyKey });
     }
 
     const result = formSubmissionService.submitFormAuthoritative({

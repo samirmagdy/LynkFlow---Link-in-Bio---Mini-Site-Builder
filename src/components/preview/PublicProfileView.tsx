@@ -74,6 +74,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [formSubmitted, setFormSubmitted] = useState<Record<string, boolean>>({});
   const [formErrors, setFormErrors] = useState<Record<string, Record<string, string>>>({});
   const [formHoneypots, setFormHoneypots] = useState<Record<string, string>>({});
+  const [formIdempotencyKeys, setFormIdempotencyKeys] = useState<Record<string, string>>({});
   const [isSubmittingForm, setIsSubmittingForm] = useState<Record<string, boolean>>({});
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -342,6 +343,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     const values = formValues[block.id] || {};
     const consent = formConsents[block.id] !== false;
     const honeypot = formHoneypots[block.id] || '';
+    const idempotencyKey = formIdempotencyKeys[block.id] || crypto.randomUUID();
+    setFormIdempotencyKeys(prev => ({ ...prev, [block.id]: idempotencyKey }));
 
     // Clear previous errors for this block
     setFormErrors(prev => ({ ...prev, [block.id]: {} }));
@@ -350,7 +353,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     const targetElement = e.currentTarget as HTMLElement;
 
     // Call authoritative submitForm
-    const result = await submitForm(profile.id, block.id, block.title, payload, values, consent, honeypot);
+    const result = await submitForm(profile.id, block.id, block.title, payload, values, consent, honeypot, idempotencyKey);
 
     setIsSubmittingForm(prev => ({ ...prev, [block.id]: false }));
 

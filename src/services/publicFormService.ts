@@ -8,10 +8,11 @@ export async function submitPublicForm(input: {
   data: Record<string, string>;
   consentGiven: boolean;
   honeypotTrap?: string;
+  idempotencyKey?: string;
 }): Promise<{ success: boolean; submissionId?: string; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }> {
   const response = await fetch('/api/public/forms', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(input.idempotencyKey ? { 'idempotency-key': input.idempotencyKey } : {}) },
     body: JSON.stringify(input),
   });
   const body = await response.json() as { success?: boolean; submissionId?: string; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean };

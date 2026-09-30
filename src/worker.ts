@@ -1,5 +1,7 @@
 import { normalizeTheme, validateThemeAccessibility, validateThemeSchema, validateProfileAccessibility } from './utils/themeEngine';
 import { validateBlockPayload, validateUrl } from './utils/blockValidator';
+import type { BlockType } from './types';
+import { ALL_API_SCOPES } from './types';
 import { createThemeDesignPersistence, mergeSparseOverride } from './utils/designSystemPersistence';
 import {
   escapeHtml,
@@ -625,13 +627,15 @@ async function submitPublicForm(request: Request, env: Env): Promise<Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: 'Form service is not configured.' }, 503);
   let input: {
     profileId?: string; blockId?: string; formTitle?: string;
-    formPayload?: Record<string, unknown>; data?: Record<string, string>;
-    consentGiven?: boolean; honeypotTrap?: string;
+    data?: Record<string, string>;
+    consentGiven?: boolean; honeypotTrap?: string; idempotencyKey?: string;
   };
   try { input = await request.json(); } catch { return json({ error: 'Request body must be valid JSON.' }, 400); }
   if (JSON.stringify(input.data || {}).length > 64 * 1024) return json({ error: 'Payload size exceeds safe limits.' }, 413);
-  if (!input.profileId || !input.blockId || !input.formPayload || !input.data) return json({ error: 'Profile, block, form schema, and data are required.' }, 400);
+  if (!input.profileId || !input.blockId || !input.data) return json({ error: 'Profile, block, and data are required.' }, 400);
   if (input.honeypotTrap?.trim()) return json({ error: 'Spam filter triggered.' }, 400);
+  const idempotencyKey = input.idempotencyKey || request.headers.get('idempotency-key')?.trim();
+  if (idempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) return json({ error: 'Idempotency-Key must be 8-128 safe characters.' }, 422);
 
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
   const rateKey = await hashValue(`${ip}:${input.profileId}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL);
@@ -650,7 +654,8 @@ async function submitPublicForm(request: Request, env: Env): Promise<Response> {
   const publishedBlock = publishedTabs.flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks as Array<Record<string, unknown>> : []).find(block => block.id === input.blockId);
   if (!publishedBlock || publishedBlock.type !== 'form') return json({ error: 'Form is not published.' }, 404);
 
-  const payload = input.formPayload;
+  const payload = publishedBlock.payload as Record<string, unknown> | undefined;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return json({ error: 'Published form schema is invalid.' }, 422);
   const fields = Array.isArray(payload.fields) ? payload.fields as Array<Record<string, unknown>> : [];
   const fieldErrors: Record<string, string> = {};
   for (const field of fields) {
@@ -664,7 +669,12 @@ async function submitPublicForm(request: Request, env: Env): Promise<Response> {
   if (Object.keys(fieldErrors).length) return json({ error: 'Please correct the form fields.', fieldErrors }, 422);
 
   const { email, name } = extractFormContact(payload, input.data);
-  const submissionId = `sub-${crypto.randomUUID()}`;
+  const submissionId = idempotencyKey ? `sub-${await sha256(`${profile.id}:${input.blockId}:${idempotencyKey}`)}` : `sub-${crypto.randomUUID()}`;
+  if (idempotencyKey) {
+    const existingResponse = await supabaseRequest(`form_submissions?id=eq.${encodeURIComponent(submissionId)}&profile_id=eq.${encodeURIComponent(input.profileId)}&select=id`, env);
+    const existingRows = await existingResponse.json() as Array<{ id: string }>;
+    if (existingRows.length) return json({ success: true, submissionId });
+  }
   const submittedAt = new Date().toISOString();
   await supabaseRequest('form_submissions', env, {
     method: 'POST',
@@ -838,10 +848,17 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
   const replay = await idempotentReplay(env, auth, request, requestHash);
   if (replay) return replay;
   let found = false;
+  const existingBlock = tabs.flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks as Array<Record<string, unknown>> : []).find(block => block.id === blockId);
+  if (!existingBlock) return apiError('NOT_FOUND', 'Block not found.', 404);
+  const forbiddenBlockFields = ['id', 'type', 'position', 'tabId'];
+  if (Object.keys(input.data).some(key => forbiddenBlockFields.includes(key))) return apiError('VALIDATION_ERROR', 'Block identity fields cannot be changed.', 422);
+  const candidateBlock = { ...existingBlock, ...input.data };
+  const blockValidation = validateBlockPayload(String(candidateBlock.type) as BlockType, candidateBlock.payload);
+  if (!blockValidation.isValid) return apiError('VALIDATION_ERROR', blockValidation.errors[0] || 'Block payload is invalid.', 422);
   const nextTabs = tabs.map(tab => ({ ...tab, blocks: Array.isArray(tab.blocks) ? (tab.blocks as Array<Record<string, unknown>>).map(block => {
     if (block.id !== blockId) return block;
     found = true;
-    return { ...block, ...input.data };
+    return candidateBlock;
   }) : tab.blocks }));
   if (!found) return apiError('NOT_FOUND', 'Block not found.', 404);
   const nextData = { ...profile.data, tabs: nextTabs };
@@ -1363,6 +1380,9 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
   let input: { data?: Record<string, unknown> };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   if (!input.data || typeof input.data !== 'object' || Array.isArray(input.data)) return apiError('VALIDATION_ERROR', 'data must be an object.', 422);
+  const mutableProfileFields = new Set(['username', 'displayName', 'bio', 'avatarUrl', 'category', 'socialLinks', 'seo', 'qrConfig', 'directLinkMode', 'socialPosition']);
+  const invalidFields = Object.keys(input.data).filter(field => !mutableProfileFields.has(field) && field !== 'theme' && field !== 'standardTheme');
+  if (invalidFields.length) return apiError('VALIDATION_ERROR', `Fields cannot be changed through this endpoint: ${invalidFields.join(', ')}.`, 422);
   const requestHash = await sha256(JSON.stringify(input.data));
   const replay = await idempotentReplay(env, auth, request, requestHash);
   if (replay) return replay;
@@ -1423,10 +1443,18 @@ async function issueApiKey(request: Request, env: Env): Promise<Response> {
   const name = input.name?.trim();
   const scopes = Array.isArray(input.scopes) ? input.scopes.filter(scope => typeof scope === 'string') : [];
   if (!name || !scopes.length) return apiError('VALIDATION_ERROR', 'Key name and at least one scope are required.', 422);
+  if (scopes.some(scope => !ALL_API_SCOPES.includes(scope as typeof ALL_API_SCOPES[number]))) return apiError('VALIDATION_ERROR', 'One or more API scopes are invalid.', 422);
   const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=id,plan`, env);
   const workspaces = await workspaceResponse.json() as Array<{ id: string; plan: string }>;
   const workspace = workspaces[0];
   if (!workspace || !['pro', 'agency'].includes(workspace.plan)) return apiError('ENTITLEMENT_REQUIRED', 'REST API access requires a paid plan.', 403);
+  if (input.allowedProfileIds) {
+    const profileIds = input.allowedProfileIds.filter(id => typeof id === 'string' && id.trim());
+    if (profileIds.length !== input.allowedProfileIds.length) return apiError('VALIDATION_ERROR', 'allowedProfileIds must contain valid profile IDs.', 422);
+    const profileResponse = await supabaseRequest(`profiles?workspace_id=eq.${encodeURIComponent(user.id)}&id=in.(${profileIds.map(id => encodeURIComponent(id)).join(',')})&select=id`, env);
+    const ownedProfiles = await profileResponse.json() as Array<{ id: string }>;
+    if (ownedProfiles.length !== profileIds.length) return apiError('VALIDATION_ERROR', 'All allowed profiles must belong to your workspace.', 422);
+  }
   const existingResponse = await supabaseRequest(`api_keys?workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.active&select=id`, env);
   const existing = await existingResponse.json() as unknown[];
   if (existing.length >= (workspace.plan === 'agency' ? 20 : 5)) return apiError('ENTITLEMENT_REQUIRED', 'Active API key limit reached.', 403);
@@ -1519,14 +1547,18 @@ async function updateWebhookSubscription(request: Request, env: Env, hookId: str
   let input: { status?: 'active' | 'paused' };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   if (!['active', 'paused'].includes(input.status || '')) return apiError('VALIDATION_ERROR', 'Status must be active or paused.', 422);
-  await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(hookId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: input.status }) });
+  const updateResponse = await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(hookId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,status`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: input.status }) });
+  const updatedRows = await updateResponse.json() as Array<{ id: string; status: string }>;
+  if (!updatedRows.length) return apiError('NOT_FOUND', 'Webhook subscription not found.', 404);
   return json({ success: true });
 }
 
 async function deleteWebhookSubscription(request: Request, env: Env, hookId: string): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
-  await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(hookId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'DELETE' });
+  const deleteResponse = await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(hookId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id`, env, { method: 'DELETE', headers: { prefer: 'return=representation' } });
+  const deletedRows = await deleteResponse.json() as Array<{ id: string }>;
+  if (!deletedRows.length) return apiError('NOT_FOUND', 'Webhook subscription not found.', 404);
   return json({ success: true });
 }
 
@@ -1536,8 +1568,8 @@ async function signWebhookBody(secret: string, timestamp: number, body: string):
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function deliverWebhook(row: Record<string, unknown>, event: Record<string, unknown>, env: Env): Promise<{ delivered: boolean; deliveryId: string }> {
-  const deliveryId = `del_${crypto.randomUUID()}`;
+async function deliverWebhook(row: Record<string, unknown>, event: Record<string, unknown>, env: Env, existingDeliveryId?: string): Promise<{ delivered: boolean; deliveryId: string }> {
+  const deliveryId = existingDeliveryId || `del_${crypto.randomUUID()}`;
   const body = JSON.stringify(event);
   const timestamp = Math.floor(Date.now() / 1000);
   const secret = await decryptWebhookSecret(String(row.signing_secret_ciphertext || ''), env);
@@ -1561,12 +1593,17 @@ async function deliverWebhook(row: Record<string, unknown>, event: Record<string
     } catch (error) { lastError = error instanceof Error ? error.message : 'Network failure'; }
     if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 250 * 2 ** (attempt - 1)));
   }
-  await supabaseRequest('webhook_deliveries', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({
+  const delivery = {
     id: deliveryId, subscription_id: row.id, workspace_id: row.workspace_id, topic: event.type,
     payload: event, signature: headers['x-lynkflow-signature'], status: delivered ? 'delivered' : 'failed',
-    attempt_count: attemptsMade, delivered_at: delivered ? new Date().toISOString() : null,
+    attempt_count: Number(row.attempt_count || 0) + attemptsMade, delivered_at: delivered ? new Date().toISOString() : null,
     next_attempt_at: delivered ? null : new Date(Date.now() + 60_000).toISOString()
-  }) });
+  };
+  if (existingDeliveryId) {
+    await supabaseRequest(`webhook_deliveries?id=eq.${encodeURIComponent(existingDeliveryId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify(delivery) });
+  } else {
+    await supabaseRequest('webhook_deliveries', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(delivery) });
+  }
   await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(String(row.id))}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({
     last_delivery_at: new Date().toISOString(), last_delivery_status: delivered ? 'success' : 'failed',
     consecutive_failures: delivered ? 0 : Number(row.consecutive_failures || 0) + 1,
@@ -1586,6 +1623,20 @@ async function dispatchWebhookEvent(env: Env, workspaceId: string, topic: Webhoo
   } catch (error) {
     console.error(`Webhook dispatch failed for ${topic}`, error);
   }
+}
+
+async function retryPendingWebhooks(env: Env): Promise<void> {
+  if (!env.WEBHOOK_ENCRYPTION_KEY) return;
+  const now = new Date().toISOString();
+  const response = await supabaseRequest(`webhook_deliveries?status=eq.failed&next_attempt_at=lte.${encodeURIComponent(now)}&attempt_count=lt.10&select=*`, env);
+  const deliveries = await response.json() as Array<Record<string, unknown>>;
+  await Promise.allSettled(deliveries.map(async delivery => {
+    const subscriptionResponse = await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(String(delivery.subscription_id))}&status=neq.failed&select=*`, env);
+    const subscriptions = await subscriptionResponse.json() as Array<Record<string, unknown>>;
+    const subscription = subscriptions[0];
+    if (!subscription) return;
+    await deliverWebhook(subscription, delivery.payload as Record<string, unknown>, env, String(delivery.id));
+  }));
 }
 
 async function testWebhookSubscription(request: Request, env: Env, hookId: string): Promise<Response> {
@@ -1800,6 +1851,9 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 }
 
 export default {
+  async scheduled(_controller: { scheduledTime: number }, env: Env, _context: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
+    await retryPendingWebhooks(env);
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/privacy' || url.pathname === '/privacy.html') return legalResponse('privacy', request);
