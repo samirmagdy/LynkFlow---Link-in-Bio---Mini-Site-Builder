@@ -36,7 +36,7 @@ Returns `200` with `{ "success": true }`.
 curl -sS -X PATCH https://lynkflow.samirmagdy80.workers.dev/api/webhooks/wh_test -H 'content-type: application/json' -d '{"status":"paused"}'
 ```
 
-Observed: `HTTP 401` without a session.
+Observed response: HTTP 401 without a session.
 
 ## Frontend wiring
 

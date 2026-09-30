@@ -36,7 +36,7 @@ Returns `200` with `{ "success": true }`.
 curl -sS -X POST https://lynkflow.samirmagdy80.workers.dev/api/domains/remove -H 'content-type: application/json' -d '{}'
 ```
 
-Observed: `HTTP 401` without a session.
+Observed response: HTTP 401 without a session.
 
 ## Frontend wiring
 

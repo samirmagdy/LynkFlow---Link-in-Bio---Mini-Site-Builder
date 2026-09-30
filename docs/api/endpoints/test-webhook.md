@@ -36,7 +36,7 @@ Returns `200` with a delivery ID and `delivered` boolean.
 curl -sS -X POST https://lynkflow.samirmagdy80.workers.dev/api/webhooks/wh_test/test
 ```
 
-Observed: `HTTP 401` without a session.
+Observed response: HTTP 401 without a session.
 
 ## Frontend wiring
 

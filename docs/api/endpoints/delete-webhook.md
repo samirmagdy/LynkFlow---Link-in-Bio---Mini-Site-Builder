@@ -35,7 +35,7 @@ Returns `200` with `{ "success": true }`.
 curl -sS -X DELETE https://lynkflow.samirmagdy80.workers.dev/api/webhooks/wh_test
 ```
 
-Observed: `HTTP 401` without a session.
+Observed response: HTTP 401 without a session.
 
 ## Frontend wiring
 

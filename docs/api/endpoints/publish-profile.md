@@ -36,7 +36,7 @@ Returns `200` with `{ "data": { "profileId": "...", "status": "published", "publ
 curl -sS -w '\nHTTP %{http_code}\n' -X POST https://lynkflow.samirmagdy80.workers.dev/api/v1/profiles/example/publish
 ```
 
-Observed without a key: `HTTP 401`.
+Observed response: HTTP 401 without a key.
 
 ## Frontend wiring
 

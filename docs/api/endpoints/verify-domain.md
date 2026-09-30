@@ -37,7 +37,7 @@ Returns `200` for a verified DNS record; SSL may be `provisioning` until Cloudfl
 curl -sS -X POST https://lynkflow.samirmagdy80.workers.dev/api/domains/verify -H 'content-type: application/json' -d '{}'
 ```
 
-Observed: `HTTP 401` without a session.
+Observed response: HTTP 401 without a session.
 
 ## Frontend wiring
 

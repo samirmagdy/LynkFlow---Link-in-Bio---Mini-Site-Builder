@@ -850,8 +850,8 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
   let found = false;
   const existingBlock = tabs.flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks as Array<Record<string, unknown>> : []).find(block => block.id === blockId);
   if (!existingBlock) return apiError('NOT_FOUND', 'Block not found.', 404);
-  const forbiddenBlockFields = ['id', 'type', 'position', 'tabId'];
-  if (Object.keys(input.data).some(key => forbiddenBlockFields.includes(key))) return apiError('VALIDATION_ERROR', 'Block identity fields cannot be changed.', 422);
+  const mutableBlockFields = new Set(['title', 'payload', 'isHidden', 'schedule', 'conversionRole', 'animation', 'animationConfig', 'style']);
+  if (Object.keys(input.data).some(key => !mutableBlockFields.has(key))) return apiError('VALIDATION_ERROR', 'Block identity and engagement fields cannot be changed.', 422);
   const candidateBlock = { ...existingBlock, ...input.data };
   const blockValidation = validateBlockPayload(String(candidateBlock.type) as BlockType, candidateBlock.payload);
   if (!blockValidation.isValid) return apiError('VALIDATION_ERROR', blockValidation.errors[0] || 'Block payload is invalid.', 422);
@@ -1383,6 +1383,11 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
   const mutableProfileFields = new Set(['username', 'displayName', 'bio', 'avatarUrl', 'category', 'socialLinks', 'seo', 'qrConfig', 'directLinkMode', 'socialPosition']);
   const invalidFields = Object.keys(input.data).filter(field => !mutableProfileFields.has(field) && field !== 'theme' && field !== 'standardTheme');
   if (invalidFields.length) return apiError('VALIDATION_ERROR', `Fields cannot be changed through this endpoint: ${invalidFields.join(', ')}.`, 422);
+  if (typeof input.data.username === 'string' && !/^[a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?$/i.test(input.data.username.trim())) return apiError('VALIDATION_ERROR', 'Username must use 3-30 letters, numbers, underscores, or hyphens.', 422);
+  for (const field of ['displayName', 'bio', 'category', 'avatarUrl'] as const) {
+    if (field in input.data && typeof input.data[field] !== 'string') return apiError('VALIDATION_ERROR', `${field} must be a string.`, 422);
+  }
+  if (input.data.socialLinks !== undefined && !Array.isArray(input.data.socialLinks)) return apiError('VALIDATION_ERROR', 'socialLinks must be an array.', 422);
   const requestHash = await sha256(JSON.stringify(input.data));
   const replay = await idempotentReplay(env, auth, request, requestHash);
   if (replay) return replay;
@@ -1635,7 +1640,7 @@ async function retryPendingWebhooks(env: Env): Promise<void> {
     const subscriptions = await subscriptionResponse.json() as Array<Record<string, unknown>>;
     const subscription = subscriptions[0];
     if (!subscription) return;
-    await deliverWebhook(subscription, delivery.payload as Record<string, unknown>, env, String(delivery.id));
+    await deliverWebhook({ ...subscription, attempt_count: delivery.attempt_count }, delivery.payload as Record<string, unknown>, env, String(delivery.id));
   }));
 }
 

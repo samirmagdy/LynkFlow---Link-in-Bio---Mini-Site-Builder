@@ -36,7 +36,7 @@ Returns `200` with `{ "data": { ... }, "requestId": "uuid" }`.
 curl -sS -w '\nHTTP %{http_code}\n' https://lynkflow.samirmagdy80.workers.dev/api/v1/profiles/example
 ```
 
-Observed without a key: `HTTP 401`.
+Observed response: HTTP 401 without a key.
 
 ## Frontend wiring
 

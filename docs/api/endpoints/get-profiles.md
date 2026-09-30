@@ -37,7 +37,7 @@ Returns `200` with `{ "data": [...], "requestId": "uuid" }`; profile visibility 
 curl -sS -w '\nHTTP %{http_code}\n' https://lynkflow.samirmagdy80.workers.dev/api/v1/profiles
 ```
 
-Observed: `HTTP 401` and an `UNAUTHORIZED` error envelope.
+Observed response: HTTP 401 and an UNAUTHORIZED error envelope.
 
 ## Frontend wiring
 

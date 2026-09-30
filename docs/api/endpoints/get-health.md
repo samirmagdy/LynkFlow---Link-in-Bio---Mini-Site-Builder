@@ -36,7 +36,7 @@ Returns `200` when all services are configured, or `503` with `{ "status": "degr
 curl -sS -w '\nHTTP %{http_code}\n' https://lynkflow.samirmagdy80.workers.dev/api/health
 ```
 
-Observed: `HTTP 503` while Stripe private credentials and Cloudflare custom-hostname credentials are absent.
+Observed response: HTTP 503 while Stripe private credentials and Cloudflare custom-hostname credentials are absent.
 
 ## Frontend wiring
 
