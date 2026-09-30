@@ -16,7 +16,6 @@ import {
   WorkspaceEntitlements, 
   WorkspaceInvoice, 
   ProviderWebhookPayload, 
-  WebhookEventType,
   AuditLog 
 } from '../types';
 import { PRICING_PLANS } from '../data/pricingPlans';

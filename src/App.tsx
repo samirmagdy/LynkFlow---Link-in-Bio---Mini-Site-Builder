@@ -34,7 +34,6 @@ const AppContent: React.FC = () => {
     activeProfile, 
     publicViewingUsername, 
     publicDemo,
-    profiles, 
     toastMessage,
     isConflictOpen,
     resolveConflictReload,

@@ -5,15 +5,6 @@ import {
   AnimeHoverEffect, 
   AnimeClickEffect,
   LinkBlockPayload, 
-  MediaBlockPayload, 
-  TextBlockPayload, 
-  DividerBlockPayload, 
-  FolderBlockPayload, 
-  FaqBlockPayload, 
-  TestimonialBlockPayload, 
-  FileBlockPayload, 
-  FormBlockPayload, 
-  ContactBlockPayload 
 } from '../../types';
 import { 
   ANIME_BLOCK_EFFECTS, 
@@ -27,7 +18,7 @@ import {
   triggerBlockTextAnimation, 
   stopBlockAnimation 
 } from '../../utils/animeAnimations';
-import { validateUrl, validateBlockPayload, sanitizeMediaEmbed } from '../../utils/blockValidator';
+import { validateBlockPayload } from '../../utils/blockValidator';
 import { 
   X, 
   Plus, 
@@ -35,7 +26,6 @@ import {
   Calendar, 
   Sparkles, 
   Check, 
-  Play, 
   RotateCcw, 
   Zap, 
   SlidersHorizontal, 
@@ -62,7 +52,6 @@ import {
   Type,
   Sliders,
   Minus,
-  MousePointer,
   Waves
 } from 'lucide-react';
 

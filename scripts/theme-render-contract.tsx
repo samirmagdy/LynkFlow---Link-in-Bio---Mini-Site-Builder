@@ -1,4 +1,3 @@
-import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppProvider } from '../src/context/AppContext';
 import { PublicProfileView } from '../src/components/preview/PublicProfileView';

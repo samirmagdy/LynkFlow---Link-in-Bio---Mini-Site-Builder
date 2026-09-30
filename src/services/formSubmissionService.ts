@@ -9,7 +9,7 @@
  * - FORM-005: Response inbox query, filtering, GDPR deletion, and bounded CSV exports with operator audit logs.
  */
 
-import { FormSubmission, Subscriber, FormBlockPayload, FormField, AuditLog } from '../types';
+import { FormSubmission, Subscriber, FormBlockPayload, AuditLog } from '../types';
 import { serializeCsv } from '../utils/csv';
 
 export const FORM_STORAGE_KEYS = {

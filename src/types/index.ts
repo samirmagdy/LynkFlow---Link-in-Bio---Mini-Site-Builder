@@ -440,11 +440,6 @@ export interface ScheduledPublishConfig {
   targetSnapshotDraft: Profile;
 }
 
-interface PublishedSnapshotHistoryItem extends PublishedProfileSnapshot {
-  changeSummary?: string;
-  blockCount: number;
-}
-
 export interface Profile {
   id: string;
   username: string;

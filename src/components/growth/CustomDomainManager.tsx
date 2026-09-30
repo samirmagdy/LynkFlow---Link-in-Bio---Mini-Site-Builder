@@ -62,13 +62,11 @@ function DomainStatusCard({
   customDomain,
   onRecheck,
   onRemove,
-  profileId,
   isRechecking
 }: {
   customDomain: NonNullable<ReturnType<typeof useApp>['activeProfile']['customDomain']>;
   onRecheck: () => void;
   onRemove: () => void;
-  profileId: string;
   isRechecking: boolean;
 }) {
   const { status, sslStatus, domain, lastCheckedAt, failureReason, nextRenewalAt, conflictOwnerId } = customDomain;
@@ -284,7 +282,6 @@ export const CustomDomainManager: React.FC = () => {
           customDomain={customDomain}
           onRecheck={handleRecheck}
           onRemove={handleRemove}
-          profileId={activeProfile.id}
           isRechecking={isRechecking}
         />
       )}

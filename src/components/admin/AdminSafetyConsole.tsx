@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Shield, ShieldAlert, FileText, Download, RotateCcw, Check, Trash2 } from 'lucide-react';
+import { Shield, ShieldAlert, FileText, Download, RotateCcw } from 'lucide-react';
 
 export const AdminSafetyConsole: React.FC = () => {
   const { auditLogs, abuseReports, exportAccountData, resetAllData, showToast } = useApp();

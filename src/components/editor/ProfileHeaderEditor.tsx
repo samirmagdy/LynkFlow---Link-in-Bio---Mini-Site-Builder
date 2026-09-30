@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
 import { Profile, SocialLink } from '../../types';
-import { Plus, Trash2, Check, Globe, ShieldCheck, Search, Share2, Sparkles, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Globe, ShieldCheck, ExternalLink } from 'lucide-react';
 
 interface ProfileHeaderEditorProps {
   onOpenSeoModal?: () => void;

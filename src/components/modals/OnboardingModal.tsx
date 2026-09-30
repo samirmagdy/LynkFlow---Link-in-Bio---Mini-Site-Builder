@@ -7,12 +7,7 @@ import {
   Sparkles, 
   ArrowRight, 
   Check, 
-  ChevronRight, 
   ShieldCheck, 
-  Palette, 
-  Layers, 
-  User, 
-  HelpCircle,
   AlertCircle
 } from 'lucide-react';
 import { triggerAnimeRipple } from '../../utils/animeAnimations';
@@ -33,7 +28,6 @@ export const OnboardingModal: React.FC = () => {
     completeOnboarding, 
     skipOnboarding, 
     profiles, 
-    user 
   } = useApp();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);

@@ -15,7 +15,6 @@ import {
   UserAccount,
   BrandKit,
   StarterProfileBlueprint,
-  OnboardingStep
 } from '../types';
 import { 
   INITIAL_PROFILES, 
@@ -25,12 +24,11 @@ import {
   INITIAL_AUDIT_LOGS,
   THEME_PRESETS
 } from '../data/mockData';
-import { SPEC_THEME_PRESETS } from '../data/themePresets';
-import { StandardTheme, PublishedThemeSnapshot } from '../types/themeSchema';
-import { calculateContrastRatio, normalizeTheme, validateThemeAccessibility, toLegacyCompatTheme } from '../utils/themeEngine';
+import { StandardTheme } from '../types/themeSchema';
+import { normalizeTheme, toLegacyCompatTheme } from '../utils/themeEngine';
 import { enforceBrandKitThemePolicy } from '../utils/brandKitPermissions';
-import { workspaceSyncService, SaveStatus, ConflictState } from '../services/workspaceSyncService';
-import { contentLifecycleService, ValidationIssue } from '../services/contentLifecycleService';
+import { workspaceSyncService, SaveStatus } from '../services/workspaceSyncService';
+import { contentLifecycleService } from '../services/contentLifecycleService';
 import { formSubmissionService } from '../services/formSubmissionService';
 import { analyticsEngineService } from '../services/analyticsEngineService';
 import { billingService } from '../services/billingService';
@@ -39,7 +37,6 @@ import { apiKeyService, ApiGatewayResult } from '../services/apiKeyService';
 import { ProfileMember, ProfileRole, ApiKey, ApiKeyScope, WebhookSubscription, WebhookEventTopic, ApiAuditEntry } from '../types';
 import { isSupabaseConfigured } from '../lib/supabaseConfig';
 import { supabase as configuredSupabase } from '../lib/supabase';
-import { createPublishedSnapshot } from '../utils/publishedSnapshot';
 import { reportRecoverableError } from '../utils/reportError';
 import { useLocalStoragePersistence } from '../hooks/useLocalStoragePersistence';
 import {
@@ -684,7 +681,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Concurrency listener from other tabs
   useEffect(() => {
-    const unsubscribe = workspaceSyncService.onRemoteUpdate((updatedProfileId, remoteVersion) => {
+    const unsubscribe = workspaceSyncService.onRemoteUpdate((updatedProfileId) => {
       if (updatedProfileId === activeProfileId) {
         // Read fresh profiles
         try {
@@ -2054,9 +2051,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   };
 
   const completeOnboarding = async (starter?: StarterProfileBlueprint) => {
-    let createdProfileId = activeProfileId;
     if (starter) {
-      createdProfileId = createNewProfile(
+      createNewProfile(
         starter.handle,
         starter.displayName || starter.handle,
         starter.category,

@@ -13,7 +13,6 @@ import {
   Copy, 
   ExternalLink,
   Lock,
-  ArrowRight,
   Sparkles,
   RefreshCw,
   AlertTriangle,
@@ -21,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Dialog } from '../common/Dialog';
-import { contentLifecycleService, ValidationIssue } from '../../services/contentLifecycleService';
+import { contentLifecycleService } from '../../services/contentLifecycleService';
 import { PublishedProfileSnapshot } from '../../types';
 
 interface PublishLifecycleModalProps {
@@ -42,7 +41,6 @@ export const PublishLifecycleModal: React.FC<PublishLifecycleModalProps> = ({
     generatePreviewLink, 
     scheduleRelease, 
     cancelScheduledRelease,
-    user,
     showToast 
   } = useApp();
 
@@ -51,7 +49,7 @@ export const PublishLifecycleModal: React.FC<PublishLifecycleModalProps> = ({
   const [versionNotes, setVersionNotes] = useState('');
   const [changeNote, setChangeNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [idempotencyKey, setIdempotencyKey] = useState(`idemp-${Date.now()}`);
+  const [idempotencyKey] = useState(`idemp-${Date.now()}`);
 
   // Schedule state
   const [scheduledDate, setScheduledDate] = useState(() => {

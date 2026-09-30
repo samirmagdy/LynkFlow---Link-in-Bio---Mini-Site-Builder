@@ -17,10 +17,8 @@ import {
   BarChart2,
   ShieldCheck,
   AlertTriangle,
-  ChevronRight,
   UserPlus,
   X,
-  Eye,
   Edit3,
   Crown
 } from 'lucide-react';
@@ -232,7 +230,7 @@ function DeleteProfileModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const MultiProfileManager: React.FC = () => {
-  const { profiles, workspace, activeProfile, switchActiveProfile, createNewProfile, duplicateProfile, deleteProfile, removeDomain, addMember, removeMember, updateMemberRole, showToast, setCurrentView } = useApp();
+  const { profiles, workspace, activeProfile, switchActiveProfile, createNewProfile, duplicateProfile, deleteProfile, removeDomain, addMember, removeMember, showToast, setCurrentView } = useApp();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; username: string; hasDomain: boolean } | null>(null);
   const [showNewProfileForm, setShowNewProfileForm] = useState(false);

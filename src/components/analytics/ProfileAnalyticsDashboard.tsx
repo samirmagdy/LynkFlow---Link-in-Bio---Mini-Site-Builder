@@ -24,20 +24,12 @@ import {
   Eye,
   Percent,
   Users,
-  Activity,
-  Calendar,
-  Sparkles,
   Layers,
-  ArrowUpRight,
-  Shuffle,
   Compass,
   Smartphone,
-  ExternalLink,
-  ChevronDown,
   CheckCircle2,
   Download,
   ShieldCheck,
-  Globe,
   Settings,
   QrCode
 } from 'lucide-react';
@@ -88,10 +80,9 @@ const CustomChartTooltip: React.FC<CustomTooltipProps> = ({ active, payload, lab
 };
 
 export const ProfileAnalyticsDashboard: React.FC = () => {
-  const { activeProfile, profiles, switchActiveProfile, trackEvent, showToast, user, updateDraftProfile } = useApp();
+  const { activeProfile, profiles, switchActiveProfile, showToast, user, updateDraftProfile } = useApp();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [chartType, setChartType] = useState<ChartType>('area');
-  const [recentSimulatedNotice, setRecentSimulatedNotice] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState<boolean>(false);
 
@@ -239,30 +230,6 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
     showToast('Tracking integrations saved. Scripts remain gated behind user consent.');
   };
 
-  // Action: Trigger Live Event Telemetry (Adds real event to store)
-  const handleSimulateTrafficEvent = () => {
-    const randomBlock = activeBlocks[Math.floor(Math.random() * activeBlocks.length)];
-    const eventType = Math.random() > 0.4 ? 'block_click' : 'page_view';
-
-    trackEvent({
-      profileId: activeProfile.id,
-      type: eventType,
-      blockId: randomBlock?.id,
-      blockTitle: randomBlock?.title,
-      referrer: ['Instagram', 'Direct', 'YouTube', 'TikTok'][Math.floor(Math.random() * 4)],
-      country: 'United States',
-      device: 'mobile',
-      consentGranted: true
-    });
-
-    const msg = `⚡ Recorded +1 ${eventType === 'block_click' ? 'Click on "' + (randomBlock?.title || 'Link') + '"' : 'Page View'} for @${activeProfile.username}`;
-    setRecentSimulatedNotice(msg);
-    showToast(msg);
-    setTimeout(() => {
-      setRecentSimulatedNotice(null);
-    }, 3200);
-  };
-
   return (
     <div className="w-full space-y-6">
       {/* Top Profile Header & Switcher Banner */}
@@ -343,17 +310,6 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Simulated Live Notification Pill */}
-      {recentSimulatedNotice && (
-        <div className="px-4 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-accent-soft text-xs flex items-center justify-between animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-accent animate-spin" />
-            <span>{recentSimulatedNotice}</span>
-          </div>
-          <span className="text-[10px] font-mono text-accent">Recharts Data Updated</span>
-        </div>
-      )}
 
       {/* KPI Cards Grid with Real Aggregated Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

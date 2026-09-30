@@ -1,11 +1,10 @@
-import { animate, stagger, createTimeline, eases } from 'animejs';
+import { animate, stagger } from 'animejs';
 import type { AnimationParams, JSAnimation } from 'animejs';
 import { 
   AnimeBlockEffect, 
   AnimeHoverEffect, 
   AnimeClickEffect, 
-  AnimeEntrancePreset,
-  BlockAnimationConfig 
+  AnimeEntrancePreset
 } from '../types';
 import { ANIME_ENTRANCE_PRESETS } from './animeCatalog';
 export { ANIME_ENTRANCE_PRESETS, ANIME_BLOCK_EFFECTS, ANIME_HOVER_OPTIONS, ANIME_CLICK_OPTIONS } from './animeCatalog';

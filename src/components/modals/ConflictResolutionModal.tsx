@@ -1,6 +1,5 @@
 import React from 'react';
-import { AlertTriangle, RefreshCw, ArrowRight, ShieldAlert, Check } from 'lucide-react';
-import { Profile } from '../../types';
+import { AlertTriangle, RefreshCw, ArrowRight, ShieldAlert } from 'lucide-react';
 import { Dialog } from '../common/Dialog';
 
 interface ConflictResolutionModalProps {

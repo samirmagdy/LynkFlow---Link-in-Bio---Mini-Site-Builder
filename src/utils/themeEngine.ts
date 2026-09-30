@@ -1,12 +1,10 @@
-import { StandardTheme, ThemeValidationResult, ThemeAccessibilityIssue, PublishedThemeSnapshot, ViewportResponsiveRule } from '../types/themeSchema';
+import { StandardTheme, ThemeValidationResult, ThemeAccessibilityIssue, ViewportResponsiveRule } from '../types/themeSchema';
 import { ThemeConfig } from '../types';
 
 const APPROVED_FONT_FAMILIES = [
   'Plus Jakarta Sans', 'Inter', 'Syne', 'DM Sans', 'Manrope', 'Space Grotesk',
   'Noto Kufi Arabic', 'Noto Sans Arabic', 'Tajawal', 'Cairo', 'IBM Plex Sans Arabic', 'Tahoma', 'Arial'
 ] as const;
-
-const FALLBACK_FONT_STACK = 'ui-sans-serif, system-ui, sans-serif';
 
 const isSafeHexColor = (value: unknown): value is string => typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim());
 

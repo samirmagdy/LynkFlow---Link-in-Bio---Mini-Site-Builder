@@ -8,16 +8,12 @@ import {
   Download, 
   Trash2, 
   Eye, 
-  Calendar, 
   Users, 
   ShieldCheck, 
-  Filter, 
   X, 
   AlertCircle,
-  CheckCircle2,
   UserCheck,
   UserX,
-  FileSpreadsheet
 } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 

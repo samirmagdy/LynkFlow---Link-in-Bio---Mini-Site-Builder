@@ -5,18 +5,13 @@ import {
   X, 
   Globe, 
   Search, 
-  Share2, 
   Image as ImageIcon, 
   Sparkles, 
   Check, 
   Copy, 
-  AlertCircle, 
   Eye, 
-  ExternalLink,
   Code,
   Shield,
-  Layers,
-  RefreshCw,
   Sliders,
   CheckCircle2
 } from 'lucide-react';

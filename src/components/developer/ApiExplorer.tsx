@@ -10,12 +10,12 @@
  * - API-005: Webhook subscription management + test dispatch
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Terminal, Key, Webhook, Play, Copy, Check, Shield, Plus, Trash2,
   RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Pause,
-  Activity, Eye, EyeOff, Clock, Zap, Globe
+  Activity, Eye, EyeOff, Zap, Globe
 } from 'lucide-react';
 import { ApiKey, ApiKeyScope, WebhookEventTopic, ALL_API_SCOPES } from '../../types';
 import { API_V1_ENDPOINTS, ApiEndpointDef } from '../../services/apiKeyService';
@@ -132,7 +132,7 @@ const SecretRevealModal: React.FC<{
 
 export const ApiExplorer: React.FC = () => {
   const {
-    workspace, user, activeProfile,
+    workspace, activeProfile,
     apiKeys, createApiKey, revokeApiKey, rotateApiKey,
     webhookSubscriptions, createWebhookSubscription, deleteWebhookSubscription,
     toggleWebhookStatus, dispatchTestWebhook,

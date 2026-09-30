@@ -44,10 +44,12 @@ export const CookieBanner: React.FC<CookieBannerProps> = ({ inStudio = false }) 
 
   if (choice) return null;
 
+  const placementClass = inStudio ? 'bottom-24 md:bottom-6' : 'bottom-4';
+
   return (
     <aside
       aria-label="Cookie preferences"
-      className={`fixed inset-x-3 z-[60] w-auto max-w-md rounded-2xl border border-line-strong bg-surface/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 duration-200 sm:left-6 sm:right-auto sm:p-5 \${inStudio ? 'bottom-24 md:bottom-6' : 'bottom-4'}`}
+      className={`fixed inset-x-3 ${placementClass} z-[60] w-auto max-w-md rounded-2xl border border-line-strong bg-surface/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 duration-200 sm:left-6 sm:right-auto sm:p-5`}
     >
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent" aria-hidden="true">

@@ -5,21 +5,13 @@ import { BlockList } from './BlockList';
 import { AddBlockModal } from './AddBlockModal';
 import { BlockEditModal } from './BlockEditModal';
 import { PhoneMockup } from '../preview/PhoneMockup';
-import { ProfileSeoSettingsModal } from '../modals/ProfileSeoSettingsModal';
 import { Block, BlockType } from '../../types';
 import { 
   Plus, 
-  Upload, 
   RotateCcw, 
-  ExternalLink, 
-  Sparkles, 
   Check, 
   ChevronDown, 
-  FolderPlus, 
-  Settings2,
-  Share2,
   BarChart2,
-  Globe,
   Smartphone,
   AlertCircle,
   RefreshCw,
@@ -27,7 +19,6 @@ import {
   Palette,
   Send,
   Save,
-  Clock,
   History,
   Link2,
   X
@@ -46,7 +37,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
     switchActiveProfile, 
     hasUnpublishedChanges, 
     saveDraftNow,
-    publishProfile, 
     revertDraftToPublished,
     addBlock, 
     updateBlock, 
@@ -54,9 +44,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
     reorderBlocks, 
     duplicateBlock,
     addTab,
-    removeTab,
     setCurrentView,
-    setPublicViewingUsername,
     saveStatus,
     saveErrorMessage,
     retrySave,
@@ -69,7 +57,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [publishModalTab, setPublishModalTab] = useState<'publish' | 'schedule' | 'preview_token' | 'history' | 'validate'>('publish');
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
-  const [isSeoModalOpen, setIsSeoModalOpen] = useState(false);
   const [newTabTitle, setNewTabTitle] = useState('');
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [isMobilePreviewOpen, setIsMobilePreviewOpen] = useState(false);

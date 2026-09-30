@@ -21,8 +21,6 @@ import {
   Terminal, 
   Shield,
   ExternalLink,
-  Sparkles,
-  ArrowLeft,
   LogOut,
   Users,
   MoreHorizontal,
@@ -56,7 +54,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   const mobilePrimaryItems = navItems.slice(0, 4);
   const mobileSecondaryItems = navItems.slice(4);
-  const isSecondaryView = mobileSecondaryItems.some(item => item.id === currentView);
 
   const handleMobileNavigation = (view: typeof navItems[number]['id']) => {
     setCurrentView(view);

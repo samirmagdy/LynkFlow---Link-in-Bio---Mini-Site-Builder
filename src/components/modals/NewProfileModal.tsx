@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { THEME_PRESETS } from '../../data/mockData';
-import { X, Check, UserPlus } from 'lucide-react';
+import { X, UserPlus } from 'lucide-react';
 import { Dialog } from '../common/Dialog';
 
 interface NewProfileModalProps {

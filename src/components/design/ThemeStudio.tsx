@@ -9,33 +9,20 @@ import { PublicProfileView } from '../preview/PublicProfileView';
 import { validateThemeAccessibility, validateProfileAccessibility, calculateContrastRatio, normalizeTheme, validateThemeSchema, calculateThemeQualityScore, migrateTheme } from '../../utils/themeEngine';
 import { 
   Palette, 
-  Sparkles, 
   Check, 
-  Sliders, 
-  Type, 
-  Layers, 
-  Play, 
   Undo2, 
   Redo2, 
   RotateCcw, 
   BookmarkPlus, 
   ShieldAlert, 
   ShieldCheck, 
-  Eye, 
   History, 
-  Maximize2,
-  SlidersHorizontal,
-  ChevronRight,
-  Sun,
-  Layout,
-  MousePointer,
   MoreHorizontal,
   Download,
   Upload,
   Search,
   Loader2
 } from 'lucide-react';
-import { ANIME_ENTRANCE_PRESETS, AnimeEntrancePreset } from '../../utils/animeAnimations';
 import { uploadBackgroundAsset, removeBackgroundAsset, listBackgroundAssets, registerRemoteBackgroundAsset, BackgroundAsset } from '../../services/backgroundAssetService';
 import { extractImageAccentGradient } from '../../utils/imageAccent';
 import { COLOR_TOKEN_LABELS, colorToFormat, mixHex, normalizeHex, parseColorInput } from '../../utils/themeColorUtils';
@@ -229,7 +216,6 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     standardTheme, 
     updateStandardTheme, 
     applyTheme, 
-    triggerReplayAnimation,
     undoThemeChange,
     redoThemeChange,
     canUndoTheme,

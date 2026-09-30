@@ -14,7 +14,6 @@ import {
   Zap,
   TrendingUp,
   Users,
-  ChevronRight,
   RefreshCw,
   Calendar
 } from 'lucide-react';

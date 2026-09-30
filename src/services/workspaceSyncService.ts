@@ -29,7 +29,6 @@ export interface ConflictState {
 class WorkspaceSyncService {
   private tabId: string = `tab-${Math.random().toString(36).substring(2, 9)}`;
   private channel: BroadcastChannel | null = null;
-  private conflictListeners: Array<(conflict: ConflictState) => void> = [];
   private remoteUpdateListeners: Array<(profileId: string, version: number) => void> = [];
   private readonly boundBroadcastMessage = (event: MessageEvent<SyncMessage>) => this.handleBroadcastMessage(event);
   private readonly boundStorageEvent = (event: StorageEvent) => this.handleStorageEvent(event);
@@ -53,7 +52,6 @@ class WorkspaceSyncService {
     this.channel?.close();
     this.channel = null;
     if (typeof window !== 'undefined') window.removeEventListener('storage', this.boundStorageEvent);
-    this.conflictListeners = [];
     this.remoteUpdateListeners = [];
   }
 

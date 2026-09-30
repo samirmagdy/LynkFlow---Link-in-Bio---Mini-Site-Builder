@@ -17,9 +17,8 @@
 
 import {
   ApiKey, ApiKeyScope, WebhookSubscription, WebhookEventTopic,
-  ApiRateLimitBucket, ApiAuditEntry, Workspace, Profile, ALL_API_SCOPES
+  ApiRateLimitBucket, ApiAuditEntry, Workspace, Profile
 } from '../types';
-import { billingService } from './billingService';
 import { reportRecoverableError } from '../utils/reportError';
 
 // ─── Error Codes ──────────────────────────────────────────────────────────────
@@ -238,7 +237,6 @@ class ApiKeyService {
     expiresAt?: string
   ): { key: ApiKey; secret: string } | { error: string } {
     // API-003: Entitlement check — API access requires Pro+
-    const ent = billingService.checkFeatureEntitlement(workspace, 'custom_domain'); // reuse Pro check
     if (workspace.plan === 'free') {
       return { error: 'REST API access requires Creator Pro or Agency plan.' };
     }
@@ -281,7 +279,7 @@ class ApiKeyService {
    * API-002: Rotate a key — generate a new secret, immediately revoke the old one.
    * Returns new secret in `secretOnce`.
    */
-  rotateKey(workspaceId: string, keyId: string, actorEmail: string): { key: ApiKey; secret: string } | { error: string } {
+  rotateKey(workspaceId: string, keyId: string, _actorEmail: string): { key: ApiKey; secret: string } | { error: string } {
     const keys = loadKeys(workspaceId);
     const idx = keys.findIndex(k => k.id === keyId);
     if (idx === -1) return { error: 'Key not found.' };
@@ -304,7 +302,7 @@ class ApiKeyService {
   /**
    * API-002: Revoke a key immediately. Requests using it will fail with REVOKED.
    */
-  revokeKey(workspaceId: string, keyId: string, actorEmail: string): { success: boolean; error?: string } {
+  revokeKey(workspaceId: string, keyId: string, _actorEmail: string): { success: boolean; error?: string } {
     const keys = loadKeys(workspaceId);
     const idx = keys.findIndex(k => k.id === keyId);
     if (idx === -1) return { success: false, error: 'Key not found.' };
@@ -402,7 +400,7 @@ class ApiKeyService {
   async simulateWebhookDispatch(
     workspaceId: string,
     hookId: string,
-    topic: WebhookEventTopic,
+    _topic: WebhookEventTopic,
     payload: Record<string, unknown>
   ): Promise<{ deliveryId: string; signatureHeader: string; status: 'delivered' | 'failed' }> {
     const hooks = loadWebhooks(workspaceId);

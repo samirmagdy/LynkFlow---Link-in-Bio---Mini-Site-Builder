@@ -2,19 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   ArrowRight, 
-  Check, 
   Layers, 
   Palette, 
   BarChart2, 
   QrCode, 
   ShieldCheck, 
   Globe, 
-  Zap, 
   ChevronDown, 
   ChevronUp, 
   Sparkles,
   Smartphone,
-  ExternalLink,
   Flame,
   CheckCircle2
 } from 'lucide-react';
@@ -35,9 +32,8 @@ import {
   CAPABILITY_COMPARISON_MATRIX, 
   formatPlanPrice 
 } from '../../data/pricingPlans';
-import { BillingCycle, PlanType } from '../../types';
+import { BillingCycle } from '../../types';
 import { SPEC_THEME_PRESETS } from '../../data/themePresets';
-import { animate, stagger } from 'animejs';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 import { LandingMotionBackground } from './LandingMotionBackground';
 import { HeroProductStage } from './HeroProductStage';

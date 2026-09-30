@@ -4,16 +4,9 @@
  * Fulfills AN-001, AN-002, AN-003, AN-004, AN-005
  */
 
-import { AnalyticsEvent, AnalyticsExportRequest, TrackingIntegrations } from '../types';
+import { AnalyticsEvent } from '../types';
 import { serializeCsv } from '../utils/csv';
 import { reportRecoverableError } from '../utils/reportError';
-
-interface DateRangeFilter {
-  key: 'today' | '7d' | '30d' | '90d' | 'custom';
-  label: string;
-  startDateUtc: string; // ISO UTC
-  endDateUtc: string;   // ISO UTC
-}
 
 interface BlockAnalyticsMetric {
   blockId: string;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Flag, X, ShieldAlert, Check } from 'lucide-react';
+import { Flag, X, Check } from 'lucide-react';
 import { Dialog } from '../common/Dialog';
 
 interface AbuseReportModalProps {

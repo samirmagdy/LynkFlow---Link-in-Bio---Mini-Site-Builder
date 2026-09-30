@@ -1,5 +1,3 @@
-type BlockVariantState = 'mobile' | 'desktop' | 'hover' | 'focus' | 'pressed' | 'loading' | 'error';
-
 export interface BlockVariantDefinition {
   id: string;
   supportedBlockTypes: string[];

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Sparkles, ArrowRight, Menu, X, LogIn, UserPlus } from 'lucide-react';
+import { ArrowRight, Menu, X, LogIn, UserPlus } from 'lucide-react';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { 
   triggerAnimeRipple, 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Profile, LinkBlockPayload, ProductBlockPayload } from '../../types';
 import { PublicProfileView } from './PublicProfileView';
-import { Smartphone, Tablet, Monitor, ExternalLink, RotateCcw, Wifi, Battery, Sparkles, Link2 } from 'lucide-react';
+import { Smartphone, Tablet, Monitor, ExternalLink, Wifi, Battery, Link2 } from 'lucide-react';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
 import { normalizeTheme } from '../../utils/themeEngine';
 

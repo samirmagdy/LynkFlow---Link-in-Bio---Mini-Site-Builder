@@ -33,7 +33,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     requestPasswordReset, 
     verifyEmail, 
     resendVerificationEmail, 
-    user, 
     setCurrentView, resetPassword
   } = useApp();
 

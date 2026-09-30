@@ -1,5 +1,5 @@
 import {
-  AbuseReport, AnalyticsEvent, ApiAuditEntry, ApiKey, AuditLog, FormSubmission,
+  AbuseReport, AnalyticsEvent, ApiKey, AuditLog, FormSubmission,
   Profile, Subscriber, StandardTheme, WebhookSubscription, Workspace, UserAccount, BrandKit
 } from '../types';
 import { normalizeTheme, validateThemeSchema } from '../utils/themeEngine';
@@ -30,8 +30,6 @@ interface CloudWorkspaceRow {
   provider_customer_id?: string;
   provider_subscription_id?: string;
 }
-interface CloudApiKeyRow extends ApiKey { key_prefix: string; allowed_profile_ids: string[] | null; created_at: string; created_by: string; last_used_at?: string; revoked_at?: string; expires_at?: string; }
-interface CloudWebhookRow extends WebhookSubscription { signing_secret_prefix: string; created_at: string; created_by: string; last_delivery_at?: string; last_delivery_status?: 'success' | 'failed'; consecutive_failures: number; }
 
 export interface CloudState {
   user: UserAccount;
@@ -215,7 +213,7 @@ export async function loadCloudState(): Promise<CloudState | null> {
   };
 }
 
-export async function saveCloudProfile(profile: Profile, workspaceId: string): Promise<void> {
+export async function saveCloudProfile(profile: Profile, _workspaceId: string): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   if (!profile?.id?.trim() || !profile?.username?.trim()) {
     throw new Error('Cannot save cloud profile: profile id and username are required.');
@@ -244,7 +242,7 @@ export async function saveCloudProfile(profile: Profile, workspaceId: string): P
 }
 
 /** Persist reusable design resources independently from the profile content snapshot. */
-export async function saveCloudDesignSystem(profile: Profile, workspaceId: string, brandKit?: BrandKit): Promise<void> {
+export async function saveCloudDesignSystem(profile: Profile, _workspaceId: string, brandKit?: BrandKit): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   if (!profile?.id?.trim() || !profile?.username?.trim()) {
     throw new Error('Cannot save cloud design system: profile id and username are required.');

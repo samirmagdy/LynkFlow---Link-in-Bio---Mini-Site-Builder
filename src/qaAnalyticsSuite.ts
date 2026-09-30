@@ -20,7 +20,6 @@ const memoryStorage: Record<string, string> = {};
 };
 
 import { analyticsEngineService } from './services/analyticsEngineService';
-import { AnalyticsEvent } from './types';
 
 async function runAnalyticsTestSuite() {
   console.log('=================================================================');

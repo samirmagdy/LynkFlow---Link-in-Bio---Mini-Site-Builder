@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { QrCode, Download, RefreshCw, Smartphone, ExternalLink, Sliders, Check } from 'lucide-react';
+import { QrCode, Download, Smartphone, Sliders, Check } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
 export const QrCodeStudio: React.FC = () => {

@@ -9,8 +9,6 @@ import {
   Download, 
   Globe, 
   Smartphone, 
-  Calendar,
-  Share2,
   ExternalLink,
   Sparkles,
   QrCode
