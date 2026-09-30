@@ -453,6 +453,7 @@ async function verifyCustomDomain(request: Request, env: Env): Promise<Response>
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   const domain = input.domain ? cleanHostname(input.domain) : null;
   if (!domain || !input.profileId) return apiError('VALIDATION_ERROR', 'A valid domain and profile ID are required.', 422);
+  if (!canManageProfile(access.user, input.profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(input.profileId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,data`, env);
   const profiles = await profileResponse.json() as Array<{ id: string; data: Record<string, unknown> }>;
   if (!profiles[0]) return apiError('NOT_FOUND', 'Profile not found.', 404);
@@ -480,6 +481,7 @@ async function removeCustomDomain(request: Request, env: Env): Promise<Response>
   let input: { profileId?: string };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   if (!input.profileId) return apiError('VALIDATION_ERROR', 'Profile ID is required.', 422);
+  if (!canManageProfile(access.user, input.profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(input.profileId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,data`, env);
   const profiles = await profileResponse.json() as Array<{ id: string; data: Record<string, unknown> }>;
   if (!profiles[0]) return apiError('NOT_FOUND', 'Profile not found.', 404);
@@ -1080,6 +1082,7 @@ async function publishDashboardProfile(request: Request, env: Env): Promise<Resp
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   const profileId = input.profileId?.trim();
   if (!profileId) return apiError('VALIDATION_ERROR', 'profileId is required.', 422);
+  if (!canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
   const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = rows[0];
@@ -1194,6 +1197,7 @@ async function unpublishDashboardProfile(request: Request, env: Env): Promise<Re
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   const profileId = input.profileId?.trim();
   if (!profileId) return apiError('VALIDATION_ERROR', 'profileId is required.', 422);
+  if (!canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to unpublish this profile.', 403);
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id`, env);
   const rows = await profileResponse.json() as Array<{ id: string }>;
   if (!rows[0]) return apiError('NOT_FOUND', 'Profile not found.', 404);
@@ -1211,6 +1215,7 @@ async function saveDashboardDraft(request: Request, env: Env): Promise<Response>
   const profileId = typeof draft.id === 'string' ? draft.id.trim() : '';
   const username = typeof draft.username === 'string' ? draft.username.trim() : '';
   if (!profileId || !username) return apiError('VALIDATION_ERROR', 'Profile id and username are required.', 422);
+  if (!canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to edit this profile.', 403);
   const validationError = validateDraftData(draft);
   if (validationError) return apiError('VALIDATION_ERROR', validationError, 422);
   const now = new Date().toISOString();
@@ -1327,6 +1332,7 @@ async function rollbackDashboardProfile(request: Request, env: Env): Promise<Res
   const profileId = input.profileId?.trim();
   const snapshotId = input.snapshotId?.trim();
   if (!profileId || !snapshotId) return apiError('VALIDATION_ERROR', 'profileId and snapshotId are required.', 422);
+  if (!canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to roll back this profile.', 403);
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,username,data`, env);
   const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> }>;
   const profile = rows[0];
@@ -1399,6 +1405,7 @@ async function createPreviewToken(request: Request, env: Env): Promise<Response>
   const profileId = input.profileId?.trim();
   const ttlMinutes = Math.min(10080, Math.max(5, Math.floor(Number(input.ttlMinutes || 60))));
   if (!profileId) return apiError('VALIDATION_ERROR', 'profileId is required.', 422);
+  if (!canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to create a preview for this profile.', 403);
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id`, env);
   const rows = await profileResponse.json() as Array<{ id: string }>;
   if (!rows[0]) return apiError('NOT_FOUND', 'Profile not found.', 404);
@@ -1511,7 +1518,13 @@ function mergeThemePatch(current: Record<string, unknown>, patch: Record<string,
   };
 }
 
-async function getSupabaseUser(request: Request, env: Env): Promise<{ id: string; email: string; emailConfirmed: boolean } | Response> {
+type SupabaseWorkspaceUser = { id: string; email: string; emailConfirmed: boolean; role: 'owner' | 'manager' | 'viewer'; assignedProfileIds: string[] };
+
+function canManageProfile(user: SupabaseWorkspaceUser, profileId: string): boolean {
+  return user.role === 'owner' || (user.role === 'manager' && user.assignedProfileIds.includes(profileId));
+}
+
+async function getSupabaseUser(request: Request, env: Env): Promise<SupabaseWorkspaceUser | Response> {
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ') || !env.SUPABASE_PUBLISHABLE_KEY) return apiError('UNAUTHORIZED', 'Authentication required.', 401);
   const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization } });
@@ -1519,18 +1532,25 @@ async function getSupabaseUser(request: Request, env: Env): Promise<{ id: string
   const user = await response.json() as { id?: string; email?: string; email_confirmed_at?: string | null; user_metadata?: { email_verified?: boolean } };
   if (!user.id || !user.email) return apiError('UNAUTHORIZED', 'Authenticated user is incomplete.', 401);
   let workspaceId = user.id;
+  let role: SupabaseWorkspaceUser['role'] = 'owner';
+  let assignedProfileIds: string[] = [];
   if (env.SUPABASE_SERVICE_ROLE_KEY) {
-    const membershipResponse = await supabaseRequest(`workspace_members?user_id=eq.${encodeURIComponent(user.id)}&status=in.(pending,active)&select=workspace_id&order=created_at.asc&limit=1`, env);
-    const memberships = await membershipResponse.json() as Array<{ workspace_id?: string }>;
-    if (memberships[0]?.workspace_id) workspaceId = memberships[0].workspace_id;
+    const membershipResponse = await supabaseRequest(`workspace_members?user_id=eq.${encodeURIComponent(user.id)}&status=in.(pending,active)&select=workspace_id,role,assigned_profile_ids&order=created_at.asc&limit=1`, env);
+    const memberships = await membershipResponse.json() as Array<{ workspace_id?: string; role?: 'manager' | 'viewer'; assigned_profile_ids?: unknown }>;
+    if (memberships[0]?.workspace_id) {
+      workspaceId = memberships[0].workspace_id;
+      role = memberships[0].role || 'viewer';
+      assignedProfileIds = Array.isArray(memberships[0].assigned_profile_ids) ? memberships[0].assigned_profile_ids.filter((id): id is string => typeof id === 'string') : [];
+    }
   }
-  return { id: workspaceId, email: user.email, emailConfirmed: Boolean(user.email_confirmed_at || user.user_metadata?.email_verified === true) };
+  return { id: workspaceId, email: user.email, emailConfirmed: Boolean(user.email_confirmed_at || user.user_metadata?.email_verified === true), role, assignedProfileIds };
 }
 
 async function issueApiKey(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before creating API keys.', 403);
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can manage API keys.', 403);
   if (!env.SUPABASE_SERVICE_ROLE_KEY) return apiError('SERVICE_UNAVAILABLE', 'API service is not configured.', 503);
   let input: { name?: string; scopes?: string[]; allowedProfileIds?: string[] | null; expiresAt?: string };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
@@ -1601,7 +1621,7 @@ function publicWebhook(row: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-async function requirePaidWorkspace(request: Request, env: Env): Promise<{ user: { id: string; email: string }; plan: string } | Response> {
+async function requirePaidWorkspace(request: Request, env: Env): Promise<{ user: SupabaseWorkspaceUser; plan: string } | Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before managing automation.', 403);
@@ -1615,6 +1635,7 @@ async function inviteWorkspaceMember(request: Request, env: Env): Promise<Respon
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before inviting team members.', 403);
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can invite team members.', 403);
   if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.SUPABASE_URL) return apiError('SERVICE_UNAVAILABLE', 'Team invitations are not configured.', 503);
 
   let input: { email?: string; name?: string; role?: string; assignedProfileIds?: unknown[] };
@@ -1671,6 +1692,7 @@ async function createWebhookSubscription(request: Request, env: Env): Promise<Re
   if (!env.WEBHOOK_ENCRYPTION_KEY) return apiError('SERVICE_UNAVAILABLE', 'Webhook delivery is not configured.', 503);
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
+  if (access.user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can manage webhooks.', 403);
   let input: { url?: string; topics?: string[]; description?: string };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   const url = input.url?.trim();
@@ -1696,6 +1718,7 @@ async function createWebhookSubscription(request: Request, env: Env): Promise<Re
 async function updateWebhookSubscription(request: Request, env: Env, hookId: string): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
+  if (access.user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can manage webhooks.', 403);
   let input: { status?: 'active' | 'paused' };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   if (!['active', 'paused'].includes(input.status || '')) return apiError('VALIDATION_ERROR', 'Status must be active or paused.', 422);
@@ -1708,6 +1731,7 @@ async function updateWebhookSubscription(request: Request, env: Env, hookId: str
 async function deleteWebhookSubscription(request: Request, env: Env, hookId: string): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
+  if (access.user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can manage webhooks.', 403);
   const deleteResponse = await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(hookId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id`, env, { method: 'DELETE', headers: { prefer: 'return=representation' } });
   const deletedRows = await deleteResponse.json() as Array<{ id: string }>;
   if (!deletedRows.length) return apiError('NOT_FOUND', 'Webhook subscription not found.', 404);
@@ -1794,6 +1818,7 @@ async function retryPendingWebhooks(env: Env): Promise<void> {
 async function testWebhookSubscription(request: Request, env: Env, hookId: string): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
+  if (access.user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can manage webhooks.', 403);
   const response = await supabaseRequest(`webhook_subscriptions?id=eq.${encodeURIComponent(hookId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=*`, env);
   const rows = await response.json() as Array<Record<string, unknown>>;
   if (!rows[0] || rows[0].status !== 'active') return apiError('NOT_FOUND', 'Active webhook subscription not found.', 404);
