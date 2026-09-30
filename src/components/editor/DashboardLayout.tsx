@@ -19,12 +19,14 @@ import {
   Globe, 
   CreditCard, 
   Terminal, 
-  Shield, 
+  Shield,
   ExternalLink,
   Sparkles,
   ArrowLeft,
   LogOut,
-  Users
+  Users,
+  MoreHorizontal,
+  X
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -37,6 +39,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onOpenNewProfileModal 
 }) => {
   const { currentView, setCurrentView, user, activeProfile, setPublicViewingUsername, setPublicDemo, resendVerificationEmail, logOut } = useApp();
+  const [mobileMoreOpen, setMobileMoreOpen] = React.useState(false);
 
   const navItems = [
     { id: 'editor' as const, label: 'Page Builder', icon: <Sliders className="w-4 h-4" /> },
@@ -50,6 +53,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     { id: 'api' as const, label: 'API & Webhooks', icon: <Terminal className="w-4 h-4" /> },
     { id: 'admin' as const, label: 'Trust & Safety', icon: <Shield className="w-4 h-4" /> },
   ];
+
+  const mobilePrimaryItems = navItems.slice(0, 4);
+  const mobileSecondaryItems = navItems.slice(4);
+  const isSecondaryView = mobileSecondaryItems.some(item => item.id === currentView);
+
+  const handleMobileNavigation = (view: typeof navItems[number]['id']) => {
+    setCurrentView(view);
+    setMobileMoreOpen(false);
+  };
 
   const handleOpenLiveDemo = () => {
     setPublicViewingUsername(activeProfile.username);
@@ -148,7 +160,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       </aside>
 
       {/* Main Workspace Body */}
-      <main className="min-w-0 flex-1 flex flex-col h-full overflow-hidden bg-canvas">
+      <main className="min-w-0 flex-1 flex flex-col h-full overflow-hidden bg-canvas pb-24 md:pb-0">
         <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-subtle">Loading workspace…</div>}>
           {currentView === 'editor' && (
             <EditorView
@@ -167,6 +179,94 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           {currentView === 'admin' && <AdminSafetyConsole />}
         </Suspense>
       </main>
+
+      {/* Mobile workspace tabs: compact app navigation with a safe-area-aware floating surface. */}
+      <nav
+        aria-label="Mobile workspace navigation"
+        className="fixed inset-x-3 bottom-3 z-50 md:hidden rounded-2xl border border-line-strong bg-surface/95 p-1.5 shadow-2xl shadow-black/20 backdrop-blur-xl"
+        style={{ paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="grid grid-cols-5 gap-1">
+          {mobilePrimaryItems.map(item => {
+            const isActive = currentView === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleMobileNavigation(item.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent \${
+                  isActive
+                    ? 'bg-accent/12 text-accent'
+                    : 'text-muted hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                <span className={`flex h-5 w-5 items-center justify-center \${isActive ? 'text-accent' : 'text-subtle'}`} aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span className="truncate">{item.label === 'Page Builder' ? 'Builder' : item.label === 'Form Inbox' ? 'Inbox' : item.label.replace(' & Styles', '')}</span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileMoreOpen(prev => !prev)}
+            aria-expanded={mobileMoreOpen}
+            aria-haspopup="dialog"
+            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent \${
+              mobileMoreOpen || isSecondaryView
+                ? 'bg-accent/12 text-accent'
+                : 'text-muted hover:bg-surface-2 hover:text-ink'
+            }`}
+          >
+            <span className={`flex h-5 w-5 items-center justify-center \${mobileMoreOpen || isSecondaryView ? 'text-accent' : 'text-subtle'}`} aria-hidden="true">
+              <MoreHorizontal className="h-5 w-5" />
+            </span>
+            <span>More</span>
+          </button>
+        </div>
+
+        {mobileMoreOpen && (
+          <div
+            role="dialog"
+            aria-label="More workspace destinations"
+            className="absolute bottom-[calc(100%+0.75rem)] left-0 right-0 rounded-2xl border border-line-strong bg-surface/98 p-2 shadow-2xl shadow-black/20 backdrop-blur-xl animate-in slide-in-from-bottom-2 duration-150"
+          >
+            <div className="mb-1 flex items-center justify-between px-2 py-1">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-subtle">Workspace</span>
+              <button
+                type="button"
+                onClick={() => setMobileMoreOpen(false)}
+                aria-label="Close more workspace destinations"
+                className="rounded-lg p-1 text-subtle transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {mobileSecondaryItems.map(item => {
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleMobileNavigation(item.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`flex min-h-11 items-center gap-2 rounded-xl px-2.5 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent \${
+                      isActive
+                        ? 'bg-accent/12 text-accent'
+                        : 'text-muted hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <span className={isActive ? 'text-accent' : 'text-subtle'} aria-hidden="true">{item.icon}</span>
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </nav>
     </div>
   );
 };
