@@ -14,6 +14,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { triggerAnimeRipple, triggerSuccessBurst } from '../../utils/animeAnimations';
+import { SPEC_THEME_PRESETS } from '../../data/themePresets';
 
 interface HeroProductStageProps {
   onOpenAuth?: (mode: 'create' | 'login') => void;
@@ -30,6 +31,14 @@ const RECENT = [
   { label: 'Qualified clicks', value: '2,184', icon: BarChart3 },
   { label: 'Page status', value: 'Published', icon: Globe2 },
 ];
+
+// Use a real shipped preset in the product mock so the landing page demonstrates
+// the same theme model as the public renderer. The video is a muted Pexels CDN
+// asset; the preset image remains the poster and visual fallback.
+const HERO_THEME = SPEC_THEME_PRESETS.find(theme => theme.id === 'preset-botanical-forest') ?? SPEC_THEME_PRESETS[0];
+const HERO_VIDEO_URL = 'https://videos.pexels.com/video-files/34715630/14715594_360_640_30fps.mp4';
+const HERO_VIDEO_POSTER = 'https://images.pexels.com/videos/34715630/pexels-photo-34715630.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630';
+const HERO_THEME_COLORS = HERO_THEME.tokens.colors;
 
 const FloatingCard: React.FC<React.PropsWithChildren<{ className?: string; label: string }>> = ({ className = '', label, children }) => (
   <div className={`hero-product-stage__card rounded-2xl border border-line bg-surface/90 p-3 text-left shadow-2xl backdrop-blur-xl ${className}`} aria-label={label}>
@@ -98,16 +107,30 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
           </FloatingCard>
 
           <div className="hero-product-stage__phone relative z-10 w-[min(78vw,300px)] overflow-hidden rounded-[2.45rem] border-[7px] border-[#1c1c22] bg-[#111117] p-1.5 shadow-2xl shadow-indigo-950/30 sm:w-[300px]">
-            <div className="relative overflow-hidden rounded-[2rem] bg-canvas text-[11px] text-ink">
+            <div className="relative overflow-hidden rounded-[2rem] text-[11px]" style={{ backgroundColor: HERO_THEME_COLORS.pageBackground, color: HERO_THEME_COLORS.primaryText }}>
+              <video
+                className="absolute inset-0 h-full w-full object-cover opacity-70"
+                src={HERO_VIDEO_URL}
+                poster={HERO_VIDEO_POSTER}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                aria-hidden="true"
+              />
+              <div className="absolute inset-0 bg-[#061A14]/70" aria-hidden="true" />
+              <div className="relative z-10">
               <div className="absolute left-1/2 top-2 z-20 h-5 w-24 -translate-x-1/2 rounded-full bg-[#111117]" aria-hidden="true" />
               <div className="flex items-center justify-between px-6 pt-3.5 text-[10px] font-semibold"><span>9:41</span><span className="flex items-center gap-1"><Signal className="h-3 w-3" /><Wifi className="h-3 w-3" /><BatteryFull className="h-3.5 w-3.5" /></span></div>
-              <div className="flex items-center justify-between px-4 pt-6"><div><div className="text-muted">Your page</div><div className="text-sm font-semibold">Alex Vance</div></div><span className="grid h-8 w-8 place-items-center rounded-full bg-accent/15 font-semibold text-accent">AV</span></div>
-              <div className="mx-4 mt-4 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-emerald-400 p-4 text-white shadow-lg shadow-indigo-500/25"><div className="opacity-80">Live profile</div><div className="mt-1 text-2xl font-semibold tracking-tight">@alexvance</div><div className="mt-3 flex items-end justify-between"><span className="rounded-full bg-white/20 px-2 py-0.5 font-medium">Published</span><Sparkles className="h-4 w-4" /></div></div>
-              <div className="mt-5 flex items-center justify-between px-4"><span className="text-xs font-semibold">Page systems</span><span className="text-accent">Edit</span></div>
-              <div className="mx-4 mt-2 divide-y rounded-xl border border-line bg-surface">{RULES.map(({ label, detail, icon: Icon, active }) => <div key={label} className="flex items-center gap-2.5 px-3 py-2.5"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent"><Icon className="h-3.5 w-3.5" /></span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{label}</span><span className="block text-[10px] text-muted">{detail}</span></span><span className={`flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 ${active ? 'justify-end bg-accent' : 'bg-line-strong'}`}><span className="h-3 w-3 rounded-full bg-surface shadow-sm" /></span></div>)}</div>
+              <div className="flex items-center justify-between px-4 pt-6"><div><div style={{ color: HERO_THEME_COLORS.secondaryText }}>Your page</div><div className="text-sm font-semibold">Alex Vance</div></div><span className="grid h-8 w-8 place-items-center rounded-full font-semibold" style={{ backgroundColor: `${HERO_THEME_COLORS.accent}33`, color: HERO_THEME_COLORS.primaryText }}>AV</span></div>
+              <div className="mx-4 mt-4 rounded-2xl p-4 shadow-lg" style={{ backgroundColor: HERO_THEME_COLORS.panelBackground, border: `1px solid ${HERO_THEME_COLORS.border}` }}><div style={{ color: HERO_THEME_COLORS.secondaryText }}>Live theme</div><div className="mt-1 text-xl font-semibold tracking-tight">{HERO_THEME.name}</div><div className="mt-3 flex items-end justify-between"><span className="rounded-full px-2 py-0.5 font-medium" style={{ backgroundColor: `${HERO_THEME_COLORS.accent}33`, color: HERO_THEME_COLORS.primaryText }}>Published</span><Sparkles className="h-4 w-4" style={{ color: HERO_THEME_COLORS.accent }} /></div></div>
+              <div className="mt-5 flex items-center justify-between px-4"><span className="text-xs font-semibold">Page systems</span><span style={{ color: HERO_THEME_COLORS.accent }}>Edit</span></div>
+              <div className="mx-4 mt-2 divide-y rounded-xl" style={{ backgroundColor: HERO_THEME_COLORS.cardBg, border: `1px solid ${HERO_THEME_COLORS.cardBorder}` }}>{RULES.map(({ label, detail, icon: Icon, active }) => <div key={label} className="flex items-center gap-2.5 px-3 py-2.5"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg" style={{ backgroundColor: `${HERO_THEME_COLORS.accent}22`, color: HERO_THEME_COLORS.accent }}><Icon className="h-3.5 w-3.5" /></span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{label}</span><span className="block text-[10px]" style={{ color: HERO_THEME_COLORS.cardSubtitleColor }}>{detail}</span></span><span className="flex h-4 w-7 shrink-0 items-center rounded-full p-0.5" style={{ justifyContent: active ? 'flex-end' : 'flex-start', backgroundColor: active ? HERO_THEME_COLORS.accent : HERO_THEME_COLORS.border }}><span className="h-3 w-3 rounded-full" style={{ backgroundColor: HERO_THEME_COLORS.cardBg }} /></span></div>)}</div>
               <div className="mt-5 px-4 text-xs font-semibold">Recent performance</div>
-              <div className="mt-2 space-y-2.5 px-4 pb-5">{RECENT.map(({ label, value, icon: Icon }) => <div key={label} className="flex items-center gap-2.5"><span className="grid h-7 w-7 place-items-center rounded-full bg-line text-muted"><Icon className="h-3.5 w-3.5" /></span><span className="flex-1 font-medium">{label}</span><span className="font-medium tabular-nums">{value}</span></div>)}</div>
-              <div className="border-t border-line bg-surface/80 px-6 pb-4 pt-2.5"><div className="flex justify-between text-muted"><Layers3 className="h-4 w-4 text-accent" /><Palette className="h-4 w-4" /><BarChart3 className="h-4 w-4" /><Globe2 className="h-4 w-4" /></div><div className="mx-auto mt-3 h-1 w-20 rounded-full bg-ink/70" /></div>
+              <div className="mt-2 space-y-2.5 px-4 pb-5">{RECENT.map(({ label, value, icon: Icon }) => <div key={label} className="flex items-center gap-2.5"><span className="grid h-7 w-7 place-items-center rounded-full" style={{ backgroundColor: HERO_THEME_COLORS.border, color: HERO_THEME_COLORS.secondaryText }}><Icon className="h-3.5 w-3.5" /></span><span className="flex-1 font-medium">{label}</span><span className="font-medium tabular-nums">{value}</span></div>)}</div>
+              <div className="border-t px-6 pb-4 pt-2.5" style={{ backgroundColor: `${HERO_THEME_COLORS.cardBg}dd`, borderColor: HERO_THEME_COLORS.cardBorder }}><div className="flex justify-between" style={{ color: HERO_THEME_COLORS.secondaryText }}><Layers3 className="h-4 w-4" style={{ color: HERO_THEME_COLORS.accent }} /><Palette className="h-4 w-4" /><BarChart3 className="h-4 w-4" /><Globe2 className="h-4 w-4" /></div><div className="mx-auto mt-3 h-1 w-20 rounded-full" style={{ backgroundColor: HERO_THEME_COLORS.primaryText }} /></div>
+              </div>
             </div>
           </div>
 
