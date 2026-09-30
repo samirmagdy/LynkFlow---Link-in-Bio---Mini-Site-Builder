@@ -336,9 +336,15 @@ export interface Tab {
 export interface ThemeConfig {
   id: string;
   name: string;
-  backgroundType: 'solid' | 'gradient' | 'mesh';
+  backgroundType: 'solid' | 'gradient' | 'mesh' | 'image' | 'video';
   bgColor: string;
   bgGradient?: string;
+  backgroundImageUrl?: string;
+  backgroundVideoUrl?: string;
+  backgroundPosterUrl?: string;
+  backgroundPosition?: 'center' | 'top' | 'bottom';
+  backgroundFit?: 'cover' | 'contain' | 'natural';
+  backgroundOverlay?: number;
   textColor: string;
   subtitleColor: string;
   cardBg: string;

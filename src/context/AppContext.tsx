@@ -1572,26 +1572,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     setThemeRedoStack([]);
 
     const norm = enforceBrandKitThemePolicy(currentStd, normalizeTheme(newTheme), workspace.brandKit || defaultBrandKit, defaultBrandKit);
-    const legacyCompat: ThemeConfig = {
-      id: norm.id,
-      name: norm.name,
-      backgroundType: norm.background.type === 'gradient' ? 'gradient' : 'solid',
-      bgColor: norm.tokens.colors.pageBackground,
-      bgGradient: norm.background.gradientStops,
-      textColor: norm.tokens.colors.primaryText,
-      subtitleColor: norm.tokens.colors.secondaryText,
-      cardBg: norm.tokens.colors.panelBackground,
-      cardBorder: norm.tokens.colors.border,
-      cardTextColor: norm.tokens.colors.primaryText,
-      cardSubtitleColor: norm.tokens.colors.secondaryText,
-      cardShadow: norm.blockDefaults?.link?.shadow || 'sm',
-      cardRadius: norm.tokens.shape.buttonRadius > 20 ? 'full' : norm.tokens.shape.buttonRadius > 10 ? 'md' : 'sm',
-      cardStyle: norm.blockDefaults?.link?.variant === 'glass' ? 'glass' : norm.blockDefaults?.link?.variant === 'outline' ? 'outline' : 'solid',
-      fontDisplay: norm.tokens.typography.displayFamily,
-      fontBody: norm.tokens.typography.bodyFamily,
-      buttonHoverAnimation: (norm.tokens.motion.hoverEffect as any) || 'lift',
-      accentColor: norm.tokens.colors.accent
-    };
+    const legacyCompat = toLegacyCompatTheme(norm);
 
     updateDraftProfile(prev => ({
       ...prev,
@@ -1614,26 +1595,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     const updated = updater(currentStd);
     const norm = enforceBrandKitThemePolicy(currentStd, normalizeTheme(updated), workspace.brandKit || defaultBrandKit, defaultBrandKit);
 
-    const legacyCompat: ThemeConfig = {
-      id: norm.id,
-      name: norm.name,
-      backgroundType: norm.background.type === 'gradient' ? 'gradient' : 'solid',
-      bgColor: norm.tokens.colors.pageBackground,
-      bgGradient: norm.background.gradientStops,
-      textColor: norm.tokens.colors.primaryText,
-      subtitleColor: norm.tokens.colors.secondaryText,
-      cardBg: norm.tokens.colors.panelBackground,
-      cardBorder: norm.tokens.colors.border,
-      cardTextColor: norm.tokens.colors.primaryText,
-      cardSubtitleColor: norm.tokens.colors.secondaryText,
-      cardShadow: norm.blockDefaults?.link?.shadow || 'sm',
-      cardRadius: norm.tokens.shape.buttonRadius > 20 ? 'full' : norm.tokens.shape.buttonRadius > 10 ? 'md' : 'sm',
-      cardStyle: norm.blockDefaults?.link?.variant === 'glass' ? 'glass' : norm.blockDefaults?.link?.variant === 'outline' ? 'outline' : 'solid',
-      fontDisplay: norm.tokens.typography.displayFamily,
-      fontBody: norm.tokens.typography.bodyFamily,
-      buttonHoverAnimation: (norm.tokens.motion.hoverEffect as any) || 'lift',
-      accentColor: norm.tokens.colors.accent
-    };
+    const legacyCompat = toLegacyCompatTheme(norm);
 
     updateDraftProfile(prev => ({
       ...prev,

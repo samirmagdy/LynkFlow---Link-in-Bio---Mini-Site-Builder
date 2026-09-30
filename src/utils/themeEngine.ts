@@ -32,6 +32,13 @@ const safeCssFragment = (value: unknown, fallback: string): string => {
 
 const safeLength = (value: unknown, fallback: string): string => typeof value === 'string' && /^(?:\d+(?:\.\d+)?)(?:px|rem|em|ch|%)$/.test(value.trim()) ? value.trim() : fallback;
 
+const finiteNumber = (value: unknown, fallback: number, min: number, max: number): number => {
+  const number = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+};
+
+const booleanValue = (value: unknown, fallback: boolean): boolean => typeof value === 'boolean' ? value : fallback;
+
 const isApprovedMediaSource = (value: unknown): boolean => {
   if (typeof value !== 'string' || !/^https:\/\//i.test(value)) return false;
   try {
@@ -191,6 +198,62 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
   for (const [path, value, allowedKeys] of nestedGroups) {
     if (value && typeof value === 'object' && !Array.isArray(value)) Object.keys(value).filter(key => !allowedKeys.has(key)).forEach(key => addSchemaIssue(errors, `${path}.${key}`, 'Unknown theme property is not allowed.'));
   }
+  const validateNumbers = (object: any, path: string, keys: string[]) => {
+    if (!object || typeof object !== 'object' || Array.isArray(object)) return;
+    keys.forEach(key => {
+      if (object[key] !== undefined && !Number.isFinite(Number(object[key]))) addSchemaIssue(errors, `${path}.${key}`, 'Numeric theme values must be finite numbers.');
+    });
+  };
+  const validateBooleans = (object: any, path: string, keys: string[]) => {
+    if (!object || typeof object !== 'object' || Array.isArray(object)) return;
+    keys.forEach(key => {
+      if (object[key] !== undefined && typeof object[key] !== 'boolean') addSchemaIssue(errors, `${path}.${key}`, 'Theme flags must be boolean values.');
+    });
+  };
+  const validateNestedColors = (object: any, path: string, keys: string[]) => {
+    if (!object || typeof object !== 'object' || Array.isArray(object)) return;
+    keys.forEach(key => {
+      if (object[key] !== undefined && !isSafeHexColor(object[key])) addSchemaIssue(errors, `${path}.${key}`, 'Nested theme colors must be valid hexadecimal colors.');
+    });
+  };
+  const validateEnums = (object: any, path: string, values: Record<string, string[]>) => {
+    if (!object || typeof object !== 'object' || Array.isArray(object)) return;
+    Object.entries(values).forEach(([key, allowed]) => {
+      if (object[key] !== undefined && !allowed.includes(String(object[key]))) addSchemaIssue(errors, `${path}.${key}`, `Unsupported value for ${key}.`);
+    });
+  };
+  validateNumbers(tokens?.shape, 'tokens.shape', ['pageRadius', 'cardRadius', 'buttonRadius', 'avatarRadius']);
+  validateNumbers(tokens?.spacing, 'tokens.spacing', ['pageX', 'pageY', 'blockGap', 'sectionGap']);
+  validateNumbers(tokens?.motion, 'tokens.motion', ['durationMs']);
+  validateBooleans(tokens?.motion, 'tokens.motion', ['enabled']);
+  validateNumbers(background, 'background', ['scale', 'blur', 'overlay']);
+  validateBooleans(background, 'background', ['autoplay', 'loop', 'muted']);
+  validateNumbers(theme.header, 'header', ['avatarSize']);
+  validateBooleans(theme.header, 'header', ['showShare', 'showSocials']);
+  validateNestedColors(theme.buttons, 'buttons', ['background', 'text', 'border']);
+  validateNestedColors(theme.cards, 'cards', ['background', 'text', 'border']);
+  validateNestedColors(theme.socialIcons, 'socialIcons', ['color']);
+  validateNumbers(theme.buttons, 'buttons', ['height', 'blur']);
+  validateNumbers(theme.cards, 'cards', ['radius', 'blur']);
+  validateNumbers(theme.socialIcons, 'socialIcons', ['size']);
+  validateNumbers(theme.effects, 'effects', ['blur']);
+  validateBooleans(theme.effects, 'effects', ['grain', 'glow']);
+  validateBooleans(theme.profile, 'profile', ['showAvatar']);
+  validateBooleans(theme.layout, 'layout', ['showFooter']);
+  validateBooleans(theme.presetComposition, 'presetComposition', ['includesStarterContent', 'changesContent', 'changesLayout']);
+  validateEnums(tokens?.motion, 'tokens.motion', { hoverEffect: ['none', 'scale', 'lift', 'glow'] });
+  validateEnums(theme.header, 'header', { alignment: ['left', 'center', 'right'] });
+  validateEnums(theme.componentVariants, 'componentVariants', { link: ['solid', 'outline', 'soft-card', 'image-card', 'glass'], image: ['rounded', 'full-bleed', 'polaroid'], socialIcons: ['line', 'filled', 'minimal'], form: ['card', 'bordered', 'glass'] });
+  validateEnums(theme.profile, 'profile', { avatarShape: ['circle', 'rounded', 'square'] });
+  validateEnums(theme.accessibility, 'accessibility', { reducedMotion: ['respectUserPreference', 'alwaysDisable', 'alwaysEnable'], minimumContrast: ['AA', 'AAA'] });
+  validateEnums(background, 'background', { type: ['solid', 'gradient', 'image', 'video', 'pattern'], fit: ['cover', 'contain', 'natural'], reducedMotionFallback: ['poster', 'image', 'solid'] });
+  validateEnums(theme.blockDefaults?.link, 'blockDefaults.link', { variant: ['filled', 'outline', 'soft', 'glass'], thumbnail: ['none', 'left', 'avatar'], shadow: ['none', 'sm', 'md', 'lg', 'colored'] });
+  validateEnums(theme.blockDefaults?.text, 'blockDefaults.text', { alignment: ['left', 'center', 'right'] });
+  validateEnums(theme.blockDefaults?.media, 'blockDefaults.media', { radius: ['none', 'sm', 'md', 'lg', 'full'] });
+  validateEnums(theme.blockDefaults?.folder, 'blockDefaults.folder', { variant: ['filled', 'outline', 'glass'] });
+  if (background?.position !== undefined && !['center', 'top', 'bottom'].includes(background.position)) addSchemaIssue(errors, 'background.position', 'Background position must be center, top, or bottom.');
+  if (theme.direction !== undefined && !['ltr', 'rtl', 'auto'].includes(theme.direction)) addSchemaIssue(errors, 'direction', 'Theme direction must be ltr, rtl, or auto.');
+  if (theme.language !== undefined && !['en', 'ar', 'auto'].includes(theme.language)) addSchemaIssue(errors, 'language', 'Theme language must be en, ar, or auto.');
   if (theme.layout?.maxWidth !== undefined && safeLength(theme.layout.maxWidth, '') === '') addSchemaIssue(errors, 'layout.maxWidth', 'Layout width must be a bounded CSS length.');
   if (theme.responsive && typeof theme.responsive === 'object') {
     Object.entries(theme.responsive).forEach(([viewport, rule]) => {
@@ -219,12 +282,18 @@ export interface ThemeQualityScore {
 export function calculateThemeQualityScore(theme: StandardTheme): ThemeQualityScore {
   const resolved = normalizeTheme(theme);
   const a11y = validateThemeAccessibility(resolved);
+  const mobile = resolved.responsive.mobile;
+  const touchTarget = resolved.blockDefaults.link?.height || 0;
+  const mobileReady = Number(mobile.pageX) >= 8 && Number(mobile.blockGap) >= 6 && touchTarget >= 44;
+  const hasImageFallback = resolved.background.type !== 'image' || Boolean(resolved.background.assetUrl && resolved.background.placeholderUrl);
+  const hasVideoFallback = resolved.background.type !== 'video' || Boolean(resolved.background.posterUrl || resolved.background.fallbackColor);
+  const performanceReady = hasImageFallback && hasVideoFallback;
   const categories: ThemeQualityScore['categories'] = [
-    { id: 'mobile', label: 'Mobile readiness', score: resolved.responsive.mobile.pageX >= 8 && resolved.blockDefaults.link?.height !== undefined ? 100 : 70, findings: ['Responsive mobile tokens are defined.', `Primary touch target is ${resolved.blockDefaults.link?.height || 0}px.`] },
+    { id: 'mobile', label: 'Mobile readiness', score: mobileReady ? 100 : 70, findings: mobileReady ? ['Responsive mobile spacing and touch targets are defined.'] : [`Review mobile spacing and touch target (${touchTarget}px; recommended minimum is 44px).`] },
     { id: 'rtl', label: 'RTL readiness', score: resolved.direction === 'rtl' || resolved.language === 'ar' || (resolved.supportsRTL && Boolean(resolved.tokens.typography.arabicFamily)) ? 100 : 85, findings: resolved.direction === 'rtl' || resolved.language === 'ar' ? ['Arabic direction is explicitly configured.'] : resolved.supportsRTL ? ['RTL capability and Arabic typography fallback stack are verified.'] : ['Preview Arabic/RTL before publishing to validate mixed-language content.'] },
     { id: 'accessibility', label: 'Accessibility', score: Math.max(0, 100 - a11y.errors.length * 25 - a11y.warnings.length * 8), findings: [...a11y.errors.map(issue => issue.message), ...a11y.warnings.map(issue => issue.message)] },
     { id: 'conversion', label: 'Conversion clarity', score: resolved.conversion?.goal && resolved.layout?.ctaPosition ? 100 : 70, findings: resolved.conversion?.goal ? [`Goal: ${resolved.conversion.goal}. CTA placement: ${resolved.layout?.ctaPosition || 'priority-order'}.`] : ['Choose a visitor goal and primary CTA placement.'] },
-    { id: 'performance', label: 'Performance readiness', score: resolved.background.type === 'video' && !resolved.background.posterUrl ? 70 : (resolved.background.type === 'image' && !resolved.background.placeholderUrl && !resolved.background.assetUrl ? 90 : 100), findings: resolved.background.type === 'video' && !resolved.background.posterUrl ? ['Add a video poster so the page has an immediate fallback frame.'] : ['Background performance and fallback path are optimized.'] },
+    { id: 'performance', label: 'Performance readiness', score: performanceReady ? 100 : 70, findings: performanceReady ? ['Background performance and fallback paths are defined.'] : ['Add an image placeholder or video poster/fallback before publishing.'] },
     { id: 'brand', label: 'Brand consistency', score: resolved.tokens.typography.bodyFamily && resolved.tokens.colors.accent ? 100 : 70, findings: ['Resolved typography and accent tokens are present.'] }
   ];
   return { overall: Math.round(categories.reduce((sum, category) => sum + category.score, 0) / categories.length), categories };
@@ -236,7 +305,8 @@ export function calculateThemeQualityScore(theme: StandardTheme): ThemeQualitySc
 export function validateThemeAccessibility(theme: StandardTheme): ThemeValidationResult {
   const errors: ThemeAccessibilityIssue[] = [];
   const warnings: ThemeAccessibilityIssue[] = [];
-  const colors = theme.tokens.colors;
+  const resolvedTheme = normalizeTheme(theme);
+  const colors = resolvedTheme.tokens.colors;
 
   // 1. Primary Text vs Page Background (Required: 4.5:1 for normal body text)
   const primaryTextOnPage = calculateContrastRatio(colors.primaryText, colors.pageBackground);
@@ -296,16 +366,43 @@ export function validateThemeAccessibility(theme: StandardTheme): ThemeValidatio
   }
 
   // 5. Card Panel Text vs Card Panel Background
-  const cardBg = colors.panelBackground || colors.cardBg || colors.pageBackground;
-  const cardText = colors.cardTextColor || colors.primaryText;
+  const cardBg = resolvedTheme.cards?.background || colors.cardBg || colors.panelBackground || colors.pageBackground;
+  const cardText = resolvedTheme.cards?.text || colors.cardTextColor || colors.primaryText;
   const cardTextContrast = calculateContrastRatio(cardText, cardBg);
-  if (cardTextContrast < 4.0) {
-    warnings.push({
-      type: 'warning',
-      tokenKey: 'colors.panelBackground',
-      message: `Card panel content text contrast (${cardTextContrast}:1) is tight against panel surface.`,
+  if (cardTextContrast < 4.5) {
+    errors.push({
+      type: 'error',
+      tokenKey: 'cards.text',
+      message: `Card content text contrast (${cardTextContrast}:1) is insufficient against the effective card surface.`,
       ratio: cardTextContrast,
       requiredRatio: 4.5
+    });
+  }
+
+  const cardSubtitle = colors.cardSubtitleColor || colors.secondaryText;
+  const cardSubtitleContrast = calculateContrastRatio(cardSubtitle, cardBg);
+  if (cardSubtitleContrast < 4.5) {
+    errors.push({
+      type: 'error',
+      tokenKey: 'colors.cardSubtitleColor',
+      message: `Card labels and supporting text contrast (${cardSubtitleContrast}:1) is insufficient against the effective card surface.`,
+      ratio: cardSubtitleContrast,
+      requiredRatio: 4.5,
+      suggestedFix: readableTextOn(cardSubtitle, cardBg, 4.5)
+    });
+  }
+
+  const buttonBackground = resolvedTheme.buttons?.background || colors.accent;
+  const buttonText = resolvedTheme.buttons?.text || colors.accentText;
+  const buttonContrast = calculateContrastRatio(buttonText, buttonBackground);
+  if (buttonContrast < 4.5) {
+    errors.push({
+      type: 'error',
+      tokenKey: 'buttons.text',
+      message: `Button text contrast (${buttonContrast}:1) is insufficient against the effective button background.`,
+      ratio: buttonContrast,
+      requiredRatio: 4.5,
+      suggestedFix: readableTextOn(buttonText, buttonBackground, 4.5)
     });
   }
 
@@ -408,13 +505,13 @@ export function normalizeTheme(raw: any): StandardTheme {
   const responsive = raw?.responsive || {};
   const accessibility = raw?.accessibility || {};
   const normalizeResponsiveRule = (value: any, fallback: ViewportResponsiveRule): ViewportResponsiveRule => ({
-    maxWidth: Math.max(280, Math.min(1600, Number(value?.maxWidth ?? fallback.maxWidth))),
-    pageX: Math.max(8, Math.min(48, Number(value?.pageX ?? fallback.pageX))),
-    pageY: Math.max(8, Math.min(64, Number(value?.pageY ?? fallback.pageY))),
-    blockGap: Math.max(6, Math.min(36, Number(value?.blockGap ?? fallback.blockGap))),
-    avatarSize: Math.max(48, Math.min(140, Number(value?.avatarSize ?? fallback.avatarSize ?? 88))),
-    headingScale: Math.max(0.75, Math.min(1.6, Number(value?.headingScale ?? fallback.headingScale ?? 1))),
-    imageHeight: Math.max(120, Math.min(720, Number(value?.imageHeight ?? fallback.imageHeight ?? 320))),
+    maxWidth: finiteNumber(value?.maxWidth, fallback.maxWidth, 280, 1600),
+    pageX: finiteNumber(value?.pageX, fallback.pageX, 8, 48),
+    pageY: finiteNumber(value?.pageY, fallback.pageY, 8, 64),
+    blockGap: finiteNumber(value?.blockGap, fallback.blockGap, 6, 36),
+    avatarSize: finiteNumber(value?.avatarSize, fallback.avatarSize ?? 88, 48, 140),
+    headingScale: finiteNumber(value?.headingScale, fallback.headingScale ?? 1, 0.75, 1.6),
+    imageHeight: finiteNumber(value?.imageHeight, fallback.imageHeight ?? 320, 120, 720),
     textAlign: ['left', 'center', 'right'].includes(value?.textAlign) ? value.textAlign : (fallback.textAlign || 'center'),
     navigationPosition: ['top', 'below-header', 'bottom'].includes(value?.navigationPosition) ? value.navigationPosition : (fallback.navigationPosition || 'below-header'),
     blockVisibility: ['all', 'hide-media', 'hide-socials'].includes(value?.blockVisibility) ? value.blockVisibility : (fallback.blockVisibility || 'all')
@@ -451,11 +548,17 @@ export function normalizeTheme(raw: any): StandardTheme {
   const semanticWarning = safeColor(colors.warning, '#F59E0B');
   const semanticDanger = safeColor(colors.danger, '#EF4444');
   const semanticOverlay = safeColor(colors.overlay, '#000000');
+  const buttonBackground = safeColor(buttons.background, accent);
+  const buttonText = readableTextOn(safeColor(buttons.text, accentText), buttonBackground, 4.5);
+  const cardBackground = safeColor(cards.background, cardBg);
+  const effectiveCardText = readableTextOn(safeColor(cards.text, cardTextColor), cardBackground, 4.5);
+  const effectiveCardBorder = safeColor(cards.border, cardBorder);
+  const effectiveCardSubtitle = readableTextOn(cardSubtitleColor, cardBackground, 4.5);
 
   // Radius conversion
   let buttonRad = 12;
-  if (typeof shape.buttonRadius === 'number') {
-    buttonRad = Math.max(0, Math.min(999, shape.buttonRadius));
+  if (Number.isFinite(Number(shape.buttonRadius))) {
+    buttonRad = finiteNumber(shape.buttonRadius, 12, 0, 999);
   } else if (raw.cardRadius === 'none') buttonRad = 0;
   else if (raw.cardRadius === 'sm') buttonRad = 6;
   else if (raw.cardRadius === 'md') buttonRad = 12;
@@ -463,28 +566,30 @@ export function normalizeTheme(raw: any): StandardTheme {
   else if (raw.cardRadius === 'full') buttonRad = 999;
 
   let cardRad = 16;
-  if (typeof shape.cardRadius === 'number') {
-    cardRad = Math.max(0, Math.min(48, shape.cardRadius));
+  if (Number.isFinite(Number(shape.cardRadius))) {
+    cardRad = finiteNumber(shape.cardRadius, 16, 0, 48);
   } else {
     cardRad = buttonRad;
   }
 
   const normalized: StandardTheme = {
-    id: raw.id || `thm-${Date.now()}`,
+    id: typeof raw.id === 'string' && raw.id.trim() ? raw.id : (typeof raw.profileId === 'string' && raw.profileId ? `theme-${raw.profileId}` : 'theme-default'),
     profileId: raw.profileId,
     schemaVersion: 1,
-    name: raw.name || 'Custom Theme',
+    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 120) : 'Custom Theme',
     category: typeof raw.category === 'string' && raw.category.trim() ? raw.category.trim() : 'Creator',
-    supportedGoals: Array.isArray(raw.supportedGoals) && raw.supportedGoals.length > 0 ? raw.supportedGoals.filter((goal: unknown) => ['contact', 'book', 'buy', 'portfolio', 'newsletter', 'whatsapp', 'download', 'social'].includes(String(goal))) : [raw.conversion?.goal || 'contact'],
+    supportedGoals: Array.isArray(raw.supportedGoals) && raw.supportedGoals.length > 0
+      ? raw.supportedGoals.filter((goal: unknown) => ['contact', 'book', 'buy', 'portfolio', 'newsletter', 'whatsapp', 'download', 'social'].includes(String(goal)))
+      : (['contact', 'book', 'buy', 'portfolio', 'newsletter', 'whatsapp', 'download', 'social'].includes(raw.conversion?.goal) ? [raw.conversion.goal] : ['contact']),
     supportsRTL: raw.supportsRTL !== false,
     supportsDarkMode: raw.supportsDarkMode !== false,
     mobileFirst: raw.mobileFirst !== false,
-    source: raw.source || (raw.presetId ? 'preset' : 'custom'),
+    source: ['preset', 'custom', 'imported'].includes(raw.source) ? raw.source : (raw.presetId ? 'preset' : 'custom'),
     presetId: raw.presetId || null,
     mode: ['light', 'dark', 'system'].includes(raw.mode) ? raw.mode : 'system',
     previewImage: safeMediaUrl(raw.previewImage),
-    language: raw.language || 'en',
-    direction: raw.direction || 'ltr',
+    language: ['en', 'ar', 'auto'].includes(raw.language) ? raw.language : 'en',
+    direction: ['ltr', 'rtl', 'auto'].includes(raw.direction) ? raw.direction : 'ltr',
     tokens: {
       colors: {
         pageBackground: pageBg,
@@ -497,7 +602,7 @@ export function normalizeTheme(raw: any): StandardTheme {
         focusRing,
         cardBg,
         cardTextColor,
-        cardSubtitleColor,
+        cardSubtitleColor: effectiveCardSubtitle,
         cardBorder,
         surfaceBase,
         surfaceRaised,
@@ -522,39 +627,39 @@ export function normalizeTheme(raw: any): StandardTheme {
         displayFamily: safeFontStack(typography.displayFamily || raw.fontDisplay, 'Syne, Inter, ui-sans-serif, sans-serif'),
         arabicFamily: safeFontStack(typography.arabicFamily || raw.fontArabic, 'Noto Kufi Arabic, Tahoma, sans-serif'),
         bodySize: safeLength(typography.bodySize, '16px'),
-        bodyWeight: Math.max(300, Math.min(900, Number(typography.bodyWeight) || 400)),
-        headingWeight: Math.max(300, Math.min(900, Number(typography.headingWeight) || 700)),
-        bodyLineHeight: Math.max(0.75, Math.min(2.5, Number(typography.bodyLineHeight) || 1.5)),
-        headingLineHeight: Math.max(0.75, Math.min(2.5, Number(typography.headingLineHeight) || 1.15)),
+        bodyWeight: finiteNumber(typography.bodyWeight, 400, 300, 900),
+        headingWeight: finiteNumber(typography.headingWeight, 700, 300, 900),
+        bodyLineHeight: finiteNumber(typography.bodyLineHeight, 1.5, 0.75, 2.5),
+        headingLineHeight: finiteNumber(typography.headingLineHeight, 1.15, 0.75, 2.5),
         letterSpacing: safeLength(typography.letterSpacing, '0px'),
-        headingScale: Math.max(0.75, Math.min(2.5, Number(typography.headingScale) || 1)),
-        bodyScale: Math.max(0.75, Math.min(1.5, Number(typography.bodyScale) || 1)),
+        headingScale: finiteNumber(typography.headingScale, 1, 0.75, 2.5),
+        bodyScale: finiteNumber(typography.bodyScale, 1, 0.75, 1.5),
         captionSize: safeLength(typography.captionSize, '12px'),
         buttonTextSize: safeLength(typography.buttonTextSize, '14px'),
         maxLineLength: safeLength(typography.maxLineLength, '68ch'),
         textTransform: ['none', 'uppercase', 'capitalize'].includes(typography.textTransform) ? typography.textTransform : 'none'
       },
       shape: {
-        pageRadius: Math.max(0, Math.min(48, Number(shape.pageRadius ?? 24))),
+        pageRadius: finiteNumber(shape.pageRadius, 24, 0, 48),
         cardRadius: cardRad,
         buttonRadius: buttonRad,
-        avatarRadius: Math.max(0, Math.min(999, Number(shape.avatarRadius ?? 999)))
+        avatarRadius: finiteNumber(shape.avatarRadius, 999, 0, 999)
       },
       spacing: {
-        pageX: Math.max(8, Math.min(48, Number(spacing.pageX ?? 20))),
-        pageY: Math.max(8, Math.min(64, Number(spacing.pageY ?? 24))),
-        blockGap: Math.max(6, Math.min(36, Number(spacing.blockGap ?? 14))),
-        sectionGap: Math.max(12, Math.min(48, Number(spacing.sectionGap ?? 24)))
+        pageX: finiteNumber(spacing.pageX, 20, 8, 48),
+        pageY: finiteNumber(spacing.pageY, 24, 8, 64),
+        blockGap: finiteNumber(spacing.blockGap, 14, 6, 36),
+        sectionGap: finiteNumber(spacing.sectionGap, 24, 12, 48)
       },
       elevation: {
         card: safeCssFragment(elevation.card, raw.cardShadow === 'none' ? 'none' : raw.cardShadow === 'lg' ? '0 12px 36px rgba(0,0,0,0.25)' : '0 4px 20px rgba(0,0,0,0.15)'),
         button: safeCssFragment(elevation.button, '0 2px 8px rgba(0,0,0,0.08)')
       },
       motion: {
-        durationMs: Math.max(0, Math.min(1000, Number(motion.durationMs ?? 180))),
+        durationMs: finiteNumber(motion.durationMs, 180, 0, 1000),
         easing: safeCssFragment(motion.easing, 'cubic-bezier(0.16, 1, 0.3, 1)'),
-        enabled: motion.enabled ?? true,
-        hoverEffect: motion.hoverEffect || raw.buttonHoverAnimation || 'lift'
+        enabled: booleanValue(motion.enabled, true),
+        hoverEffect: ['none', 'scale', 'lift', 'glow'].includes(motion.hoverEffect) ? motion.hoverEffect : (['none', 'scale', 'lift', 'glow'].includes(raw.buttonHoverAnimation) ? raw.buttonHoverAnimation : 'lift')
       }
     },
     background: {
@@ -565,28 +670,28 @@ export function normalizeTheme(raw: any): StandardTheme {
       mobileAssetUrl: safeMediaUrl(background.mobileAssetUrl),
       placeholderUrl: isSafePlaceholder(background.placeholderUrl) ? background.placeholderUrl : null,
       posterUrl: safeMediaUrl(background.posterUrl),
-      position: background.position || 'center',
+      position: ['center', 'top', 'bottom'].includes(background.position) ? background.position : 'center',
       fit: ['cover', 'contain', 'natural'].includes(background.fit) ? background.fit : 'cover',
       focalPoint: {
-        x: Math.max(0, Math.min(100, Number(background.focalPoint?.x ?? 50))),
-        y: Math.max(0, Math.min(100, Number(background.focalPoint?.y ?? 50)))
+        x: finiteNumber(background.focalPoint?.x, 50, 0, 100),
+        y: finiteNumber(background.focalPoint?.y, 50, 0, 100)
       },
-      scale: Math.max(1, Math.min(2, Number(background.scale ?? 1))),
-      blur: Math.max(0, Math.min(32, Number(background.blur ?? 0))),
-      autoplay: background.autoplay ?? true,
-      loop: background.loop ?? true,
-      muted: background.muted ?? true,
+      scale: finiteNumber(background.scale, 1, 1, 2),
+      blur: finiteNumber(background.blur, 0, 0, 32),
+      autoplay: booleanValue(background.autoplay, true),
+      loop: booleanValue(background.loop, true),
+      muted: booleanValue(background.muted, true),
       reducedMotionFallback: ['poster', 'image', 'solid'].includes(background.reducedMotionFallback) ? background.reducedMotionFallback : 'poster',
-      overlay: Math.max(0, Math.min(1, Number(background.overlay ?? 0))),
+      overlay: finiteNumber(background.overlay, 0, 0, 1),
       overlayColor: safeColor(background.overlayColor, '#000000'),
       fallbackColor: safeColor(background.fallbackColor, pageBg),
       gradientStops: safeCssFragment(background.gradientStops || raw.bgGradient, '') || undefined
     },
     header: {
-      alignment: header.alignment || 'center',
-      avatarSize: Math.max(48, Math.min(140, Number(header.avatarSize ?? 88))),
-      showShare: header.showShare ?? true,
-      showSocials: header.showSocials ?? true
+      alignment: ['left', 'center', 'right'].includes(header.alignment) ? header.alignment : 'center',
+      avatarSize: finiteNumber(header.avatarSize, 88, 48, 140),
+      showShare: booleanValue(header.showShare, true),
+      showSocials: booleanValue(header.showSocials, true)
     },
     layout: {
       templateId: ['centered-creator', 'left-professional', 'editorial-portfolio', 'service-conversion', 'product-showcase', 'gallery-portfolio', 'booking-first', 'link-collection'].includes(layout.templateId) ? layout.templateId : 'centered-creator',
@@ -602,59 +707,59 @@ export function normalizeTheme(raw: any): StandardTheme {
       imagePlacement: ['inline', 'full-bleed', 'alternating'].includes(layout.imagePlacement) ? layout.imagePlacement : 'inline',
       socialIconPlacement: ['header', 'footer', 'inline'].includes(layout.socialIconPlacement) ? layout.socialIconPlacement : 'header',
       ctaPosition: ['first', 'after-header', 'priority-order'].includes(layout.ctaPosition) ? layout.ctaPosition : 'priority-order',
-      showFooter: layout.showFooter ?? true
+      showFooter: booleanValue(layout.showFooter, true)
     },
     componentVariants: {
-      link: componentVariants.link || (blockDefaults?.link?.variant === 'outline' ? 'outline' : blockDefaults?.link?.variant === 'soft' ? 'soft-card' : blockDefaults?.link?.variant === 'glass' ? 'glass' : 'solid'),
-      image: componentVariants.image || 'rounded',
-      socialIcons: componentVariants.socialIcons || 'line',
-      form: componentVariants.form || 'card'
+      link: ['solid', 'outline', 'soft-card', 'image-card', 'glass'].includes(componentVariants.link) ? componentVariants.link : (blockDefaults?.link?.variant === 'outline' ? 'outline' : blockDefaults?.link?.variant === 'soft' ? 'soft-card' : blockDefaults?.link?.variant === 'glass' ? 'glass' : 'solid'),
+      image: ['rounded', 'full-bleed', 'polaroid'].includes(componentVariants.image) ? componentVariants.image : 'rounded',
+      socialIcons: ['line', 'filled', 'minimal'].includes(componentVariants.socialIcons) ? componentVariants.socialIcons : 'line',
+      form: ['card', 'bordered', 'glass'].includes(componentVariants.form) ? componentVariants.form : 'card'
     },
     profile: {
-      showAvatar: profile.showAvatar ?? true,
-      avatarShape: profile.avatarShape || (Number(shape.avatarRadius ?? 999) >= 999 ? 'circle' : 'rounded')
+      showAvatar: booleanValue(profile.showAvatar, true),
+      avatarShape: ['circle', 'rounded', 'square'].includes(profile.avatarShape) ? profile.avatarShape : (Number(shape.avatarRadius ?? 999) >= 999 ? 'circle' : 'rounded')
     },
     buttons: {
-      background: safeColor(buttons.background, accent),
-      text: safeColor(buttons.text, accentText),
+      background: buttonBackground,
+      text: buttonText,
       border: safeColor(buttons.border, border),
       shadow: safeCssFragment(buttons.shadow, elevation.button || 'none'),
-      height: Math.max(40, Math.min(96, Number(buttons.height ?? blockDefaults?.link?.height ?? 56))),
-      blur: Math.max(0, Math.min(32, Number(buttons.blur ?? 0)))
+      height: finiteNumber(buttons.height ?? blockDefaults?.link?.height, 56, 40, 96),
+      blur: finiteNumber(buttons.blur, 0, 0, 32)
     },
     cards: {
-      background: safeColor(cards.background, cardBg),
-      text: safeColor(cards.text, cardTextColor),
-      border: safeColor(cards.border, cardBorder),
-      radius: Math.max(0, Math.min(48, Number(cards.radius ?? cardRad))),
+      background: cardBackground,
+      text: effectiveCardText,
+      border: effectiveCardBorder,
+      radius: finiteNumber(cards.radius, cardRad, 0, 48),
       shadow: safeCssFragment(cards.shadow, elevation.card || 'none'),
-      blur: Math.max(0, Math.min(32, Number(cards.blur ?? effects.blur ?? 0)))
+      blur: finiteNumber(cards.blur ?? effects.blur, 0, 0, 32)
     },
     socialIcons: {
-      color: socialIcons.color || primaryText,
-      size: Math.max(28, Math.min(64, Number(socialIcons.size ?? 36))),
-      style: socialIcons.style || componentVariants.socialIcons || 'line'
+      color: safeColor(socialIcons.color, primaryText),
+      size: finiteNumber(socialIcons.size, 36, 28, 64),
+      style: ['line', 'filled', 'minimal'].includes(socialIcons.style) ? socialIcons.style : (componentVariants.socialIcons || 'line')
     },
     effects: {
-      grain: effects.grain ?? false,
-      blur: Math.max(0, Math.min(32, Number(effects.blur ?? 0))),
-      glow: effects.glow ?? false
+      grain: booleanValue(effects.grain, false),
+      blur: finiteNumber(effects.blur, 0, 0, 32),
+      glow: booleanValue(effects.glow, false)
     },
     blockDefaults: {
       link: {
-        variant: blockDefaults?.link?.variant || (raw.cardStyle === 'glass' ? 'glass' : raw.cardStyle === 'outline' ? 'outline' : 'filled'),
-        height: Math.max(44, Math.min(84, Number(blockDefaults?.link?.height ?? 56))),
-        thumbnail: blockDefaults?.link?.thumbnail || 'none',
-        shadow: blockDefaults?.link?.shadow || (raw.cardShadow || 'sm')
+        variant: ['filled', 'outline', 'soft', 'glass'].includes(blockDefaults?.link?.variant) ? blockDefaults.link.variant : (raw.cardStyle === 'glass' ? 'glass' : raw.cardStyle === 'outline' ? 'outline' : 'filled'),
+        height: finiteNumber(blockDefaults?.link?.height, 56, 44, 84),
+        thumbnail: ['none', 'left', 'avatar'].includes(blockDefaults?.link?.thumbnail) ? blockDefaults.link.thumbnail : 'none',
+        shadow: ['none', 'sm', 'md', 'lg', 'colored'].includes(blockDefaults?.link?.shadow) ? blockDefaults.link.shadow : (['none', 'sm', 'md', 'lg', 'colored'].includes(raw.cardShadow) ? raw.cardShadow : 'sm')
       },
       text: {
-        alignment: blockDefaults?.text?.alignment || 'left'
+        alignment: ['left', 'center', 'right'].includes(blockDefaults?.text?.alignment) ? blockDefaults.text.alignment : 'left'
       },
       media: {
-        radius: blockDefaults?.media?.radius || 'lg'
+        radius: ['none', 'sm', 'md', 'lg', 'full'].includes(blockDefaults?.media?.radius) ? blockDefaults.media.radius : 'lg'
       },
       folder: {
-        variant: blockDefaults?.folder?.variant || 'filled'
+        variant: ['filled', 'outline', 'glass'].includes(blockDefaults?.folder?.variant) ? blockDefaults.folder.variant : 'filled'
       }
     },
     responsive: {
@@ -664,8 +769,8 @@ export function normalizeTheme(raw: any): StandardTheme {
       desktop: normalizeResponsiveRule(responsive?.desktop, { maxWidth: 860, pageX: 28, pageY: 28, blockGap: 16, avatarSize: 96, headingScale: 1.05, imageHeight: 380, textAlign: 'center', navigationPosition: 'below-header', blockVisibility: 'all' })
     },
     accessibility: {
-      reducedMotion: accessibility?.reducedMotion || 'respectUserPreference',
-      minimumContrast: accessibility?.minimumContrast || 'AA'
+      reducedMotion: ['respectUserPreference', 'alwaysDisable', 'alwaysEnable'].includes(accessibility?.reducedMotion) ? accessibility.reducedMotion : 'respectUserPreference',
+      minimumContrast: ['AA', 'AAA'].includes(accessibility?.minimumContrast) ? accessibility.minimumContrast : 'AA'
     },
     conversion: {
       goal: ['contact', 'book', 'buy', 'portfolio', 'newsletter', 'whatsapp', 'download', 'social'].includes(raw.conversion?.goal) ? raw.conversion.goal : 'contact',
@@ -686,8 +791,8 @@ export function normalizeTheme(raw: any): StandardTheme {
       changesContent: raw.presetComposition.changesContent === true,
       changesLayout: raw.presetComposition.changesLayout !== false,
     } : undefined,
-    createdAt: raw.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
+      updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined
   };
 
   return normalized;
@@ -741,9 +846,15 @@ export function toLegacyCompatTheme(theme: StandardTheme): ThemeConfig {
   return {
     id: norm.id,
     name: norm.name,
-    backgroundType: norm.background.type === 'gradient' ? 'gradient' : 'solid',
+    backgroundType: norm.background.type === 'gradient' || norm.background.type === 'image' || norm.background.type === 'video' ? norm.background.type : 'solid',
     bgColor: norm.tokens.colors.pageBackground,
     bgGradient: norm.background.gradientStops,
+    backgroundImageUrl: norm.background.type === 'image' ? (norm.background.assetUrl || undefined) : undefined,
+    backgroundVideoUrl: norm.background.type === 'video' ? (norm.background.assetUrl || undefined) : undefined,
+    backgroundPosterUrl: norm.background.posterUrl || undefined,
+    backgroundPosition: norm.background.position,
+    backgroundFit: norm.background.fit,
+    backgroundOverlay: norm.background.overlay,
     textColor: norm.tokens.colors.primaryText,
     subtitleColor: norm.tokens.colors.secondaryText,
     cardBg: norm.tokens.colors.panelBackground,
@@ -955,6 +1066,19 @@ export function resolveStandardTheme(
     ...(blockOverrides?.blockDefaults || {})
   };
 
+  const header = { ...base.header, ...(presetTheme?.header || {}), ...(profileCustomizations?.header || {}), ...(blockOverrides?.header || {}) };
+  const layout = { ...base.layout, ...(presetTheme?.layout || {}), ...(profileCustomizations?.layout || {}), ...(blockOverrides?.layout || {}) };
+  const profile = { ...base.profile, ...(presetTheme?.profile || {}), ...(profileCustomizations?.profile || {}), ...(blockOverrides?.profile || {}) };
+  const buttons = { ...base.buttons, ...(presetTheme?.buttons || {}), ...(profileCustomizations?.buttons || {}), ...(blockOverrides?.buttons || {}) };
+  const cards = { ...base.cards, ...(presetTheme?.cards || {}), ...(profileCustomizations?.cards || {}), ...(blockOverrides?.cards || {}) };
+  const socialIcons = { ...base.socialIcons, ...(presetTheme?.socialIcons || {}), ...(profileCustomizations?.socialIcons || {}), ...(blockOverrides?.socialIcons || {}) };
+  const accessibility = { ...base.accessibility, ...(presetTheme?.accessibility || {}), ...(profileCustomizations?.accessibility || {}), ...(blockOverrides?.accessibility || {}) };
+  const conversion = { ...base.conversion, ...(presetTheme?.conversion || {}), ...(profileCustomizations?.conversion || {}), ...(blockOverrides?.conversion || {}) };
+  const responsive = Object.fromEntries((['smallMobile', 'mobile', 'tablet', 'desktop'] as const).map(viewport => [
+    viewport,
+    { ...base.responsive[viewport], ...(presetTheme?.responsive?.[viewport] || {}), ...(profileCustomizations?.responsive?.[viewport] || {}), ...(blockOverrides?.responsive?.[viewport] || {}) }
+  ]));
+
   return normalizeTheme({
     ...base,
     ...(presetTheme || {}),
@@ -964,6 +1088,15 @@ export function resolveStandardTheme(
     background,
     effects,
     componentVariants,
-    blockDefaults
+    blockDefaults,
+    header,
+    layout,
+    profile,
+    buttons,
+    cards,
+    socialIcons,
+    accessibility,
+    conversion,
+    responsive
   });
 }

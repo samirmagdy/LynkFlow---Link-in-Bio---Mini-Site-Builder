@@ -56,11 +56,13 @@ const unsafeHtml = renderPublicProfileBody({
 }, 'https://lynkflow.me/@contract-test');
 if (/href="javascript:|src="javascript:/.test(unsafeHtml)) throw new Error('Public renderer must reject unsafe persisted URLs.');
 const backgroundStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', focalPoint: { x: 30, y: 70 } }, responsive: { mobile: { maxWidth: 680, pageX: 12, pageY: 16, blockGap: 10, avatarSize: 72, headingScale: .9, imageHeight: 240, textAlign: 'left', blockVisibility: 'all' } } } });
+const normalizedSafetyStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', position: 'center; color:red', focalPoint: { x: 'bad', y: 'bad' } }, tokens: { spacing: { pageX: 'bad' } } } });
 const requiredMarkers = ['data-block-id="contract-0"', 'data-block-id="contract-1"', 'data-block-id="contract-2"', 'data-block-id="contract-3"', 'data-block-id="contract-4"', 'data-block-id="contract-5"', 'data-block-id="contract-6"', 'data-block-id="contract-7"', 'data-block-id="contract-8"', 'data-block-id="contract-9"', 'data-block-id="contract-10"', 'data-block-id="contract-11"', 'data-block-id="contract-12"', 'data-block-id="contract-13"', '<video', '<track', 'dir="rtl"'];
 const failures = requiredMarkers.filter(marker => !html.includes(marker));
 if (!tabHtml.includes('role="tablist"') || !tabHtml.includes('aria-selected="true"') || tabHtml.indexOf('Primary') > tabHtml.indexOf('Secondary') || tabHtml.includes('Must not render')) failures.push('server tab navigation, active-tab isolation or CTA ordering');
 if (!backgroundStyles.includes('contract-background.jpg') || !backgroundStyles.includes('background-position:30% 70%')) failures.push('server background image/focal point');
 if (!backgroundStyles.includes('--theme-avatar-size:72px') || !backgroundStyles.includes('--theme-heading-scale:0.9') || !backgroundStyles.includes('@media (min-width:375px) and (max-width:639px)')) failures.push('server responsive theme tokens');
+if (normalizedSafetyStyles.includes('color:red') || normalizedSafetyStyles.includes('NaN')) failures.push('server styles must use normalized safe values');
 console.log(`Public renderer contract: ${requiredMarkers.length} block/layout markers checked`);
 if (failures.length) {
   failures.forEach(marker => console.error(`[public-render] missing ${marker}`));

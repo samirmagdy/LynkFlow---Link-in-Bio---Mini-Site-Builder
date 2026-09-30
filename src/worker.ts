@@ -221,13 +221,16 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, _canonica
 }
 
 export function publicProfileStyles(snapshot: Record<string, any> = {}): string {
-  const theme = snapshot.standardTheme || {};
-  const colors = theme.tokens?.colors || {};
-  const shape = theme.tokens?.shape || {};
-  const typography = theme.tokens?.typography || {};
-  const layout = theme.layout || {};
-  const profile = theme.profile || {};
-  const background = theme.background || {};
+  // SSR must use the same normalized theme boundary as the hydrated React
+  // renderer. Reading the raw snapshot here caused contrast, responsive, and
+  // CSS-safety differences until hydration completed.
+  const theme = normalizeTheme(snapshot.standardTheme || snapshot.theme || {});
+  const colors = theme.tokens.colors;
+  const shape = theme.tokens.shape;
+  const typography = theme.tokens.typography;
+  const layout = theme.layout || { maxWidth: '680px', alignment: 'center' as const };
+  const profile = theme.profile || { avatarShape: 'circle' as const };
+  const background = theme.background;
   const pageBackground = escapeHtml(colors.pageBackground || background.fallbackColor || '#0a0a0a');
   const panel = escapeHtml(colors.panelBackground || '#171717');
   const text = escapeHtml(colors.primaryText || '#f5f5f5');
@@ -262,11 +265,11 @@ export function publicProfileStyles(snapshot: Record<string, any> = {}): string 
   const captionSize = escapeHtml(typography.captionSize || '12px');
   const buttonTextSize = escapeHtml(typography.buttonTextSize || '14px');
   const maxLineLength = escapeHtml(typography.maxLineLength || '68ch');
-  const textTransform = ['none', 'uppercase', 'capitalize'].includes(typography.textTransform) ? typography.textTransform : 'none';
+  const textTransform = ['none', 'uppercase', 'capitalize'].includes(typography.textTransform || '') ? (typography.textTransform || 'none') : 'none';
   const mobileOverride = background.type === 'image' && mobileBackgroundAsset ? `@media (max-width:639px){body{background-image:${backgroundOverlay > 0 ? `linear-gradient(${overlayLayer}, ${overlayLayer}), ` : ''}${mobileBackgroundImageUrl}!important;background-size:${backgroundSize}!important;background-position:${backgroundPosition}!important}}` : '';
-  const responsive = theme.responsive || {};
+  const responsive = theme.responsive;
   const responsiveRule = (key: 'smallMobile' | 'mobile' | 'tablet' | 'desktop', fallback: Record<string, number | string>) => {
-    const rule = responsive[key] || {};
+    const rule = (responsive[key] || {}) as Record<string, unknown>;
     const number = (name: string) => Number.isFinite(Number(rule[name])) ? Number(rule[name]) : Number(fallback[name]);
     const textValue = (name: string, allowed: string[]) => allowed.includes(String(rule[name])) ? String(rule[name]) : String(fallback[name]);
     const blockVisibility = textValue('blockVisibility', ['all', 'hide-media', 'hide-socials']);
