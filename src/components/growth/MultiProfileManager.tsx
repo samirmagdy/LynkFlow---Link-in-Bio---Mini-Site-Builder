@@ -78,7 +78,7 @@ function InviteMemberModal({
   onClose
 }: {
   profiles: { id: string; username: string }[];
-  onInvite: (email: string, name: string, role: ProfileRole, profileIds: string[]) => void;
+  onInvite: (email: string, name: string, role: ProfileRole, profileIds: string[]) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [email, setEmail] = useState('');
@@ -95,12 +95,11 @@ function InviteMemberModal({
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!email.includes('@')) { setError('Enter a valid email address.'); return; }
     if (!name.trim()) { setError('Name is required.'); return; }
     if (role !== 'owner' && selected.size === 0) { setError('Assign at least one profile for this role.'); return; }
-    onInvite(email.trim(), name.trim(), role, Array.from(selected));
-    onClose();
+    if (await onInvite(email.trim(), name.trim(), role, Array.from(selected))) onClose();
   };
 
   return (
@@ -490,7 +489,7 @@ export const MultiProfileManager: React.FC = () => {
                 </div>
                 <RoleBadge role={member.role} />
                 <button
-                  onClick={() => removeMember(member.id)}
+                  onClick={() => { void removeMember(member.id); }}
                   title="Remove member"
                   aria-label={`Remove ${member.email || 'team member'}`}
                   className="p-1.5 text-subtle hover:text-danger rounded-lg hover:bg-red-500/10 cursor-pointer transition-colors shrink-0"
@@ -507,9 +506,10 @@ export const MultiProfileManager: React.FC = () => {
       {showInviteModal && (
         <InviteMemberModal
           profiles={profiles.map(p => ({ id: p.id, username: p.username }))}
-          onInvite={(email, name, role, profileIds) => {
-            const result = addMember(email, name, role, profileIds);
-            if (!result.success) showToast(result.error || 'Failed to add member.');
+          onInvite={async (email, name, role, profileIds) => {
+            const result = await addMember(email, name, role, profileIds);
+            if (!result.success) showToast(result.error || 'Failed to save member.');
+            return result.success;
           }}
           onClose={() => setShowInviteModal(false)}
         />

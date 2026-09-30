@@ -241,9 +241,9 @@ interface AppContextType {
   processWebhookEvent: (eventType: string, planId?: PlanType, billingCycle?: BillingCycle) => void;
 
   // PRO-005: Workspace Member Management
-  addMember: (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]) => { success: boolean; error?: string };
-  removeMember: (memberId: string) => void;
-  updateMemberRole: (memberId: string, role: ProfileRole, assignedProfileIds: string[]) => void;
+  addMember: (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]) => Promise<{ success: boolean; error?: string }>;
+  removeMember: (memberId: string) => Promise<boolean>;
+  updateMemberRole: (memberId: string, role: ProfileRole, assignedProfileIds: string[]) => Promise<boolean>;
 
   // Compliance & Admin
   auditLogs: AuditLog[];
@@ -1597,7 +1597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   };
 
   // PRO-005: Member management
-  const addMember = (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]): { success: boolean; error?: string } => {
+  const addMember = async (email: string, name: string, role: ProfileRole, assignedProfileIds: string[]): Promise<{ success: boolean; error?: string }> => {
     const existing = workspace.members?.find(m => m.email === email);
     if (existing) return { success: false, error: `${email} is already a workspace member.` };
     const member: ProfileMember = {
@@ -1610,24 +1610,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       addedBy: user.email,
       pendingInviteExpiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
     };
-    setWorkspace(prev => ({ ...prev, members: [...(prev.members || []), member] }));
-    showToast(`Invitation sent to ${email}`);
+    const nextWorkspace = { ...workspace, members: [...(workspace.members || []), member] };
+    try {
+      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudWorkspace(nextWorkspace);
+      setWorkspace(nextWorkspace);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Member could not be saved.';
+      showToast(message);
+      return { success: false, error: message };
+    }
+    showToast(`Pending team member saved for ${email}`);
     return { success: true };
   };
 
-  const removeMember = (memberId: string): void => {
-    setWorkspace(prev => ({ ...prev, members: (prev.members || []).filter(m => m.id !== memberId) }));
+  const removeMember = async (memberId: string): Promise<boolean> => {
+    const nextWorkspace = { ...workspace, members: (workspace.members || []).filter(m => m.id !== memberId) };
+    try {
+      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudWorkspace(nextWorkspace);
+      setWorkspace(nextWorkspace);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Member removal was not saved.');
+      return false;
+    }
     showToast('Member removed from workspace.');
+    return true;
   };
 
-  const updateMemberRole = (memberId: string, role: ProfileRole, assignedProfileIds: string[]): void => {
-    setWorkspace(prev => ({
-      ...prev,
-      members: (prev.members || []).map(m =>
-        m.id === memberId ? { ...m, role, assignedProfileIds } : m
-      )
-    }));
+  const updateMemberRole = async (memberId: string, role: ProfileRole, assignedProfileIds: string[]): Promise<boolean> => {
+    const nextWorkspace = {
+      ...workspace,
+      members: (workspace.members || []).map(m => m.id === memberId ? { ...m, role, assignedProfileIds } : m)
+    };
+    try {
+      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudWorkspace(nextWorkspace);
+      setWorkspace(nextWorkspace);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Member permissions were not saved.');
+      return false;
+    }
     showToast('Member permissions updated.');
+    return true;
   };
 
   // ─── Feature 12: API Keys & Webhooks ────────────────────────────────────────
