@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TopNavigation } from './components/navbar/TopNavigation';
 import { Toast } from './components/common/Toast';
+import { CookieBanner } from './components/common/CookieBanner';
 import { DialogFocusManager } from './components/common/Dialog';
 import { 
   ProfileNotFoundState, 
@@ -219,6 +220,7 @@ const AppContent: React.FC = () => {
           />
         </Suspense>
         <Toast message={toastMessage} />
+        <CookieBanner />
       </div>
     );
   }
@@ -287,6 +289,7 @@ const AppContent: React.FC = () => {
 
       {/* Global Action Toasts */}
       <Toast message={toastMessage} />
+      <CookieBanner inStudio={isStudioRoute} />
     </div>
   );
 };
