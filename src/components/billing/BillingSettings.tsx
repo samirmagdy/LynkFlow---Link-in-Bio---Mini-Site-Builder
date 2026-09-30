@@ -189,7 +189,7 @@ function EntitlementUsage({ workspace }: { workspace: ReturnType<typeof useApp>[
 
 // ─── Confirm Cancel Modal ─────────────────────────────────────────────────────
 
-function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => void; onClose: () => void }) {
+function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => Promise<boolean>; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="cancel-subscription-title">
       <div
@@ -216,7 +216,7 @@ function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => void; onC
             Keep Subscription
           </button>
           <button
-            onClick={() => { onConfirm(); onClose(); }}
+            onClick={async () => { if (await onConfirm()) onClose(); }}
             className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg cursor-pointer shadow-md"
           >
             Confirm Cancellation
@@ -237,7 +237,7 @@ function CheckoutModal({
 }: {
   planId: PlanType;
   cycle: BillingCycle;
-  onConfirm: () => void;
+  onConfirm: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const plan = PRICING_PLANS.find(p => p.id === planId);
@@ -291,7 +291,7 @@ function CheckoutModal({
             Cancel
           </button>
           <button
-            onClick={() => { onConfirm(); onClose(); }}
+            onClick={async () => { if (await onConfirm()) onClose(); }}
             className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg cursor-pointer shadow-md"
           >
             Confirm &amp; Start Trial

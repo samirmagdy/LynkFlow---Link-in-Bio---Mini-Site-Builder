@@ -235,8 +235,8 @@ interface AppContextType {
   verifyDomain: (profileId: string, domain: string) => Promise<{ success: boolean; failureReason?: string }>;
   removeDomain: (profileId: string) => void;
   recheckDomain: (profileId: string) => Promise<void>;
-  upgradePlan: (plan: PlanType, cycle: BillingCycle) => Promise<void>;
-  cancelSubscription: () => Promise<void>;
+  upgradePlan: (plan: PlanType, cycle: BillingCycle) => Promise<boolean>;
+  cancelSubscription: () => Promise<boolean>;
   openBillingPortal: () => Promise<void>;
   processWebhookEvent: (eventType: string, planId?: PlanType, billingCycle?: BillingCycle) => void;
 
@@ -1911,15 +1911,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   };
 
   // Billing — all mutations go through billingService for idempotency + audit trail
-  const upgradePlan = async (plan: PlanType, cycle: BillingCycle) => {
+  const upgradePlan = async (plan: PlanType, cycle: BillingCycle): Promise<boolean> => {
     if (isSupabaseConfigured) {
       try {
         const checkoutUrl = await createStripeCheckoutSession(plan, cycle);
         window.location.assign(checkoutUrl);
+        return true;
       } catch (error) {
         showToast(error instanceof Error ? error.message : 'Unable to start checkout.');
+        return false;
       }
-      return;
     }
     const planConfig = billingService.getPlanConfig(plan);
     const amountPaid = cycle === 'annual' ? `$${planConfig.annualBilledTotal}.00` : `$${planConfig.monthlyPrice}.00`;
@@ -1949,22 +1950,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       setWorkspace({ ...result.updatedWorkspace, profiles: workspace.profiles });
     }
     showToast(`Subscribed to ${plan.toUpperCase()} plan successfully!`);
+    return true;
   };
 
-  const cancelSubscription = async () => {
+  const cancelSubscription = async (): Promise<boolean> => {
     if (isSupabaseConfigured) {
       try {
         await cancelStripeSubscription();
         setWorkspace(prev => ({ ...prev, cancelAtPeriodEnd: true }));
         showToast('Subscription will remain active until the end of the current billing period.');
+        return true;
       } catch (error) {
         showToast(error instanceof Error ? error.message : 'Unable to cancel subscription.');
+        return false;
       }
-      return;
     }
     const updated = billingService.cancelSubscription(workspace, user.email);
     setWorkspace(prev => ({ ...updated, profiles: prev.profiles }));
     showToast('Subscription will remain active until the end of the current billing period.');
+    return true;
   };
 
   const openBillingPortal = async () => {
