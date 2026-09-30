@@ -14,7 +14,9 @@ try {
   await page.waitForTimeout(500);
   await page.locator('[data-profile-theme]').waitFor({ state: 'attached', timeout: 10_000 }).catch(() => undefined);
   const essentialOnly = page.getByRole('button', { name: 'Essential Only' });
-  if (await essentialOnly.isVisible().catch(() => false)) await essentialOnly.click();
+  // The consent panel intentionally sits above the public page and can cover
+  // the first keyboard target. Resolve it before running focus/overflow checks.
+  if (await essentialOnly.isVisible().catch(() => false)) await essentialOnly.click({ force: true });
   if (!response || response.status() !== 200) failures.push(`expected HTTP 200, received ${response?.status() ?? 'no response'}`);
 
   const result = await page.evaluate(() => {
