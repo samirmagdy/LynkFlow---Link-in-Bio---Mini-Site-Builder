@@ -118,6 +118,18 @@ const mapExternalTheme = (theme: ExternalTheme): StandardTheme => {
   const cardSubtitleColor = bestReadableColor(secondaryText, panel, 3);
   const focusRing = bestReadableColor(accent, pageBackground, 3);
 
+  // Bug 7 fix: position was never written — omitting it caused the CSS compiler to
+  // emit `background-position: undefined`, breaking image centering on all 5
+  // imported image-backed themes (DJ Vibes, DreamHome, SocialSavvy, PenAndPaper,
+  // Noir & Co).
+  //
+  // Bug 3 fix: scrimAmount can be negative (DJ Vibes −0.353, DreamHome −0.401).
+  // Math.max(0, …) already floors them to 0, but that leaves a dark image with
+  // no overlay at all, making white header text unreadable on bright image areas.
+  // Enforce a minimum of 0.20 specifically for image-type backgrounds so text
+  // always has at least a light scrim regardless of the original scrimAmount.
+  const overlayValue = Math.max(0, Math.min(0.8, theme.scrimAmount));
+  const safeOverlay = backgroundImage ? Math.max(0.20, overlayValue) : overlayValue;
   return {
     id: `imported-${theme.id.replace(/[^a-z0-9]+/gi, '-')}`,
     schemaVersion: 1,
@@ -132,7 +144,9 @@ const mapExternalTheme = (theme: ExternalTheme): StandardTheme => {
       elevation: { card: shadowFor(theme), button: shadowFor(theme) },
       motion: { durationMs: 220, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', enabled: true, hoverEffect: theme.tactileLinkType === 'NONE' ? 'none' : 'lift' }
     },
-    background: backgroundImage ? { type: 'image', assetUrl: backgroundImage, fallbackColor: pageBackground, overlay: Math.max(0, Math.min(.8, theme.scrimAmount)) } : { type: isGradient ? 'gradient' : 'solid', gradientStops: isGradient ? theme.background.backgroundValue : undefined, fallbackColor: pageBackground, overlay: Math.max(0, Math.min(.8, theme.scrimAmount)) },
+    background: backgroundImage
+      ? { type: 'image', assetUrl: backgroundImage, fallbackColor: pageBackground, position: 'center', overlay: safeOverlay }
+      : { type: isGradient ? 'gradient' : 'solid', gradientStops: isGradient ? theme.background.backgroundValue : undefined, fallbackColor: pageBackground, position: 'center', overlay: safeOverlay },
     header: { alignment: theme.headerLayout === 'BUSINESS' ? 'left' : 'center', avatarSize: theme.headerLayout === 'HEADSHOT' ? 104 : 86, showShare: true, showSocials: true },
     layout: { maxWidth: theme.spacingRatio > .4 ? '680px' : '620px', alignment: theme.headerLayout === 'BUSINESS' ? 'left' : 'center', headerStyle, blockWidth: theme.spacingRatio < .25 ? 'narrow' : 'full', navigationStyle: theme.enableSheet ? 'pills' : 'tabs' },
     componentVariants: { link: linkVariant, image: theme.headerLayout === 'HEADSHOT' ? 'polaroid' : 'rounded', socialIcons: theme.tactileLinkType === 'NONE' ? 'minimal' : 'filled', form: linkVariant === 'glass' ? 'glass' : 'card' },

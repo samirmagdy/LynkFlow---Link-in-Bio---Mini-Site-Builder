@@ -37,7 +37,9 @@ const concept = (config: {
         accent: config.accent,
         accentText: readableTone(config.accentText, config.accent, 4.5),
         border: config.border,
-        focusRing: readableTone(config.accent, config.page, 3),
+        // Bug 6 fixed: focus rings are rendered on focused link buttons that sit on the
+        // panel surface, not on the raw page background — use panel for contrast check.
+        focusRing: readableTone(config.accent, config.panel, 3),
         cardBg: config.panel,
         cardTextColor,
         cardSubtitleColor,
@@ -45,14 +47,20 @@ const concept = (config: {
       };
     })(),
     typography: { bodyFamily: 'DM Sans, ui-sans-serif, system-ui, sans-serif', displayFamily: config.display, bodySize: '16px', bodyWeight: 400, headingWeight: 700, bodyLineHeight: 1.5, headingLineHeight: 1.06 },
-    shape: { pageRadius: config.cardRadius ?? 20, cardRadius: config.cardRadius ?? 16, buttonRadius: config.buttonRadius ?? 12, avatarRadius: 999 },
+    // Bug 1 fixed: pageRadius is always cardRadius + 8 — larger value clips the outer viewport
+    // wrapper creating visual depth separation from the cards that sit inside it.
+    shape: { pageRadius: (config.cardRadius ?? 16) + 8, cardRadius: config.cardRadius ?? 16, buttonRadius: config.buttonRadius ?? 12, avatarRadius: 999 },
     spacing: { pageX: 18, pageY: 24, blockGap: 14, sectionGap: 26 },
     elevation: { card: '0 10px 26px rgba(0,0,0,0.12)', button: '0 4px 12px rgba(0,0,0,0.10)' },
     motion: { durationMs: 200, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', enabled: true, hoverEffect: 'lift' }
   },
+  // Bug 2 fixed: when both pexelsUrl AND a CSS gradient are supplied, the image is used
+  // as the actual background while the gradient string is stored in gradientStops as a
+  // CSS-level colour fallback (rendered before the image loads). Previously pexelsUrl
+  // silently discarded the gradient value entirely.
   background: config.pexelsUrl
-    ? { type: 'image', assetUrl: config.pexelsUrl, fallbackColor: config.page, position: 'center', overlay: config.pexelsOverlay ?? 0.35 }
-    : { type: config.background ? 'gradient' : 'solid', gradientStops: config.background, fallbackColor: config.page, position: 'center', overlay: 0 },
+    ? { type: 'image', assetUrl: config.pexelsUrl, gradientStops: config.background ?? undefined, fallbackColor: config.page, position: 'center', overlay: config.pexelsOverlay ?? 0.35 }
+    : { type: config.background ? 'gradient' : 'solid', gradientStops: config.background ?? undefined, fallbackColor: config.page, position: 'center', overlay: 0 },
   header: { alignment: config.alignment ?? 'center', avatarSize: config.avatarSize ?? 86, showShare: true, showSocials: true },
   layout: { maxWidth: config.maxWidth ?? '680px', alignment: config.alignment ?? 'center', headerStyle: config.headerStyle ?? 'standard', blockWidth: config.blockWidth ?? 'full', navigationStyle: 'pills' },
   componentVariants: { link: config.link, image: config.image, socialIcons: config.link === 'soft-card' ? 'filled' : 'minimal', form: config.link === 'glass' ? 'glass' : 'card' },
