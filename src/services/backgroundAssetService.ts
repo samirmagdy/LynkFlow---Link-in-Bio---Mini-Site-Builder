@@ -150,10 +150,15 @@ export async function uploadBackgroundAsset(file: File, profileId: string): Prom
   return { assetId: path, assetUrl: data.publicUrl, kind: uploadFile.type.startsWith('video/') ? 'video' : 'image', placeholderUrl: prepared.placeholderUrl };
 }
 
-export async function listBackgroundAssets(profileId?: string): Promise<BackgroundAsset[]> {
+export async function listBackgroundAssets(_profileId?: string): Promise<BackgroundAsset[]> {
   if (!supabase) return [];
-  let query = supabase.from('background_assets').select('*').order('created_at', { ascending: false });
-  if (profileId) query = query.or(`profile_id.eq.${profileId},profile_id.is.null`);
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('Sign in before loading the background library.');
+  const query = supabase
+    .from('background_assets')
+    .select('*')
+    .eq('workspace_id', userData.user.id)
+    .order('created_at', { ascending: false });
   const { data, error } = await query;
   if (error) throw new Error(error.message || 'Background asset library could not be loaded.');
   return (data || []).map((row: any) => ({
@@ -174,23 +179,47 @@ export async function listBackgroundAssets(profileId?: string): Promise<Backgrou
   }));
 }
 
-/** Register a remote provider asset so a selected Pexels result is durable and reusable. */
+/**
+ * Copy a selected provider asset into workspace-owned Storage before it is
+ * attached to a theme. The provider URL remains metadata for attribution and
+ * recovery, but published pages do not depend on a third-party hotlink.
+ */
 export async function registerRemoteBackgroundAsset(input: RemoteBackgroundAssetInput, profileId: string): Promise<BackgroundAsset> {
   if (!supabase) throw new Error('Supabase Storage is not configured.');
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) throw new Error('Sign in before saving a remote background asset.');
   if (!input.assetUrl || !input.id || !profileId) throw new Error('The selected background asset is incomplete.');
 
-  const storagePath = `pexels:${input.kind}:${input.id}`;
+  let remoteResponse: Response;
+  try {
+    remoteResponse = await fetch(input.assetUrl, { signal: AbortSignal.timeout(25_000) });
+  } catch {
+    throw new Error('The selected provider asset could not be downloaded. Try another result.');
+  }
+  if (!remoteResponse.ok) throw new Error(`The selected provider asset could not be downloaded (${remoteResponse.status}).`);
+  const remoteBlob = await remoteResponse.blob();
+  if (!remoteBlob.size || remoteBlob.size > MAX_BYTES) throw new Error('The selected provider asset is too large to save (maximum 50 MB).');
+  const isVideo = input.kind === 'video';
+  const contentType = remoteBlob.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+  const extension = isVideo ? (contentType.includes('webm') ? 'webm' : 'mp4') : (contentType.includes('png') ? 'png' : 'jpg');
+  const storagePath = `${userData.user.id}/${profileId}/pexels-${input.id}.${extension}`;
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, remoteBlob, {
+    contentType,
+    cacheControl: '31536000',
+    upsert: true
+  });
+  if (uploadError) throw new Error(uploadError.message || 'The provider asset could not be copied to Storage.');
+  const { data: publicUrlData } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
+  if (!publicUrlData.publicUrl) throw new Error('The provider asset was saved, but its Storage URL could not be created.');
   const row = {
     id: storagePath,
     workspace_id: userData.user.id,
     profile_id: profileId,
     storage_path: storagePath,
-    asset_url: input.assetUrl,
+    asset_url: publicUrlData.publicUrl,
     kind: input.kind,
-    mime_type: input.kind === 'video' ? 'video/mp4' : 'image/jpeg',
-    byte_size: 0,
+    mime_type: contentType,
+    byte_size: remoteBlob.size,
     width: input.width || null,
     height: input.height || null,
     duration_seconds: input.durationSeconds || null,
@@ -200,7 +229,10 @@ export async function registerRemoteBackgroundAsset(input: RemoteBackgroundAsset
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await supabase.from('background_assets').upsert(row, { onConflict: 'storage_path' }).select('*').single();
-  if (error || !data) throw new Error(error?.message || 'Remote background asset could not be saved.');
+  if (error || !data) {
+    await supabase.storage.from(BUCKET).remove([storagePath]);
+    throw new Error(error?.message || 'Remote background asset could not be saved.');
+  }
   return {
     id: data.id,
     profileId: data.profile_id,
@@ -221,10 +253,9 @@ export async function registerRemoteBackgroundAsset(input: RemoteBackgroundAsset
 
 export async function removeBackgroundAsset(assetId: string): Promise<void> {
   if (!supabase || !assetId) return;
-  if (!assetId.startsWith('pexels:')) {
-    const { error } = await supabase.storage.from(BUCKET).remove([assetId]);
-    if (error) throw new Error(error.message || 'Background asset removal failed.');
-  }
+  const { error } = await supabase.storage.from(BUCKET).remove([assetId]);
+  // Legacy provider records used a hotlink and have no Storage object.
+  if (error && !assetId.startsWith('pexels:')) throw new Error(error.message || 'Background asset removal failed.');
   const { error: metadataError } = await supabase.from('background_assets').delete().eq('storage_path', assetId);
   if (metadataError) throw new Error(metadataError.message || 'Background asset metadata removal failed.');
 }

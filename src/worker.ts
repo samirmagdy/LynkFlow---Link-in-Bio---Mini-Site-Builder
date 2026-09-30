@@ -1108,6 +1108,20 @@ async function saveCustomThemes(request: Request, env: Env): Promise<Response> {
   return json({ data: { count: rows.length }, requestId: crypto.randomUUID() });
 }
 
+async function deleteCustomTheme(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  let input: { id?: unknown };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  if (typeof input.id !== 'string' || !input.id.trim()) return apiError('VALIDATION_ERROR', 'Preset id is required.', 422);
+  const response = await supabaseRequest(`custom_themes?id=eq.${encodeURIComponent(input.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, {
+    method: 'DELETE',
+    headers: { prefer: 'return=minimal' },
+  });
+  if (!response.ok) throw new Error('Custom preset could not be deleted.');
+  return json({ data: { deleted: true }, requestId: crypto.randomUUID() });
+}
+
 async function persistDesignSystem(env: Env, workspaceId: string, profileId: string, theme: Record<string, unknown>, profile: Record<string, unknown>, brandKit?: Record<string, unknown>): Promise<void> {
   const persistence = createThemeDesignPersistence(theme as unknown as ReturnType<typeof normalizeTheme>);
   const baseTheme = persistence.baseTheme as unknown as Record<string, unknown>;
@@ -1775,8 +1789,14 @@ export default {
       try { return await saveDashboardDraft(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to save draft.', 500); }
     }
     if (url.pathname === '/api/design/custom-themes') {
-      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await saveCustomThemes(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to save custom presets.', 500); }
+      if (request.method !== 'POST' && request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try {
+        return request.method === 'DELETE'
+          ? await deleteCustomTheme(request, env)
+          : await saveCustomThemes(request, env);
+      } catch (error) {
+        return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to update custom presets.', 500);
+      }
     }
     if (url.pathname === '/api/profile/rollback') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

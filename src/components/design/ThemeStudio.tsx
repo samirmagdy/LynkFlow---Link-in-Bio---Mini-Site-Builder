@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { SPEC_THEME_PRESETS } from '../../data/themePresets';
 import { PublishedThemeSnapshot, StandardTheme } from '../../types/themeSchema';
@@ -264,6 +264,8 @@ const STUDIO_TAB_LABELS: Record<StudioTab, string> = {
   snapshots: 'History'
 };
 
+const QUICK_CUSTOMIZE_TABS: StudioTab[] = ['starterSites', 'presets', 'background', 'colors', 'typography'];
+
 const LAYOUT_TEMPLATES: Array<{
   id: NonNullable<StandardTheme['layout']>['templateId'];
   name: string;
@@ -297,6 +299,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     canRedoTheme,
     rollbackToSnapshot,
     saveCustomPreset,
+    deleteCustomPreset,
     customPresets
     ,workspace
     ,updateBrandKit
@@ -312,6 +315,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<StudioTab>('presets');
+  const [editorMode, setEditorMode] = useState<'quick' | 'advanced'>('quick');
   const [activeStage, setActiveStage] = useState<StudioStage>('foundation');
   const [customPresetName, setCustomPresetName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -329,6 +333,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [pexelsError, setPexelsError] = useState<string | null>(null);
   const [backgroundAssets, setBackgroundAssets] = useState<BackgroundAsset[]>([]);
   const [isLoadingBackgroundAssets, setIsLoadingBackgroundAssets] = useState(false);
+  const [backgroundAssetsError, setBackgroundAssetsError] = useState<string | null>(null);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [isMoreActionsOpen, setIsMoreActionsOpen] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
@@ -401,15 +406,21 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     firstField?.focus();
   }, [showSaveModal]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshBackgroundAssets = useCallback(async () => {
     setIsLoadingBackgroundAssets(true);
-    void listBackgroundAssets(activeProfile.id)
-      .then(assets => { if (!cancelled) setBackgroundAssets(assets); })
-      .catch(() => { if (!cancelled) setBackgroundAssets([]); })
-      .finally(() => { if (!cancelled) setIsLoadingBackgroundAssets(false); });
-    return () => { cancelled = true; };
+    setBackgroundAssetsError(null);
+    try {
+      setBackgroundAssets(await listBackgroundAssets(activeProfile.id));
+    } catch (error) {
+      setBackgroundAssetsError(error instanceof Error ? error.message : 'Background library could not be loaded.');
+    } finally {
+      setIsLoadingBackgroundAssets(false);
+    }
   }, [activeProfile.id]);
+
+  useEffect(() => {
+    void refreshBackgroundAssets();
+  }, [refreshBackgroundAssets]);
 
   const exportThemeJson = () => {
     const blob = new Blob([JSON.stringify(standardTheme, null, 2)], { type: 'application/json' });
@@ -452,6 +463,13 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     warnings: [...themeA11y.warnings, ...contentA11y.warnings],
   };
   const qualityScore = calculateThemeQualityScore(standardTheme);
+  const themeSchema = validateThemeSchema(standardTheme);
+  const stageCompletion: Record<StudioStage, boolean> = {
+    foundation: Boolean(standardTheme.name && (standardTheme.presetId || standardTheme.source === 'custom' || standardTheme.source === 'imported')),
+    styling: themeSchema.isValid && Boolean(standardTheme.tokens.typography.bodyFamily && standardTheme.tokens.colors.accent),
+    layout: themeSchema.isValid && Boolean(standardTheme.layout && standardTheme.responsive.mobile && standardTheme.responsive.desktop),
+    review: a11y.canPublish
+  };
 
   const autoFixAccessibilityIssue = (issue: { tokenKey: string }) => {
     const [, token] = issue.tokenKey.split('.');
@@ -473,7 +491,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       if (!value) return prev;
       return { ...prev, tokens: { ...prev.tokens, colors: { ...colors, [token]: value } } };
     });
-    setActionFeedback(`${issue.tokenKey} updated to a compliant value. Review the updated contrast before publishing.`);
+    setActionFeedback(`${issue.tokenKey} updated in the draft. Saving… Review the updated contrast before publishing.`);
     window.setTimeout(() => setActionFeedback(null), 5000);
   };
 
@@ -594,7 +612,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           } : { mobileAssetId: uploaded.assetId, mobileAssetUrl: uploaded.assetUrl })
         }
       }));
-      setBackgroundAssets(await listBackgroundAssets(activeProfile.id));
+      await refreshBackgroundAssets();
     } catch (error) {
       setBackgroundUploadError(error instanceof Error ? error.message : 'Background upload failed.');
     } finally {
@@ -702,7 +720,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
         }
       }));
-      setBackgroundAssets(await listBackgroundAssets(activeProfile.id));
+      await refreshBackgroundAssets();
     } catch (error) {
       setPexelsError(error instanceof Error ? error.message : 'Pexels background could not be saved.');
     } finally {
@@ -750,7 +768,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         ctaPosition: template.goal === 'Book or contact' || template.goal === 'Put appointments first' ? 'first' : 'priority-order'
       }
     }));
-    setActionFeedback(`${template.name} layout applied to the draft.`);
+    setActionFeedback(`${template.name} layout updated in the draft. Saving…`);
     window.setTimeout(() => setActionFeedback(null), 4000);
   };
 
@@ -770,7 +788,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       effects: next.effects,
       blockDefaults: next.blockDefaults
     }));
-    setActionFeedback(`${preset.name} appearance applied. Your content and layout were preserved.`);
+    setActionFeedback(`${preset.name} appearance updated in the draft. Saving… Your content and layout were preserved.`);
     window.setTimeout(() => setActionFeedback(null), 4000);
   };
   const applyLayoutOnly = (preset: StandardTheme) => {
@@ -786,7 +804,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       layout: next.layout,
       responsive: next.responsive
     }));
-    setActionFeedback(`${preset.name} layout applied. Your content was preserved.`);
+    setActionFeedback(`${preset.name} layout updated in the draft. Saving… Your content was preserved.`);
     window.setTimeout(() => setActionFeedback(null), 4000);
   };
 
@@ -879,6 +897,22 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }
   };
 
+  const removeCustomPreset = (preset: StandardTheme) => {
+    requestConfirmation({
+      title: `Delete ${preset.name}?`,
+      message: 'This removes the reusable preset from your workspace. It will not change themes already applied to profiles.',
+      confirmLabel: 'Delete preset',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteCustomPreset(preset.id);
+        } catch (error) {
+          setPresetSaveError(error instanceof Error ? error.message : 'Custom preset could not be deleted.');
+        }
+      }
+    });
+  };
+
   const snapshots = activeProfile.themeSnapshots || [];
   const savedRecency = (() => {
     if (!lastSavedAt) return 'Saved';
@@ -890,6 +924,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     return `Saved ${elapsedHours} hour${elapsedHours === 1 ? '' : 's'} ago`;
   })();
   const currentStage = STUDIO_STAGES.find(stage => stage.id === activeStage) || STUDIO_STAGES[0];
+  const visibleStageTabs = currentStage.tabs.filter(tab => editorMode === 'advanced' || QUICK_CUSTOMIZE_TABS.includes(tab));
+  const changeEditorMode = (mode: 'quick' | 'advanced') => {
+    setEditorMode(mode);
+    if (mode === 'quick' && !QUICK_CUSTOMIZE_TABS.includes(activeTab)) {
+      setActiveStage('foundation');
+      setActiveTab('presets');
+    }
+  };
   const openStudioTab = (tab: StudioTab) => {
     const stage = STUDIO_STAGES.find(item => item.tabs.includes(tab));
     if (stage) setActiveStage(stage.id);
@@ -943,7 +985,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       },
       updatedAt: new Date().toISOString()
         }));
-        setActionFeedback(`${template.name} starter applied to the draft.`);
+        setActionFeedback(`${template.name} starter updated in the draft. Saving…`);
         window.setTimeout(() => setActionFeedback(null), 4000);
       }
     });
@@ -967,6 +1009,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           <p className="text-xs text-muted mt-0.5">
               Live design tokens interpreted by the shared public renderer. Changes appear in the preview immediately.
             </p>
+            <div className="mt-3 inline-flex rounded-lg border border-line bg-canvas p-0.5" aria-label="Theme editor mode">
+              <button type="button" onClick={() => changeEditorMode('quick')} aria-pressed={editorMode === 'quick'} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold ${editorMode === 'quick' ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>Quick customize</button>
+              <button type="button" onClick={() => changeEditorMode('advanced')} aria-pressed={editorMode === 'advanced'} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold ${editorMode === 'advanced' ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>Advanced</button>
+            </div>
           </div>
 
           {/* Action Toolbar */}
@@ -1150,7 +1196,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
             {STUDIO_STAGES.map((stage, index) => {
               const isActive = activeStage === stage.id;
-              const isComplete = STUDIO_STAGES.findIndex(item => item.id === activeStage) > index;
+              const isComplete = stageCompletion[stage.id] && !isActive;
               return (
                 <button
                   key={stage.id}
@@ -1184,7 +1230,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
             })}
           </div>
           <div role="tablist" aria-label={`${currentStage.label} theme settings`} className="mt-2.5 flex items-center gap-1.5 overflow-x-auto border-t border-line/70 px-1 pt-2.5 scrollbar-none">
-            {currentStage.tabs.map(tab => (
+            {visibleStageTabs.map(tab => (
               <button
                 key={tab}
                 type="button"
@@ -1312,24 +1358,28 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   {customPresets.map((preset) => {
                     const isSelected = standardTheme.id === preset.id;
                     return (
-                      <button
+                      <div
                         key={preset.id}
-                        onClick={() => applySavedPreset(preset)}
                         className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group cursor-pointer ${
                           isSelected 
                             ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-surface' 
                             : 'border-line bg-surface/60 hover:border-line-strong'
                         }`}
                       >
-                        <ThemePreviewCard theme={preset} label="Custom theme preview" profile={activeProfile} />
-                        <div className="flex items-center justify-between">
+                        <button type="button" onClick={() => applySavedPreset(preset)} className="block w-full text-left cursor-pointer">
+                          <ThemePreviewCard theme={preset} label="Custom theme preview" profile={activeProfile} />
+                        </button>
+                        <div className="mt-2 flex items-center justify-between gap-2">
                           <div className="text-xs font-semibold text-ink truncate">{preset.name}</div>
                           {isSelected && <Check className="w-4 h-4 text-accent shrink-0" />}
                         </div>
                         <div className="mt-1 text-[10px] leading-snug text-muted">
                           Appearance only · {preset.presetComposition?.changesLayout ? `layout: ${preset.presetComposition.layoutId?.split(':').pop() || 'saved'}` : 'current layout'}
                         </div>
-                      </button>
+                        <div className="mt-3 flex justify-end border-t border-line/60 pt-2">
+                          <button type="button" onClick={() => removeCustomPreset(preset)} className="rounded-md border border-danger/30 px-2 py-1 text-[10px] font-semibold text-danger hover:bg-danger/10 cursor-pointer">Delete</button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -1343,7 +1393,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-line">
               <div>
-                <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Color Token Model (Section 3.1)</h3>
+                <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Color tokens</h3>
                 <p className="mt-1 text-[11px] text-muted">Semantic colors are shared by the editor and published renderer.</p>
               </div>
               <label className="flex items-center gap-2 text-[11px] text-muted">
@@ -1581,7 +1631,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-line">
               <div>
-                <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Typography Tokens (Section 3.2)</h3>
+                <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Typography</h3>
                 <p className="mt-1 text-[11px] text-muted">Preview real font specimens and configure architectural typographic scales.</p>
               </div>
               <span className="text-[10px] rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 text-accent font-medium">Curated Catalog</span>
@@ -1837,11 +1887,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         )}
 
-        {/* Tab 4: Background (Section 8) */}
+        {/* Background controls */}
         {activeTab === 'background' && (
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-line">
-              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Background Layer (Section 8)</h3>
+              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Background</h3>
               <span className="text-[11px] text-muted">Solid, Gradient, Pattern, Image, Video</span>
             </div>
 
@@ -2005,7 +2055,12 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                     </div>
                     {isLoadingBackgroundAssets && <Loader2 className="w-4 h-4 animate-spin text-muted" aria-label="Loading background library" />}
                   </div>
-                  {!isLoadingBackgroundAssets && backgroundAssets.length === 0 ? (
+                  {backgroundAssetsError ? (
+                    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger/30 bg-danger-surface px-3 py-2 text-[11px] text-danger">
+                      <span>{backgroundAssetsError}</span>
+                      <button type="button" onClick={() => void refreshBackgroundAssets()} className="rounded-md border border-danger/30 px-2 py-1 font-semibold hover:bg-danger/10 cursor-pointer">Retry</button>
+                    </div>
+                  ) : !isLoadingBackgroundAssets && backgroundAssets.length === 0 ? (
                     <p className="text-[11px] text-subtle">No uploaded backgrounds yet. Upload an image or video to add the first asset.</p>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Workspace background library">
@@ -2086,7 +2141,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         {activeTab === 'layout' && (
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-line">
-              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Shape & Spacing Tokens (Section 3.3)</h3>
+              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Shape & spacing</h3>
               <span className="text-[11px] text-muted">Pixels scale</span>
             </div>
 
@@ -2425,11 +2480,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         )}
 
-        {/* Tab 6: Block Defaults (Section 7) */}
+        {/* Block defaults */}
         {activeTab === 'blocks' && (
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-line">
-              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Block Defaults Contract (Section 7)</h3>
+              <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Block defaults</h3>
               <span className="text-[11px] text-muted">Controls default block styling</span>
             </div>
 
@@ -2499,7 +2554,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         )}
 
-        {/* Tab 7: Accessibility Live Auditor (Section 10) */}
+        {/* Accessibility audit */}
         {activeTab === 'accessibility' && (
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-line">
@@ -2583,13 +2638,13 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         )}
 
-        {/* Tab 8: Published Snapshots & Rollback (Section 11 & 12) */}
+        {/* Published snapshots & rollback */}
         {activeTab === 'snapshots' && (
           <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-line space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-line">
               <div>
                 <h3 className="text-xs font-bold text-ink tracking-tight uppercase">Immutable Published Snapshots</h3>
-                <p className="text-[11px] text-muted">Section 11: Roll back to historical snapshots safely</p>
+                <p className="text-[11px] text-muted">Restore a previous published version safely.</p>
               </div>
               <History className="w-4 h-4 text-muted" />
             </div>

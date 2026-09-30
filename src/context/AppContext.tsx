@@ -63,6 +63,7 @@ const saveCloudProfile = cloudSync('saveCloudProfile');
 const saveCloudReports = cloudSync('saveCloudReports');
 const saveCloudSubmissions = cloudSync('saveCloudSubmissions');
 const saveCloudThemes = cloudSync('saveCloudThemes');
+const deleteCloudTheme = cloudSync('deleteCloudTheme');
 const saveCloudWebhooks = cloudSync('saveCloudWebhooks');
 const saveCloudApiKeys = cloudSync('saveCloudApiKeys');
 const saveCloudSubscribers = cloudSync('saveCloudSubscribers');
@@ -196,6 +197,7 @@ interface AppContextType {
   canRedoTheme: boolean;
   rollbackToSnapshot: (snapshotId: string) => void;
   saveCustomPreset: (name: string) => Promise<void>;
+  deleteCustomPreset: (id: string) => Promise<void>;
   customPresets: import('../types/themeSchema').StandardTheme[];
 
   // Analytics & Submissions
@@ -1601,7 +1603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         bgColor: norm.tokens.colors.pageBackground
       }
     }));
-    showToast(`Applied ${norm.name} theme`);
+    showToast(`Theme draft updated. Saving ${norm.name}…`);
   };
 
   const updateStandardTheme = (updater: (prev: StandardTheme) => StandardTheme) => {
@@ -1707,7 +1709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
 
     applyTheme(target.theme);
-    showToast(`Rolled back theme to version v${target.version}`);
+    showToast(`Theme draft restored to version v${target.version}. Saving…`);
   };
 
   const saveCustomPreset = async (name: string): Promise<void> => {
@@ -1748,6 +1750,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     });
 
     showToast(`Saved "${custom.name}" as reusable custom preset!`);
+  };
+
+  const deleteCustomPreset = async (id: string): Promise<void> => {
+    const preset = customPresets.find(item => item.id === id);
+    if (!preset) return;
+    if (isSupabaseConfigured) {
+      if (!user.id || user.id === 'usr-guest') throw new Error('Please sign in before deleting a custom preset.');
+      await deleteCloudTheme(id);
+    }
+    setCustomPresets(prev => {
+      const next = prev.filter(item => item.id !== id);
+      if (!isSupabaseConfigured) localStorage.setItem(STORAGE_KEYS.CUSTOM_THEMES, JSON.stringify(next));
+      return next;
+    });
+    showToast(`Deleted "${preset.name}" preset.`);
   };
 
   // Tracking (PUB-004: Privacy-preserving sanitization)
@@ -2621,6 +2638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         canRedoTheme: themeRedoStack.length > 0,
         rollbackToSnapshot,
         saveCustomPreset,
+        deleteCustomPreset,
         customPresets,
 
         analytics,

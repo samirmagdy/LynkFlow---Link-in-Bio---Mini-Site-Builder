@@ -450,6 +450,22 @@ export async function saveCloudThemes(themes: StandardTheme[], workspaceId: stri
   }
 }
 
+export async function deleteCloudTheme(themeId: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase || !themeId) return;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in before deleting custom presets.');
+  const response = await fetch('/api/design/custom-themes', {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: themeId }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string | { message?: string } };
+    const message = typeof body.error === 'string' ? body.error : body.error?.message;
+    throw new Error(message || 'Custom preset could not be deleted.');
+  }
+}
+
 export async function saveCloudApiKeys(keys: ApiKey[], workspaceId: string): Promise<void> {
   if (!supabase || !keys.length) return;
   const { error } = await supabase.from('api_keys').upsert(keys.map(key => ({

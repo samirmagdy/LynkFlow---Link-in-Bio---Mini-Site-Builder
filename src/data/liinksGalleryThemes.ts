@@ -38,8 +38,10 @@ const galleryTheme = (config: GalleryThemeConfig): StandardTheme => {
   const radius = config.radius ?? 16;
   const link = config.link ?? 'soft-card';
   const accentText = readable(config.accentText || config.text, config.accent, 4.5);
-  // Bug 6 fix (applied here too): focusRing contrast tested against panel, not page
-  const focusRing = readable(config.accent, config.panel, 3);
+  // Focus indicators are rendered around the full page surface as well as cards.
+  // Derive them against the page background so the shared validator and renderer
+  // enforce the same WCAG requirement.
+  const focusRing = readable(config.accent, config.page, 3);
   const cardText = readable(config.text, config.panel, 4);
   const cardMuted = readable(config.muted, config.panel, 3);
   return {

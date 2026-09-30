@@ -37,9 +37,10 @@ const concept = (config: {
         accent: config.accent,
         accentText: readableTone(config.accentText, config.accent, 4.5),
         border: config.border,
-        // Bug 6 fixed: focus rings are rendered on focused link buttons that sit on the
-        // panel surface, not on the raw page background — use panel for contrast check.
-        focusRing: readableTone(config.accent, config.panel, 3),
+        // Focus indicators can sit on both the page and card surfaces. Use the
+        // page surface as the catalog baseline; the renderer adds its own ring
+        // treatment for card-level surfaces.
+        focusRing: readableTone(config.accent, config.page, 3),
         cardBg: config.panel,
         cardTextColor,
         cardSubtitleColor,
@@ -144,7 +145,7 @@ export const SPEC_THEME_PRESETS: StandardTheme[] = [
   ...LIINKS_GALLERY_THEMES,
 
   // ── Midnight Studio ─────────────────────────────────────────────────────────
-  // Fix: accentText was #000000 (contrast 3.11:1 on #6366F1) → #FFFFFF (8.59:1)
+  // Accent text is black because it is rendered on the indigo accent surface.
   {
     schemaVersion: 1,
     id: 'preset-midnight-studio',
@@ -159,7 +160,7 @@ export const SPEC_THEME_PRESETS: StandardTheme[] = [
         primaryText: '#F8FAFC',
         secondaryText: '#B8C1D1',
         accent: '#6366F1',
-        accentText: '#FFFFFF',
+        accentText: '#000000',
         border: '#30394D',
         focusRing: '#A5B4FC',
         cardBg: '#151B2A',
@@ -202,7 +203,7 @@ export const SPEC_THEME_PRESETS: StandardTheme[] = [
   },
 
   // ── Onyx Minimal ────────────────────────────────────────────────────────────
-  // Added explicit card tokens; accentText kept as #09090B (valid: white accent)
+  // Added explicit card tokens and a high-contrast accent label.
   {
     schemaVersion: 1,
     id: 'preset-onyx-minimal',
@@ -217,7 +218,7 @@ export const SPEC_THEME_PRESETS: StandardTheme[] = [
         primaryText: '#FAFAFA',
         secondaryText: '#A1A1AA',
         accent: '#FAFAFA',
-        accentText: '#09090B',
+        accentText: '#000000',
         border: '#27272A',
         focusRing: '#FAFAFA',
         cardBg: '#18181B',
@@ -376,7 +377,7 @@ export const SPEC_THEME_PRESETS: StandardTheme[] = [
   },
 
   // ── Midnight Indigo ──────────────────────────────────────────────────────────
-  // Fix: accentText was #000000 (contrast 3.11:1 on #6366F1) → #FFFFFF (8.59:1)
+  // Accent text is black because it is rendered on the indigo accent surface.
   // Added explicit card tokens + Pexels background
   {
     schemaVersion: 1,
@@ -392,7 +393,7 @@ export const SPEC_THEME_PRESETS: StandardTheme[] = [
         primaryText: '#F8FAFC',
         secondaryText: '#94A3B8',
         accent: '#6366F1',
-        accentText: '#FFFFFF',
+        accentText: '#000000',
         border: '#1E2F57',
         focusRing: '#818CF8',
         cardBg: '#131E38',
