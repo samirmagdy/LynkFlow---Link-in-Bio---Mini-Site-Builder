@@ -20,7 +20,7 @@ import { analyticsEngineService, AnalyticsAggregateSummary } from '../../service
 const ProfileAnalyticsDashboard = lazy(() => import('./ProfileAnalyticsDashboard').then(module => ({ default: module.ProfileAnalyticsDashboard })));
 
 export const AnalyticsDashboard: React.FC = () => {
-  const { activeProfile, user, showToast } = useApp();
+  const { activeProfile, analytics, user, showToast } = useApp();
   const [analyticsEngine, setAnalyticsEngine] = useState<'recharts' | 'anime'>('recharts');
   const [timeRange, setTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
 
@@ -53,9 +53,10 @@ export const AnalyticsDashboard: React.FC = () => {
       activeProfile.id,
       timeRange,
       timezone,
-      allKnownBlocks
+      allKnownBlocks,
+      analytics
     );
-  }, [activeProfile.id, timeRange, timezone, allKnownBlocks]);
+  }, [activeProfile.id, timeRange, timezone, allKnownBlocks, analytics]);
 
   const pageViews = summary.totalPageViews;
   const linkClicks = summary.totalClicks;
@@ -121,7 +122,8 @@ export const AnalyticsDashboard: React.FC = () => {
         activeProfile.id,
         activeProfile.username,
         timeRange,
-        user.email
+        user.email,
+        analytics
       );
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);

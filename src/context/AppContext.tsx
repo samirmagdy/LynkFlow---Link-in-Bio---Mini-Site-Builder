@@ -249,6 +249,7 @@ interface AppContextType {
   auditLogs: AuditLog[];
   abuseReports: AbuseReport[];
   submitAbuseReport: (report: Omit<AbuseReport, 'id' | 'timestamp' | 'status'>) => Promise<void>;
+  updateAbuseReportStatus: (id: string, status: AbuseReport['status']) => Promise<boolean>;
   exportAccountData: () => void;
   resetAllData: () => void;
 
@@ -555,8 +556,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       formSubmissionService.replaceSubscribers(cloudState.subscribers);
       if (cloudState.profiles.length > 0) {
         setProfiles(cloudState.profiles);
-        setActiveProfileId(cloudState.profiles[0].id);
-        setDraftProfile(JSON.parse(JSON.stringify(cloudState.profiles[0])));
+        const hydratedProfile = cloudState.profiles.find(profile => profile.id === activeProfileId) || cloudState.profiles[0];
+        setActiveProfileId(hydratedProfile.id);
+        setDraftProfile(JSON.parse(JSON.stringify(hydratedProfile)));
       }
       cloudReady.current = true;
       setCloudHydrated(true);
@@ -627,8 +629,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   useEffect(() => {
     const curr = profiles.find(p => p.id === activeProfileId);
     if (curr) {
+      if (isSupabaseConfigured && (typeof navigator === 'undefined' || navigator.onLine)) {
+        setDraftProfile(JSON.parse(JSON.stringify(curr)));
+        return;
+      }
       try {
-        const savedDraft = localStorage.getItem(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${curr.id}`);
+        const draftKey = isSupabaseConfigured
+          ? STORAGE_KEYS.OFFLINE_DRAFT_PREFIX
+          : STORAGE_KEYS.DRAFT_PROFILE_PREFIX;
+        const savedDraft = localStorage.getItem(`${draftKey}${curr.id}`);
         setDraftProfile(savedDraft ? JSON.parse(savedDraft) : JSON.parse(JSON.stringify(curr)));
       } catch {
         setDraftProfile(JSON.parse(JSON.stringify(curr)));
@@ -1966,6 +1975,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     showToast('Report submitted for compliance review. Ticket #'+ newReport.id);
   };
 
+  const updateAbuseReportStatus = async (id: string, status: AbuseReport['status']): Promise<boolean> => {
+    const current = abuseReports.find(report => report.id === id);
+    if (!current) return false;
+    const updated = { ...current, status };
+    const next = abuseReports.map(report => report.id === id ? updated : report);
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudReports(next, user.id);
+      } catch (error) {
+        reportRecoverableError('Supabase abuse report update failed', error);
+        showToast('Report status could not be saved. Try again.');
+        return false;
+      }
+    }
+    setAbuseReports(next);
+    showToast(`Report ${status}.`);
+    return true;
+  };
+
   // Export & Reset
   const exportAccountData = () => {
     const exportBundle = {
@@ -1987,6 +2015,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   };
 
   const resetAllData = () => {
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      showToast('Factory reset is available only in demo mode.');
+      return;
+    }
     localStorage.clear();
     setProfiles(INITIAL_PROFILES);
     setActiveProfileId(INITIAL_PROFILES[0].id);
@@ -2217,6 +2249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         auditLogs,
         abuseReports,
         submitAbuseReport,
+        updateAbuseReportStatus,
         exportAccountData,
         resetAllData,
 

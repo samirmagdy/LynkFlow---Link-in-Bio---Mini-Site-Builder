@@ -1,6 +1,11 @@
 import { BillingCycle, PlanType } from '../types';
 import { supabase } from '../lib/supabase';
 
+type StripeErrorBody = { error?: string | { message?: string } };
+
+const getStripeError = (body: StripeErrorBody, fallback: string) =>
+  typeof body.error === 'string' ? body.error : body.error?.message || fallback;
+
 export async function createStripeCheckoutSession(planId: PlanType, billingCycle: BillingCycle): Promise<string> {
   if (!supabase) throw new Error('Supabase authentication is required for billing.');
   const { data: { session } } = await supabase.auth.getSession();
@@ -14,8 +19,8 @@ export async function createStripeCheckoutSession(planId: PlanType, billingCycle
     },
     body: JSON.stringify({ planId, billingCycle }),
   });
-  const body = await response.json() as { url?: string; error?: string };
-  if (!response.ok || !body.url) throw new Error(body.error || 'Unable to start Stripe Checkout.');
+  const body = await response.json() as { url?: string } & StripeErrorBody;
+  if (!response.ok || !body.url) throw new Error(getStripeError(body, 'Unable to start Stripe Checkout.'));
   return body.url;
 }
 
@@ -26,8 +31,8 @@ export async function cancelStripeSubscription(): Promise<void> {
   const response = await fetch('/api/stripe/cancel', {
     method: 'POST', headers: { authorization: `Bearer ${session.access_token}` }
   });
-  const body = await response.json() as { error?: string };
-  if (!response.ok) throw new Error(body.error || 'Unable to cancel subscription.');
+  const body = await response.json() as StripeErrorBody;
+  if (!response.ok) throw new Error(getStripeError(body, 'Unable to cancel subscription.'));
 }
 
 export async function createStripeBillingPortalSession(): Promise<string> {
@@ -38,7 +43,7 @@ export async function createStripeBillingPortalSession(): Promise<string> {
     method: 'POST',
     headers: { authorization: `Bearer ${session.access_token}` }
   });
-  const body = await response.json() as { url?: string; error?: string };
-  if (!response.ok || !body.url) throw new Error(body.error || 'Unable to open billing portal.');
+  const body = await response.json() as { url?: string } & StripeErrorBody;
+  if (!response.ok || !body.url) throw new Error(getStripeError(body, 'Unable to open billing portal.'));
   return body.url;
 }

@@ -152,16 +152,17 @@ class AnalyticsEngineService {
     profileId: string,
     range: 'today' | '7d' | '30d' | '90d' | 'all',
     timezone: string = 'UTC',
-    allKnownBlocks: Array<{ id: string; title: string; type: string }> = []
+    allKnownBlocks: Array<{ id: string; title: string; type: string }> = [],
+    sourceEvents?: AnalyticsEvent[]
   ): AnalyticsAggregateSummary {
-    let rawEvents: AnalyticsEvent[] = [];
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.ANALYTICS);
-      if (stored) {
-        rawEvents = JSON.parse(stored);
+    let rawEvents: AnalyticsEvent[] = sourceEvents ? [...sourceEvents] : [];
+    if (!sourceEvents) {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEYS.ANALYTICS);
+        if (stored) rawEvents = JSON.parse(stored);
+      } catch {
+        rawEvents = [];
       }
-    } catch {
-      rawEvents = [];
     }
 
     // 1. Tenant & Profile Isolation (Section 6 & 7)
@@ -426,15 +427,18 @@ class AnalyticsEngineService {
     profileId: string,
     username: string,
     range: string,
-    operatorEmail: string
+    operatorEmail: string,
+    sourceEvents?: AnalyticsEvent[]
   ): { csvContent: string; exportId: string; rowCount: number } {
     const exportId = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    let raw: AnalyticsEvent[] = [];
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.ANALYTICS);
-      if (stored) raw = JSON.parse(stored);
-    } catch (error) {
-      reportRecoverableError('analytics export audit persistence failed', error);
+    let raw: AnalyticsEvent[] = sourceEvents ? [...sourceEvents] : [];
+    if (!sourceEvents) {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEYS.ANALYTICS);
+        if (stored) raw = JSON.parse(stored);
+      } catch (error) {
+        reportRecoverableError('analytics export audit persistence failed', error);
+      }
     }
 
     // Bounded to 5,000 rows max per AN-004

@@ -1,19 +1,17 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { Shield, ShieldAlert, FileText, Download, RotateCcw } from 'lucide-react';
 
 export const AdminSafetyConsole: React.FC = () => {
-  const { auditLogs, abuseReports, exportAccountData, resetAllData, showToast } = useApp();
-  const [reports, setReports] = useState(abuseReports);
+  const { auditLogs, abuseReports, updateAbuseReportStatus, exportAccountData, resetAllData, user } = useApp();
+  const reports = abuseReports;
 
-  const handleResolveReport = (id: string) => {
-    setReports(prev => prev.map(r => r.id === id ? { ...r, status: 'resolved' as const } : r));
-    showToast('Report marked as resolved');
+  const handleResolveReport = async (id: string) => {
+    await updateAbuseReportStatus(id, 'resolved');
   };
 
-  const handleDismissReport = (id: string) => {
-    setReports(prev => prev.map(r => r.id === id ? { ...r, status: 'dismissed' as const } : r));
-    showToast('Report dismissed');
+  const handleDismissReport = async (id: string) => {
+    await updateAbuseReportStatus(id, 'dismissed');
   };
 
   return (
@@ -30,13 +28,13 @@ export const AdminSafetyConsole: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          {user.id === 'usr-guest' && <button
             onClick={exportAccountData}
             className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-surface hover:bg-surface-2 text-ink border border-line transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Account Data (JSON)</span>
-          </button>
+          </button>}
           <button
             onClick={() => {
               if (window.confirm('Reset all demo profiles and data back to factory state?')) {

@@ -238,7 +238,6 @@ export async function saveCloudProfile(profile: Profile, _workspaceId: string): 
     const message = typeof body.error === 'string' ? body.error : body.error?.message;
     throw new Error(message || 'Cloud draft save failed.');
   }
-  if (profile.status !== 'published') await unpublishCloudProfile(profile.id);
 }
 
 /** Persist reusable design resources independently from the profile content snapshot. */

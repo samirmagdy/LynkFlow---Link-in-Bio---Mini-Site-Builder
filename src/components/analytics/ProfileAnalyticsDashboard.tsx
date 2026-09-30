@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   ResponsiveContainer,
@@ -80,7 +80,7 @@ const CustomChartTooltip: React.FC<CustomTooltipProps> = ({ active, payload, lab
 };
 
 export const ProfileAnalyticsDashboard: React.FC = () => {
-  const { activeProfile, profiles, switchActiveProfile, showToast, user, updateDraftProfile } = useApp();
+  const { activeProfile, analytics, profiles, switchActiveProfile, showToast, user, updateDraftProfile } = useApp();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [chartType, setChartType] = useState<ChartType>('area');
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -90,6 +90,12 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
   const [metaPixelId, setMetaPixelId] = useState(activeProfile.trackingIntegrations?.metaPixelId || '');
   const [googleAnalyticsId, setGoogleAnalyticsId] = useState(activeProfile.trackingIntegrations?.googleAnalyticsId || '');
   const [tiktokPixelId, setTiktokPixelId] = useState(activeProfile.trackingIntegrations?.tiktokPixelId || '');
+
+  useEffect(() => {
+    setMetaPixelId(activeProfile.trackingIntegrations?.metaPixelId || '');
+    setGoogleAnalyticsId(activeProfile.trackingIntegrations?.googleAnalyticsId || '');
+    setTiktokPixelId(activeProfile.trackingIntegrations?.tiktokPixelId || '');
+  }, [activeProfile.id, activeProfile.trackingIntegrations]);
 
   // Detect user's local timezone (AN-002)
   const timezone = useMemo(() => {
@@ -119,9 +125,10 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
       activeProfile.id,
       timeRange,
       timezone,
-      allKnownBlocks
+      allKnownBlocks,
+      analytics
     );
-  }, [activeProfile.id, timeRange, timezone, allKnownBlocks]);
+  }, [activeProfile.id, timeRange, timezone, allKnownBlocks, analytics]);
 
   const timeSeriesData = useMemo(() => {
     return aggregateSummary.timeSeries.map(bucket => ({
@@ -194,7 +201,8 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
         activeProfile.id,
         activeProfile.username,
         timeRange,
-        user.email
+        user.email,
+        analytics
       );
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
