@@ -2034,7 +2034,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                       </div>
                     </>
                   )}
-                  <p className="text-[10px] text-subtle">Selecting a result applies it immediately to this theme. Attribution remains visible in the picker and links to Pexels.</p>
+                  <p className="text-[10px] text-subtle">Preview changes the theme locally. Apply saves the selected asset to this profile. Attribution remains visible and links to Pexels.</p>
                 </div>
               )}
 
