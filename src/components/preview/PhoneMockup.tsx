@@ -5,7 +5,6 @@ import { PublicProfileView } from './PublicProfileView';
 import { Smartphone, Tablet, Monitor, ExternalLink, RotateCcw, Wifi, Battery, Sparkles, Link2 } from 'lucide-react';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
 import { normalizeTheme } from '../../utils/themeEngine';
-import { Iphone } from '@/components/ui/iphone';
 
 interface PhoneMockupProps {
   onOpenReportModal?: () => void;
@@ -204,36 +203,37 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, pro
       {/* Viewport Frame */}
       <div className="flex-1 w-full flex items-center justify-center overflow-hidden pb-4">
         {isMobileViewport ? (
-          <Iphone
-            aria-label="Mobile profile preview"
-            className="shrink-0"
-            style={{
-              width: isSmallMobile ? 320 : 380,
-              maxWidth: '100%',
-              maxHeight: 'calc(100vh - 180px)',
-            }}
-          >
-            <div className="relative flex h-full w-full flex-col overflow-hidden bg-canvas">
-              {/* Keep the safe area clear of the Dynamic Island in the device artwork. */}
-              <div className="flex h-10 w-full shrink-0 select-none items-center justify-between px-7 pt-2 text-[11px] font-semibold text-body">
-                <span>{currentTime}</span>
-                <div className="flex items-center gap-1.5 opacity-80">
-                  <Wifi className="h-3 w-3" aria-hidden="true" />
-                  <Battery className="h-3.5 w-3.5" aria-hidden="true" />
-                </div>
-              </div>
-              <div className="relative flex-1 w-full overflow-x-hidden overflow-y-auto">
-                <PublicProfileView
-                  profile={profileToRender}
-                  isStandalone={false}
-                  onOpenReportModal={onOpenReportModal}
-                />
-              </div>
-              <div className="flex h-5 w-full shrink-0 select-none items-center justify-center bg-transparent pb-1">
-                <div className="h-1 w-28 rounded-full bg-ink/20" />
+          // Mobile Phone Shell (iPhone 16 Pro Dimensions: ~380px x 760px)
+          <div className={`relative w-full ${isSmallMobile ? 'max-w-[320px] rounded-[38px]' : 'max-w-[380px] rounded-[48px]'} h-[720px] max-h-[calc(100vh-180px)] border-[10px] border-line bg-canvas shadow-2xl shadow-black/80 flex flex-col overflow-hidden ring-1 ring-ink/10 shrink-0`}>
+            {/* Dynamic Island Pill */}
+            <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-full z-30 flex items-center justify-between px-2.5 pointer-events-none">
+              <div className="w-2.5 h-2.5 rounded-full bg-surface border border-line"></div>
+              <div className="w-2 h-2 rounded-full bg-emerald-500/80 animate-pulse"></div>
+            </div>
+
+            {/* Mobile Status Bar */}
+            <div className="w-full h-10 px-7 pt-2 flex items-center justify-between text-[11px] font-semibold text-body z-20 shrink-0 select-none">
+              <span>{currentTime}</span>
+              <div className="flex items-center gap-1.5 opacity-80">
+                <Wifi className="w-3 h-3" />
+                <Battery className="w-3.5 h-3.5" />
               </div>
             </div>
-          </Iphone>
+
+            {/* Scrollable Public View Inside Phone */}
+            <div className="flex-1 w-full overflow-y-auto overflow-x-hidden relative">
+              <PublicProfileView
+                profile={profileToRender}
+                isStandalone={false}
+                onOpenReportModal={onOpenReportModal}
+              />
+            </div>
+
+            {/* Home Indicator Bar */}
+            <div className="w-full h-5 flex items-center justify-center bg-transparent z-20 shrink-0 select-none pb-1">
+              <div className="w-28 h-1 bg-ink/20 rounded-full"></div>
+            </div>
+          </div>
         ) : (
           // Desktop Viewport Container
           <div className={`h-full max-h-[calc(100vh-180px)] rounded-2xl border border-line bg-canvas overflow-hidden flex flex-col shadow-2xl ${effectiveDevice === 'tablet' ? 'w-full max-w-[720px]' : effectiveDevice === 'wide' ? 'w-full max-w-[1280px]' : 'w-full'}`}>
