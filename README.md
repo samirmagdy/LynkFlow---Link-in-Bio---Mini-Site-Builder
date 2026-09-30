@@ -52,6 +52,12 @@ npx wrangler secret put STRIPE_PRICE_AGENCY_MONTHLY
 npx wrangler secret put STRIPE_PRICE_AGENCY_ANNUAL
 ```
 
+After setting the secrets, verify readiness:
+
+```bash
+curl -fsS https://lynkflow.samirmagdy80.workers.dev/api/health
+```
+
 Set the Stripe webhook endpoint to `https://lynkflow.samirmagdy80.workers.dev/api/stripe/webhook` and subscribe to `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, and `invoice.payment_failed`. Run migration `202609280004_stripe_billing.sql` before testing. Stripe recommends creating Checkout Sessions server-side and verifying webhook signatures against the untouched request body; this Worker follows that model. [Stripe Checkout Sessions](https://docs.stripe.com/api/checkout/sessions), [Stripe webhook signatures](https://docs.stripe.com/webhooks/signature)
 
 ### Webhooks and custom domains
@@ -59,6 +65,16 @@ Set the Stripe webhook endpoint to `https://lynkflow.samirmagdy80.workers.dev/ap
 The Worker owns webhook secrets and delivery. Set `WEBHOOK_ENCRYPTION_KEY` as a Worker secret; it is generated automatically in the configured deployment. Delivery signs `timestamp.body` with HMAC-SHA256, persists attempts in `webhook_deliveries`, and retries failed deliveries up to three times.
 
 Custom-domain verification uses Cloudflare DNS and Supabase uniqueness records. DNS verification works without additional credentials, but live custom-hostname SSL/routing requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID` with custom-hostname permissions, plus a domain added to the Cloudflare account. Until those are present, the UI remains in explicit SSL provisioning state.
+
+For Cloudflare custom-hostname provisioning, create an API token with zone custom-hostname read/write access, identify the zone ID for the domain, then store both values as Worker secrets:
+
+```bash
+printf '%s' 'cloudflare-api-token' | npx wrangler secret put CLOUDFLARE_API_TOKEN
+printf '%s' 'cloudflare-zone-id' | npx wrangler secret put CLOUDFLARE_ZONE_ID
+npx wrangler deploy
+```
+
+Never place either value in `.env.local`, `VITE_*` variables, browser code, or source control.
 
 Supabase Auth email delivery is configured through Resend SMTP: `smtp.resend.com`, port `465`, username `resend`, with the Resend API key stored remotely as the SMTP password. The current test sender is `onboarding@resend.dev`; replace it with a verified Resend-domain sender before opening registration to the public.
 
