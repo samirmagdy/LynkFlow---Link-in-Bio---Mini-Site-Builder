@@ -969,8 +969,10 @@ export function runStaggeredEntrance(
   const targetArray = Array.from(elements);
 
   const animParams: AnimationParams = {
-    opacity: [0, 1],
-    delay: stagger(config.staggerDelay, { start: 50 }),
+    // Keep content visible while motion enhances hierarchy. Hiding whole
+    // sections until Anime.js finishes makes the page feel slow and creates
+    // blank states on slower devices.
+    delay: stagger(Math.min(config.staggerDelay, 45), { start: 0 }),
     duration: config.duration,
     ease: config.ease,
   };
@@ -1257,8 +1259,8 @@ export function animateHeroEntrance(container: HTMLElement | null) {
   return animate(Array.from(elements), {
     translateY: [28, 0],
     scale: [0.96, 1],
-    delay: stagger(80, { start: 100 }),
-    duration: 850,
+    delay: stagger(45, { start: 0 }),
+    duration: 560,
     ease: 'outElastic(1, .65)',
   });
 }

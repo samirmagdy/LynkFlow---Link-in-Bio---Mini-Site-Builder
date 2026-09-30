@@ -74,7 +74,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
 
   return (
     <header className={`sticky top-0 z-40 w-full ${isMarketing ? 'pointer-events-none bg-transparent px-3 pt-3 sm:px-5 sm:pt-4' : 'border-b border-line bg-canvas/90 backdrop-blur-md'}`}>
-      <div className={`${isMarketing ? 'pointer-events-auto mx-auto max-w-6xl rounded-full border border-line/80 bg-canvas/90 shadow-lg shadow-black/10 backdrop-blur-xl' : 'max-w-7xl mx-auto'} min-w-0 px-3 sm:px-6 h-16 flex items-center justify-between gap-3`}>
+        <div className={`${isMarketing ? 'pointer-events-auto mx-auto max-w-6xl rounded-full border border-line/80 bg-canvas/95 shadow-md shadow-black/8 backdrop-blur-md' : 'max-w-7xl mx-auto'} min-w-0 px-3 sm:px-6 h-16 flex items-center justify-between gap-3`}>
         {/* Zone 1: Single text element wordmark */}
         <button
           onClick={(e) => {

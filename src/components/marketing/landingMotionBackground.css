@@ -12,8 +12,9 @@
     linear-gradient(135deg, #040407 0%, #090a10 54%, #040407 100%);
   background-size: 60px 60px, 60px 60px, 100% 100%, 100% 100%;
   background-position: 0 0, 0 0, 0 0, 0 0;
-  animation: lynkflow-mesh-drift 32s ease-in-out infinite;
-  will-change: background-position;
+  /* Static by default: large animated background-position paints are costly on
+     mobile GPUs and make the interface feel heavier than the product. */
+  animation: none;
 }
 
 .landing-motion-background__scrim {
@@ -25,9 +26,9 @@
 .landing-motion-background__grain {
   position: absolute;
   inset: 0;
-  opacity: 0.035;
+  opacity: 0.018;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
-  mix-blend-mode: soft-light;
+  mix-blend-mode: normal;
 }
 
 .landing-motion-background.is-paused,
@@ -77,7 +78,7 @@
       radial-gradient(58% 42% at 10% 14%, rgb(99 102 241 / 0.1), transparent 74%),
       linear-gradient(135deg, #040407 0%, #090a10 50%, #040407 100%);
     background-size: 48px 48px, 48px 48px, 100% 100%, 100% 100%;
-    animation-duration: 30s;
+    animation: none;
   }
 }
 

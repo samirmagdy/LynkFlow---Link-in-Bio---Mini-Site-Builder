@@ -46,7 +46,7 @@ const HERO_THEME_LINKS = [
 ];
 
 const FloatingCard: React.FC<React.PropsWithChildren<{ className?: string; label: string }>> = ({ className = '', label, children }) => (
-  <div className={`hero-product-stage__card rounded-2xl border border-line bg-surface/90 p-3 text-left shadow-2xl backdrop-blur-xl ${className}`} aria-label={label}>
+  <div className={`hero-product-stage__card rounded-2xl border border-line bg-surface/95 p-3 text-left shadow-lg ${className}`} aria-label={label}>
     {children}
   </div>
 );
@@ -111,7 +111,7 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
             <div className="mt-3 flex items-center justify-between"><span className="text-[9px] text-subtle">Qualified clicks</span><strong className="text-sm text-ink">2,184 <span className="text-[9px] font-medium text-success">+18%</span></strong></div>
           </FloatingCard>
 
-          <div className="hero-product-stage__phone relative z-10 w-[min(78vw,300px)] overflow-hidden rounded-[2.45rem] border-[7px] border-[#1c1c22] bg-[#111117] p-1.5 shadow-2xl shadow-indigo-950/30 sm:w-[300px]">
+          <div className="hero-product-stage__phone relative z-10 w-[min(78vw,300px)] overflow-hidden rounded-[2.45rem] border-[7px] border-[#1c1c22] bg-[#111117] p-1.5 shadow-xl shadow-indigo-950/20 sm:w-[300px]">
             <div className="relative overflow-hidden rounded-[2rem] text-[11px]" style={{ backgroundColor: HERO_THEME_COLORS.pageBackground, color: HERO_THEME_COLORS.primaryText }}>
               <video
                 className="absolute inset-0 h-full w-full object-cover opacity-70"
@@ -121,7 +121,7 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
                 muted
                 loop
                 playsInline
-                preload="metadata"
+                preload="none"
                 aria-hidden="true"
               />
               <div className="absolute inset-0" style={{ backgroundColor: `${HERO_THEME_COLORS.pageBackground}cc` }} aria-hidden="true" />
@@ -136,7 +136,7 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
             </div>
           </div>
 
-          <div className="hero-product-stage__status rounded-full border border-success/20 bg-success/10 px-3 py-1.5 text-[10px] font-medium text-success shadow-lg backdrop-blur-xl"><Check className="mr-1 inline-block h-3.5 w-3.5" /> Draft to live in one controlled flow</div>
+          <div className="hero-product-stage__status rounded-full border border-success/20 bg-success/10 px-3 py-1.5 text-[10px] font-medium text-success shadow-md"><Check className="mr-1 inline-block h-3.5 w-3.5" /> Draft to live in one controlled flow</div>
         </div>
       </div>
     </div>
