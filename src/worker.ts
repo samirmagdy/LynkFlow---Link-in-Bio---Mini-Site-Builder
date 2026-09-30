@@ -2009,6 +2009,12 @@ export default {
     if (request.method === 'GET' && (url.pathname === '/studio' || url.pathname.startsWith('/studio/')) && !url.pathname.includes('.')) {
       return secureAssetResponse(await env.ASSETS.fetch(new Request(new URL('/', request.url), request)), false);
     }
+    if (request.method === 'GET' && (url.pathname === '/signup' || url.pathname === '/login')) {
+      return secureAssetResponse(await env.ASSETS.fetch(new Request(new URL('/', request.url), request)), false);
+    }
+    if (request.method === 'GET' && url.pathname === '/unsubscribe') {
+      return secureAssetResponse(await env.ASSETS.fetch(new Request(new URL('/unsubscribe', request.url), request)), false);
+    }
     if (request.method === 'GET' && url.pathname !== '/' && !url.pathname.includes('.')) {
       return secureAssetResponse(new Response('Not found.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8' } }));
     }
