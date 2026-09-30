@@ -1054,6 +1054,15 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   <a href="#features" className="hover:text-ink transition-colors">Features & Blocks</a>
                 </li>
                 <li>
+                  <a href="/link-in-bio" className="hover:text-ink transition-colors">Link-in-Bio Builder</a>
+                </li>
+                <li>
+                  <a href="/link-in-bio-for-creators" className="hover:text-ink transition-colors">For Creators</a>
+                </li>
+                <li>
+                  <a href="/link-in-bio-for-agencies" className="hover:text-ink transition-colors">For Agencies</a>
+                </li>
+                <li>
                   <a href="#themes" className="hover:text-ink transition-colors">Design Token Studio</a>
                 </li>
                 <li>
@@ -1081,6 +1090,12 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   </button>
                 </li>
                 <li>
+                  <a href="/custom-domain-link-in-bio" className="hover:text-ink transition-colors">Custom Domain Pages</a>
+                </li>
+                <li>
+                  <a href="/features/dynamic-qr-codes" className="hover:text-ink transition-colors">Dynamic QR Codes</a>
+                </li>
+                <li>
                   <span className="text-subtle">Automated SSL Edge DNS</span>
                 </li>
               </ul>
@@ -1091,6 +1106,9 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <ul className="space-y-1.5 text-muted text-xs">
                 <li>
                   <a href="#faq" className="hover:text-ink transition-colors">Help Center & FAQ</a>
+                </li>
+                <li>
+                  <a href="/contact" className="hover:text-ink transition-colors">Contact Support</a>
                 </li>
                 <li>
                   <button 

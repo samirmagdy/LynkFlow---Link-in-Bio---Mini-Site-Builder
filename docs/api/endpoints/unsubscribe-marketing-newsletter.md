@@ -9,6 +9,8 @@ verified_by: src/qaMarketingNewsletterSuite.ts
 updated: 2026-09-30
 ---
 
+# POST /api/public/newsletter/unsubscribe
+
 ## Summary
 
 Marks a marketing subscriber as unsubscribed without revealing whether an email address exists.
@@ -21,7 +23,7 @@ Marks a marketing subscriber as unsubscribed without revealing whether an email 
 
 ## Response
 
-HTTP `200 OK`
+Success status is 200 with a data object containing unsubscribed=true.
 
 ```json
 { "data": { "unsubscribed": true } }
@@ -36,15 +38,11 @@ HTTP `200 OK`
 
 ## Evidence
 
-Exact deployed validation request:
+The deployed validation request is:
 
-```sh
-curl -i -X POST https://lynkflow.samirmagdy80.workers.dev/api/public/newsletter/unsubscribe \
-  -H 'content-type: application/json' \
-  --data '{"email":"not-an-email"}'
-```
+    curl -sS -X POST https://lynkflow.samirmagdy80.workers.dev/api/public/newsletter/unsubscribe -H 'content-type: application/json' -d '{"email":"not-an-email"}'
 
-Observed response: HTTP `422` with `error.code=VALIDATION_ERROR`. The same route returns HTTP `200` with `data.unsubscribed=true` for a valid request.
+Observed response: HTTP 422 with error.code VALIDATION_ERROR. The same route returns HTTP 200 with data.unsubscribed=true for a valid request.
 
 ## Frontend wiring
 

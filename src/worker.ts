@@ -340,8 +340,194 @@ async function sitemapResponse(request: Request, env: Env): Promise<Response> {
   const response = await supabaseRequest('published_profiles?select=username,updated_at,snapshot&order=updated_at.desc', env);
   const rows = await response.json() as Array<{ username?: string; updated_at?: string; snapshot?: { seo?: { noIndex?: boolean } } }>;
   const urls = rows.filter(row => row.username && !row.snapshot?.seo?.noIndex).map(row => `<url><loc>${xmlEscape(publicProfileUrl(origin, row.username!))}</loc>${row.updated_at ? `<lastmod>${xmlEscape(row.updated_at)}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority></url>`).join('');
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${xmlEscape(`${origin}/`)}</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>${urls}</urlset>`;
+  const marketingUrls = Object.keys(SEO_LANDING_PAGES).map(path => `<url><loc>${xmlEscape(`${origin}${path}`)}</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>`).join('');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${xmlEscape(`${origin}/`)}</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>${marketingUrls}${urls}</urlset>`;
   return new Response(xml, { headers: { 'content-type': 'application/xml;charset=UTF-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
+}
+
+const SEO_LANDING_PAGES: Record<string, { title: string; description: string; eyebrow: string; heading: string; intro: string; points: Array<{ title: string; body: string }>; related: Array<{ href: string; label: string }> }> = {
+  '/pricing': {
+    title: 'LynkFlow Pricing for Creators and Agencies',
+    description: 'Compare LynkFlow plans for branded link-in-bio pages, themes, analytics, forms, custom domains, teams, APIs, and webhooks.',
+    eyebrow: 'Simple pricing',
+    heading: 'Choose the tools your audience and workflow need.',
+    intro: 'Start with a free page, then add lead capture, advanced themes, analytics, domains, multi-profile workspaces, API access, and webhooks as you grow.',
+    points: [
+      { title: 'Starter', body: 'Publish an essential branded page with standard blocks and a LynkFlow subdomain.' },
+      { title: 'Creator Pro', body: 'Capture leads, connect a custom domain, use advanced themes, and access extended analytics with a 14-day trial.' },
+      { title: 'Agency Studio', body: 'Manage client profiles, permissions, theme presets, REST API access, and webhooks from one workspace.' }
+    ],
+    related: [{ href: '/link-in-bio', label: 'Link-in-bio builder' }, { href: '/link-in-bio-for-agencies', label: 'Agency plans' }, { href: '/contact', label: 'Contact support' }]
+  },
+  '/link-in-bio': {
+    title: 'Link-in-Bio Page Builder for Creators | LynkFlow',
+    description: 'Build a branded link-in-bio page for your links, content, products, forms, analytics, and audience.',
+    eyebrow: 'Link-in-bio platform',
+    heading: 'Turn your audience link into a branded destination.',
+    intro: 'LynkFlow helps creators publish more than a list of buttons. Build a responsive mini-site for your content, offers, leads, and community.',
+    points: [
+      { title: 'Organize every destination', body: 'Combine social links, video, downloads, FAQs, forms, products, and calls to action in one page.' },
+      { title: 'Match your visual identity', body: 'Use theme tokens for typography, colors, spacing, surfaces, backgrounds, and responsive layouts.' },
+      { title: 'Understand what converts', body: 'Measure page views, visitors, link clicks, QR traffic, and conversion-focused engagement.' }
+    ],
+    related: [{ href: '/link-in-bio-for-creators', label: 'Link-in-bio for creators' }, { href: '/link-in-bio-analytics', label: 'Link-in-bio analytics' }, { href: '/features/themes', label: 'Explore themes' }]
+  },
+  '/mini-site-builder': {
+    title: 'Mini-Site Builder for Creators, Brands, and Agencies | LynkFlow',
+    description: 'Create a responsive mini-site with branded themes, forms, media, digital downloads, analytics, and custom domains.',
+    eyebrow: 'Mini-site builder',
+    heading: 'Publish a focused mini-site without starting from scratch.',
+    intro: 'Create a polished destination for launches, portfolios, services, campaigns, and personal brands using modular blocks and reusable design systems.',
+    points: [
+      { title: 'Build with modular blocks', body: 'Arrange links, media, forms, downloads, FAQs, pricing, and social proof around a clear visitor journey.' },
+      { title: 'Design once, stay consistent', body: 'Shared tokens keep your type, color, contrast, buttons, and surfaces aligned across every block.' },
+      { title: 'Publish with confidence', body: 'Keep draft and published states separate, review accessibility, and publish authoritative page snapshots.' }
+    ],
+    related: [{ href: '/features/themes', label: 'Theme engine' }, { href: '/features/analytics', label: 'Analytics features' }, { href: '/link-in-bio-for-agencies', label: 'For agencies' }]
+  },
+  '/link-in-bio-for-creators': {
+    title: 'Link-in-Bio for Creators, Artists, and Professionals | LynkFlow',
+    description: 'Give your audience one branded creator page for social links, videos, products, bookings, downloads, and email capture.',
+    eyebrow: 'For creators',
+    heading: 'Give every follower a clearer next step.',
+    intro: 'LynkFlow is built for creators who need one flexible page for their work, offers, content, bookings, and audience growth.',
+    points: [
+      { title: 'Show your best work', body: 'Feature reels, portfolios, playlists, case studies, products, and downloadable resources.' },
+      { title: 'Capture interest', body: 'Collect qualified inquiries and newsletter opt-ins with consent-aware forms.' },
+      { title: 'Own your brand', body: 'Use custom themes and an optional domain so your page feels like your home on the web.' }
+    ],
+    related: [{ href: '/link-in-bio', label: 'Link-in-bio builder' }, { href: '/custom-domain-link-in-bio', label: 'Custom domain pages' }, { href: '/features/dynamic-qr-codes', label: 'Dynamic QR codes' }]
+  },
+  '/link-in-bio-for-agencies': {
+    title: 'Link-in-Bio Platform for Agencies and Client Workspaces | LynkFlow',
+    description: 'Manage branded link-in-bio pages for multiple clients with isolated profiles, permissions, themes, API access, and webhooks.',
+    eyebrow: 'For agencies',
+    heading: 'Manage every client destination from one workspace.',
+    intro: 'Agency Studio gives teams a repeatable way to build, duplicate, review, publish, and operate client mini-sites without mixing tenant data.',
+    points: [
+      { title: 'Separate client profiles', body: 'Keep profiles, drafts, themes, forms, domains, and analytics isolated by workspace and permissions.' },
+      { title: 'Reuse proven systems', body: 'Duplicate structures and export theme presets so every new client starts from a validated foundation.' },
+      { title: 'Automate operations', body: 'Use the scoped REST API, signed webhooks, audit logs, and publish workflows for repeatable delivery.' }
+    ],
+    related: [{ href: '/mini-site-builder', label: 'Mini-site builder' }, { href: '/features/agency-workspaces', label: 'Agency workspace features' }, { href: '/features/custom-domains', label: 'Custom domains' }]
+  },
+  '/link-in-bio-analytics': {
+    title: 'Privacy-First Link-in-Bio Analytics | LynkFlow',
+    description: 'Understand link-in-bio performance with privacy-first page views, visitors, clicks, CTR, referrals, and QR analytics.',
+    eyebrow: 'Privacy-first analytics',
+    heading: 'Know which links move your audience forward.',
+    intro: 'Turn page activity into useful decisions without filling your creator page with invasive tracking scripts or bloated dashboards.',
+    points: [
+      { title: 'See page performance', body: 'Track page views, unique visitors, referrers, device classes, and country distributions.' },
+      { title: 'Measure every destination', body: 'Review link-level clicks and CTR so you can improve ordering, copy, and calls to action.' },
+      { title: 'Keep data proportional', body: 'Use privacy-first analytics designed to minimize invasive identifiers and unnecessary tracking.' }
+    ],
+    related: [{ href: '/features/analytics', label: 'Analytics feature details' }, { href: '/link-in-bio', label: 'Build a link-in-bio page' }, { href: '/privacy', label: 'Privacy policy' }]
+  },
+  '/custom-domain-link-in-bio': {
+    title: 'Custom Domain Link-in-Bio Pages with Automated SSL | LynkFlow',
+    description: 'Connect a custom domain or subdomain to your branded link-in-bio page with verification diagnostics and automated SSL on eligible plans.',
+    eyebrow: 'Custom domains',
+    heading: 'Put your link-in-bio page on your own domain.',
+    intro: 'Move from a generic profile URL to a branded destination such as links.yourbrand.com with clear DNS diagnostics and managed certificate provisioning.',
+    points: [
+      { title: 'Use your own address', body: 'Connect a domain or subdomain that matches your name, studio, campaign, or client brand.' },
+      { title: 'Diagnose DNS clearly', body: 'Follow CNAME verification checks and receive explicit recovery guidance when configuration is incomplete.' },
+      { title: 'Protect the connection', body: 'Eligible plans include automated TLS certificate issuance and renewal support.' }
+    ],
+    related: [{ href: '/features/custom-domains', label: 'Custom domain features' }, { href: '/link-in-bio-for-agencies', label: 'Agency workspaces' }, { href: '/link-in-bio', label: 'Link-in-bio builder' }]
+  },
+  '/features/themes': {
+    title: 'Link-in-Bio Themes and Visual Design System | LynkFlow',
+    description: 'Choose and customize link-in-bio themes with typography, contrast, colors, backgrounds, buttons, surfaces, and responsive layout tokens.',
+    eyebrow: 'Theme engine',
+    heading: 'Start with a visual system, not a template clone.',
+    intro: 'Preview a complete design direction before publishing, then tune the tokens that make your page feel unmistakably yours.',
+    points: [
+      { title: 'Preview before applying', body: 'Compare theme directions in the builder without saving changes until you choose the right system.' },
+      { title: 'Design with tokens', body: 'Control type, color, radius, shadow, spacing, background, and component treatments consistently.' },
+      { title: 'Protect readability', body: 'Theme validation checks contrast, focus states, reduced motion, and responsive behavior.' }
+    ],
+    related: [{ href: '/link-in-bio', label: 'Link-in-bio builder' }, { href: '/mini-site-builder', label: 'Mini-site builder' }, { href: '/signup', label: 'Start building' }]
+  },
+  '/features/dynamic-qr-codes': {
+    title: 'Dynamic QR Codes for Link-in-Bio Pages | LynkFlow',
+    description: 'Create branded dynamic QR codes for campaigns, packaging, events, and print materials, then update destinations without reprinting.',
+    eyebrow: 'Dynamic QR codes',
+    heading: 'Change the destination after you print.',
+    intro: 'Connect physical touchpoints to a destination you can update as campaigns, products, and offers change.',
+    points: [
+      { title: 'Keep printed materials useful', body: 'Update the destination behind a QR code without replacing business cards, packaging, flyers, or signage.' },
+      { title: 'Match your brand', body: 'Generate styled vector QR codes with controlled colors and visual treatment.' },
+      { title: 'Measure scans', body: 'Use privacy-first analytics to understand QR traffic and campaign engagement.' }
+    ],
+    related: [{ href: '/link-in-bio-analytics', label: 'Analytics' }, { href: '/link-in-bio', label: 'Link-in-bio builder' }, { href: '/signup', label: 'Create your page' }]
+  },
+  '/features/analytics': {
+    title: 'Link-in-Bio Analytics for Clicks, Visitors, and CTR | LynkFlow',
+    description: 'Measure page views, unique visitors, link clicks, referrals, QR scans, and click-through rate with privacy-first analytics.',
+    eyebrow: 'Analytics',
+    heading: 'Replace guesswork with useful page signals.',
+    intro: 'LynkFlow makes it easier to understand what visitors do after they arrive from social, search, email, print, or campaigns.',
+    points: [
+      { title: 'Measure the page', body: 'See page views, visitors, referrers, device classes, and country distributions.' },
+      { title: 'Measure the action', body: 'Compare link-level clicks and CTR to identify the destinations worth promoting.' },
+      { title: 'Respect the audience', body: 'Use an analytics approach designed to minimize invasive cookies and fingerprinting.' }
+    ],
+    related: [{ href: '/link-in-bio-analytics', label: 'Analytics overview' }, { href: '/privacy', label: 'Privacy policy' }, { href: '/signup', label: 'Start measuring' }]
+  },
+  '/features/custom-domains': {
+    title: 'Custom Domains and SSL for Link-in-Bio Pages | LynkFlow',
+    description: 'Connect a custom domain or subdomain to your LynkFlow page with DNS diagnostics and automated SSL on eligible plans.',
+    eyebrow: 'Domains and SSL',
+    heading: 'Make your page part of your brand.',
+    intro: 'Use a branded URL that is easier to remember, share, print, and trust across every channel.',
+    points: [
+      { title: 'Connect a domain or subdomain', body: 'Use your primary domain or a focused address such as links.yourbrand.com.' },
+      { title: 'Get guided verification', body: 'CNAME diagnostics and verification checks make DNS setup easier to recover.' },
+      { title: 'Use managed HTTPS', body: 'Eligible plans support automated TLS provisioning and certificate renewal.' }
+    ],
+    related: [{ href: '/custom-domain-link-in-bio', label: 'Custom domain guide' }, { href: '/link-in-bio-for-agencies', label: 'For agencies' }, { href: '/signup', label: 'Connect your brand' }]
+  },
+  '/features/agency-workspaces': {
+    title: 'Multi-Profile Agency Workspaces for Link-in-Bio Pages | LynkFlow',
+    description: 'Build and manage multiple client link-in-bio profiles with isolated workspaces, permissions, themes, publishing, API access, and webhooks.',
+    eyebrow: 'Agency workspaces',
+    heading: 'Scale client pages without losing control.',
+    intro: 'Give your team a repeatable system for creating, reviewing, publishing, and maintaining branded client destinations.',
+    points: [
+      { title: 'Keep tenants isolated', body: 'Separate client profiles, drafts, permissions, domains, and audit trails.' },
+      { title: 'Reuse your best work', body: 'Duplicate structures and export theme presets to reduce repetitive production work.' },
+      { title: 'Automate safely', body: 'Use scoped API keys, signed webhooks, idempotent mutations, and explicit publish operations.' }
+    ],
+    related: [{ href: '/link-in-bio-for-agencies', label: 'Agency overview' }, { href: '/features/themes', label: 'Theme systems' }, { href: '/signup', label: 'Start an agency workspace' }]
+  },
+  '/contact': {
+    title: 'Contact LynkFlow Support',
+    description: 'Contact LynkFlow for product support, billing questions, custom domains, API guidance, accessibility, and privacy requests.',
+    eyebrow: 'Support and trust',
+    heading: 'Get help with your LynkFlow page.',
+    intro: 'We can help with publishing, themes, forms, domains, billing, APIs, accessibility, and privacy questions.',
+    points: [
+      { title: 'Product support', body: 'Bring your profile, block, theme, publishing, or analytics question.' },
+      { title: 'Technical support', body: 'Ask about custom domains, API permissions, webhooks, Stripe billing, and integrations.' },
+      { title: 'Privacy and safety', body: 'Use the privacy policy and Trust & Safety area for data, abuse, and account concerns.' }
+    ],
+    related: [{ href: '/privacy', label: 'Privacy policy' }, { href: '/terms', label: 'Terms of service' }, { href: '/signup', label: 'Open LynkFlow' }]
+  }
+};
+
+function marketingSeoPageResponse(path: string, request: Request): Response {
+  const page = SEO_LANDING_PAGES[path];
+  const origin = new URL(request.url).origin;
+  const publicOrigin = PUBLIC_SITE_ORIGIN;
+  const canonical = `${publicOrigin}${path}`;
+  const escape = escapeHtml;
+  const cards = page.points.map(point => `<article><h2>${escape(point.title)}</h2><p>${escape(point.body)}</p></article>`).join('');
+  const related = page.related.map(link => `<li><a href="${escape(link.href)}">${escape(link.label)}</a></li>`).join('');
+  const schema = { '@context': 'https://schema.org', '@type': 'WebPage', name: page.title, description: page.description, url: canonical, isPartOf: { '@type': 'WebSite', name: 'LynkFlow', url: publicOrigin } };
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(page.title)}</title><meta name="description" content="${escape(page.description)}"><meta name="robots" content="index, follow"><link rel="canonical" href="${escape(canonical)}"><meta property="og:title" content="${escape(page.title)}"><meta property="og:description" content="${escape(page.description)}"><meta property="og:url" content="${escape(canonical)}"><meta property="og:type" content="website"><meta property="og:image" content="${publicOrigin}/og-default.png"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escape(page.title)}"><meta name="twitter:description" content="${escape(page.description)}"><meta name="twitter:image" content="${publicOrigin}/og-default.png"><script type="application/ld+json">${JSON.stringify(schema)}</script><style> :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#f8f8fb}body{margin:0}main{max-width:1080px;margin:auto;padding:32px 20px 80px}nav{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:96px}nav a{color:#4f46e5;text-decoration:none;font-weight:700}nav .links{display:flex;gap:18px;flex-wrap:wrap;font-size:14px}header{max-width:760px;margin-bottom:64px}.eyebrow{color:#4f46e5;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{font-size:clamp(42px,7vw,78px);line-height:1.02;letter-spacing:-.05em;margin:18px 0}header p{font-size:20px;line-height:1.6;color:#5b5b66}header .cta{display:inline-block;margin-top:18px;padding:14px 20px;border-radius:12px;background:#111;color:#fff;text-decoration:none;font-weight:800}section{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}article{padding:24px;border:1px solid #dedee7;border-radius:20px;background:#fff;box-shadow:0 12px 32px #2020400d}article h2{font-size:20px;margin-top:0}article p{color:#5b5b66;line-height:1.6}footer{border-top:1px solid #dedee7;margin-top:72px;padding-top:24px;color:#5b5b66}footer ul{display:flex;gap:16px;flex-wrap:wrap;padding:0;list-style:none}footer a{color:#4f46e5}@media(max-width:720px){nav{align-items:flex-start;flex-direction:column;margin-bottom:64px}section{grid-template-columns:1fr}header p{font-size:17px}}</style></head><body><main><nav><a href="${origin}">LynkFlow</a><div class="links"><a href="${origin}/link-in-bio">Link-in-bio</a><a href="${origin}/features/themes">Themes</a><a href="${origin}/pricing">Pricing</a><a href="${origin}/contact">Support</a></div></nav><header><div class="eyebrow">${escape(page.eyebrow)}</div><h1>${escape(page.heading)}</h1><p>${escape(page.intro)}</p><a class="cta" href="${origin}/signup">Start building</a></header><section>${cards}</section><footer><strong>Keep building with LynkFlow</strong><ul>${related}</ul><p><a href="${origin}/privacy">Privacy</a> · <a href="${origin}/terms">Terms</a> · <a href="${origin}/contact">Contact support</a></p></footer></main></body></html>`;
+  return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'public, max-age=300, s-maxage=1800' } });
 }
 
 function robotsResponse(request: Request, env: Env): Response {
@@ -1996,6 +2182,9 @@ export default {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       const keyId = url.pathname.split('/')[3];
       try { return await revokeApiKey(request, env, keyId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to revoke API key.', 500); }
+    }
+    if (request.method === 'GET' && SEO_LANDING_PAGES[url.pathname]) {
+      return marketingSeoPageResponse(url.pathname, request);
     }
     if (request.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.includes('.')) {
       try {
