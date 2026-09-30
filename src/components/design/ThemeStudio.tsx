@@ -328,7 +328,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
   const [pexelsQuery, setPexelsQuery] = useState('abstract background');
   const [pexelsResults, setPexelsResults] = useState<PexelsMedia[]>([]);
+  const [pexelsPage, setPexelsPage] = useState(0);
+  const [pexelsTotal, setPexelsTotal] = useState(0);
   const [isSearchingPexels, setIsSearchingPexels] = useState(false);
+  const [isLoadingMorePexels, setIsLoadingMorePexels] = useState(false);
   const [isApplyingPexels, setIsApplyingPexels] = useState(false);
   const [pexelsError, setPexelsError] = useState<string | null>(null);
   const [backgroundAssets, setBackgroundAssets] = useState<BackgroundAsset[]>([]);
@@ -684,38 +687,67 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     setPexelsError(null);
     try {
       const type = standardTheme.background.type === 'video' ? 'videos' : 'photos';
-      const response = await fetch(`/api/media/pexels?type=${type}&query=${encodeURIComponent(query)}`);
-      const payload = await response.json() as { results?: PexelsMedia[]; error?: string };
+      const response = await fetch(`/api/media/pexels?type=${type}&query=${encodeURIComponent(query)}&page=1&per_page=24`);
+      const payload = await response.json() as { page?: number; totalResults?: number; results?: PexelsMedia[]; error?: string };
       if (!response.ok) throw new Error(payload.error || 'Pexels search failed.');
       setPexelsResults(payload.results || []);
+      setPexelsPage(payload.page || 1);
+      setPexelsTotal(payload.totalResults || (payload.results || []).length);
     } catch (error) {
       setPexelsError(error instanceof Error ? error.message : 'Pexels search failed.');
       setPexelsResults([]);
+      setPexelsPage(0);
+      setPexelsTotal(0);
     } finally {
       setIsSearchingPexels(false);
     }
   };
 
-  const applyPexelsMedia = async (media: PexelsMedia) => {
+  const loadMorePexels = async () => {
+    const query = pexelsQuery.trim();
+    if (!query || !pexelsPage || pexelsPage >= 50 || pexelsResults.length >= pexelsTotal) return;
+    setIsLoadingMorePexels(true);
     setPexelsError(null);
-    setIsApplyingPexels(true);
-    // Apply the provider URL first so the preview responds immediately. The
-    // Storage copy below is still authoritative for persistence/public pages,
-    // but it should not block the editor from showing the user's selection.
-    updateStandardTheme(prev => ({
-      ...prev,
+    try {
+      const type = standardTheme.background.type === 'video' ? 'videos' : 'photos';
+      const nextPage = pexelsPage + 1;
+      const response = await fetch(`/api/media/pexels?type=${type}&query=${encodeURIComponent(query)}&page=${nextPage}&per_page=24`);
+      const payload = await response.json() as { page?: number; totalResults?: number; results?: PexelsMedia[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || 'More Pexels results could not be loaded.');
+      setPexelsResults(previous => {
+        const existing = new Set(previous.map(result => `${result.kind}:${result.id}`));
+        return [...previous, ...(payload.results || []).filter(result => !existing.has(`${result.kind}:${result.id}`))];
+      });
+      setPexelsPage(payload.page || nextPage);
+      setPexelsTotal(payload.totalResults || pexelsTotal);
+    } catch (error) {
+      setPexelsError(error instanceof Error ? error.message : 'More Pexels results could not be loaded.');
+    } finally {
+      setIsLoadingMorePexels(false);
+    }
+  };
+
+  const previewPexelsMedia = (media: PexelsMedia) => {
+    setPexelsError(null);
+    setPreviewTheme(normalizeTheme({
+      ...standardTheme,
       background: {
-        ...prev.background,
+        ...standardTheme.background,
         type: media.kind,
         assetId: null,
         assetUrl: media.assetUrl,
         placeholderUrl: null,
-        posterUrl: media.kind === 'video' ? (media.thumbnail || prev.background.posterUrl) : null,
+        posterUrl: media.kind === 'video' ? (media.thumbnail || standardTheme.background.posterUrl) : null,
         gradientStops: undefined,
-        overlay: media.kind === 'image' ? Math.max(prev.background.overlay ?? 0, 0.08) : prev.background.overlay,
-        fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
+        overlay: media.kind === 'image' ? Math.max(standardTheme.background.overlay ?? 0, 0.08) : standardTheme.background.overlay,
+        fallbackColor: standardTheme.background.fallbackColor || standardTheme.tokens.colors.pageBackground
       }
     }));
+  };
+
+  const applyPexelsMedia = async (media: PexelsMedia) => {
+    setPexelsError(null);
+    setIsApplyingPexels(true);
     try {
       const asset = await registerRemoteBackgroundAsset({
         id: media.id,
@@ -726,24 +758,24 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         width: media.width,
         height: media.height,
       }, activeProfile.id);
-      updateStandardTheme(prev => {
-        // Do not overwrite a newer user selection if the Storage copy finishes
-        // after the user has clicked a different result.
-        if (prev.background.assetUrl !== media.assetUrl || prev.background.type !== media.kind) return prev;
-        return {
-          ...prev,
-          background: {
-            ...prev.background,
-            type: asset.kind,
-            assetId: asset.storagePath,
-            assetUrl: asset.assetUrl,
-            posterUrl: asset.kind === 'video' ? (prev.background.posterUrl || null) : null
-          }
-        };
-      });
+      updateStandardTheme(prev => ({
+        ...prev,
+        background: {
+          ...prev.background,
+          type: asset.kind,
+          assetId: asset.storagePath,
+          assetUrl: asset.assetUrl,
+          placeholderUrl: null,
+          posterUrl: asset.kind === 'video' ? (media.thumbnail || prev.background.posterUrl || null) : null,
+          gradientStops: undefined,
+          overlay: asset.kind === 'image' ? Math.max(prev.background.overlay ?? 0, 0.08) : prev.background.overlay,
+          fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
+        }
+      }));
+      setPreviewTheme(null);
       await refreshBackgroundAssets();
     } catch (error) {
-      setPexelsError(`Preview applied, but the workspace copy could not be saved. ${error instanceof Error ? error.message : 'Retry to save it.'}`);
+      setPexelsError(error instanceof Error ? error.message : 'Pexels background could not be saved.');
     } finally {
       setIsApplyingPexels(false);
     }
@@ -2054,14 +2086,30 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   </div>
                   {pexelsError && <p role="alert" className="text-[11px] text-danger">{pexelsError}</p>}
                   {pexelsResults.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Pexels background results">
-                      {pexelsResults.map(media => (
-                        <button key={`${media.kind}-${media.id}`} type="button" onClick={() => void applyPexelsMedia(media)} disabled={isApplyingPexels} className="group relative overflow-hidden rounded-lg border border-line bg-surface text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-wait disabled:opacity-60">
-                          {media.kind === 'video' ? <video src={media.assetUrl} poster={media.thumbnail || undefined} muted playsInline preload="metadata" className="h-20 w-full object-cover" /> : <img src={media.thumbnail || media.assetUrl} alt={`Photo by ${media.photographer} on Pexels`} loading="lazy" className="h-20 w-full object-cover" />}
-                          <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-1 text-[9px] text-white">Photo by {media.photographer}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Pexels background results">
+                        {pexelsResults.map(media => (
+                          <div key={`${media.kind}-${media.id}`} className="overflow-hidden rounded-lg border border-line bg-surface">
+                            <div className="relative">
+                              {media.kind === 'video' ? <video src={media.assetUrl} poster={media.thumbnail || undefined} muted playsInline preload="metadata" className="h-20 w-full object-cover" /> : <img src={media.thumbnail || media.assetUrl} alt={`Photo by ${media.photographer} on Pexels`} loading="lazy" className="h-20 w-full object-cover" />}
+                              <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-1 text-[9px] text-white">Photo by {media.photographer}</span>
+                            </div>
+                            <div className="flex gap-1 p-1.5">
+                              <button type="button" onClick={() => previewPexelsMedia(media)} disabled={isApplyingPexels} className="min-h-7 flex-1 rounded-md border border-line px-1.5 py-1 text-[10px] font-semibold text-ink hover:bg-canvas disabled:cursor-wait disabled:opacity-60">Preview</button>
+                              <button type="button" onClick={() => void applyPexelsMedia(media)} disabled={isApplyingPexels} className="min-h-7 flex-1 rounded-md bg-indigo-600 px-1.5 py-1 text-[10px] font-semibold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60">{isApplyingPexels ? 'Saving…' : 'Apply'}</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <span className="text-[10px] text-subtle">Showing {pexelsResults.length}{pexelsTotal ? ` of ${pexelsTotal}` : ''} results</span>
+                        {pexelsPage > 0 && pexelsPage < 50 && pexelsResults.length < pexelsTotal && (
+                          <button type="button" onClick={() => void loadMorePexels()} disabled={isLoadingMorePexels || isApplyingPexels} className="rounded-lg border border-line px-3 py-1.5 text-[11px] font-semibold text-ink hover:bg-surface disabled:cursor-wait disabled:opacity-60">
+                            {isLoadingMorePexels ? 'Loading…' : 'Load more'}
+                          </button>
+                        )}
+                      </div>
+                    </>
                   )}
                   <p className="text-[10px] text-subtle">Selecting a result applies it immediately to this theme. Attribution remains visible in the picker and links to Pexels.</p>
                 </div>
