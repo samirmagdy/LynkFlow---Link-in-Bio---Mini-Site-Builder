@@ -1137,12 +1137,13 @@ async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.n
     if (!schedule || schedule.status !== 'pending') continue;
     const scheduledAt = Date.parse(String(schedule.scheduledTimeUtc || ''));
     if (!Number.isFinite(scheduledAt) || scheduledAt > scheduledTime) continue;
+    let latestData = profile.data;
 
     const markSchedule = async (status: 'executed' | 'failed', failureReason?: string) => {
       const nextSchedule = { ...schedule, status, ...(failureReason ? { failureReason } : {}), ...(status === 'executed' ? { executedAt: new Date(scheduledTime).toISOString() } : {}) };
       await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profile.id)}&workspace_id=eq.${encodeURIComponent(profile.workspace_id)}`, env, {
         method: 'PATCH', headers: { prefer: 'return=minimal' },
-        body: JSON.stringify({ data: withoutDraftDesignTheme({ ...profile.data, scheduledPublish: nextSchedule }), updated_at: new Date().toISOString() })
+        body: JSON.stringify({ data: withoutDraftDesignTheme({ ...latestData, scheduledPublish: nextSchedule }), updated_at: new Date().toISOString() })
       });
     };
 
@@ -1166,6 +1167,7 @@ async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.n
         themeSnapshots: [themeSnapshot, ...(Array.isArray(profile.data.themeSnapshots) ? profile.data.themeSnapshots : [])].slice(0, 50),
         updatedAt: publishedAt,
       };
+      latestData = nextData;
       const profileUpdate = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profile.id)}&workspace_id=eq.${encodeURIComponent(profile.workspace_id)}`, env, {
         method: 'PATCH', headers: { prefer: 'return=minimal' },
         body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: publishedAt })
