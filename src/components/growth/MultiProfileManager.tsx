@@ -242,9 +242,10 @@ export const MultiProfileManager: React.FC = () => {
   const maxProfiles = entitlements.maxProfiles;
   const atLimit = typeof maxProfiles === 'number' && profiles.length >= maxProfiles;
 
-  const handleCreateProfile = () => {
+  const handleCreateProfile = async () => {
     if (!newUsername.trim()) { showToast('Username is required.'); return; }
-    createNewProfile(newUsername.trim(), newDisplayName.trim() || newUsername.trim(), newCategory);
+    const profileId = await createNewProfile(newUsername.trim(), newDisplayName.trim() || newUsername.trim(), newCategory);
+    if (!profileId) return;
     setShowNewProfileForm(false);
     setNewUsername(''); setNewDisplayName(''); setNewCategory('Creator');
   };

@@ -185,8 +185,8 @@ interface AppContextType {
   scheduleRelease: (scheduledIsoString: string, timezone: string) => Promise<boolean>;
   cancelScheduledRelease: () => boolean;
   switchActiveProfile: (id: string) => void;
-  createNewProfile: (username: string, displayName: string, category: string, themeId?: string) => string;
-  duplicateProfile: (profileId: string) => void;
+  createNewProfile: (username: string, displayName: string, category: string, themeId?: string) => Promise<string>;
+  duplicateProfile: (profileId: string) => Promise<boolean>;
   deleteProfile: (profileId: string) => Promise<boolean>;
 
   // Block Actions
@@ -1087,7 +1087,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
   };
 
-  const createNewProfile = (username: string, displayName: string, category: string, themeId?: string): string => {
+  const createNewProfile = async (username: string, displayName: string, category: string, themeId?: string): Promise<string> => {
     // BIL-003: Authoritative entitlement check for profile creation
     const check = billingService.checkFeatureEntitlement(workspace, 'create_profile', {
       currentProfileCount: profiles.length
@@ -1100,6 +1100,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
     const selectedTheme = THEME_PRESETS.find(t => t.id === themeId) || THEME_PRESETS[0];
     const newProfile = createProfileRecord({ username, displayName, category, theme: selectedTheme });
+
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudProfile(newProfile, user.id);
+      } catch (error) {
+        reportRecoverableError('Supabase profile creation failed', error);
+        showToast(error instanceof Error ? error.message : 'Profile could not be created. Try again.');
+        return '';
+      }
+    }
 
     setProfiles(prev => [...prev, newProfile]);
     setActiveProfileId(newProfile.id);
@@ -1114,20 +1124,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     return newProfile.id;
   };
 
-  const duplicateProfile = (profileId: string) => {
+  const duplicateProfile = async (profileId: string): Promise<boolean> => {
     // BIL-003: Check entitlement before allowing duplicate
     const check = billingService.checkFeatureEntitlement(workspace, 'create_profile', {
       currentProfileCount: profiles.length
     });
     if (!check.allowed) {
       showToast(check.reason || 'Profile limit reached. Upgrade to duplicate.');
-      return;
+      return false;
     }
 
     const source = profiles.find(p => p.id === profileId);
-    if (!source) return;
+    if (!source) return false;
 
     const newProfile = duplicateProfileRecord(source);
+
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        await saveCloudProfile(newProfile, user.id);
+      } catch (error) {
+        reportRecoverableError('Supabase profile duplication failed', error);
+        showToast(error instanceof Error ? error.message : 'Profile could not be duplicated. Try again.');
+        return false;
+      }
+    }
 
     setProfiles(prev => [...prev, newProfile]);
     setActiveProfileId(newProfile.id);
@@ -1137,6 +1157,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       profiles: [...prev.profiles, newProfile.id]
     }));
     showToast(`Duplicated to @${newProfile.username}`);
+    return true;
   };
 
   const deleteProfile = async (profileId: string): Promise<boolean> => {
@@ -2141,12 +2162,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   const completeOnboarding = async (starter?: StarterProfileBlueprint) => {
     if (starter) {
-      createNewProfile(
+      const profileId = await createNewProfile(
         starter.handle,
         starter.displayName || starter.handle,
         starter.category,
         starter.themeId
       );
+      if (!profileId) return;
     }
 
     if (isSupabaseConfigured && supabase) {

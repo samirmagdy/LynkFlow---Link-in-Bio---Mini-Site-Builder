@@ -18,14 +18,14 @@ export const NewProfileModal: React.FC<NewProfileModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) {
       showToast('Please enter a username');
       return;
     }
-    createNewProfile(username.trim(), displayName.trim() || username.trim(), category, selectedThemeId);
-    onClose();
+    const profileId = await createNewProfile(username.trim(), displayName.trim() || username.trim(), category, selectedThemeId);
+    if (profileId) onClose();
   };
 
   return (
