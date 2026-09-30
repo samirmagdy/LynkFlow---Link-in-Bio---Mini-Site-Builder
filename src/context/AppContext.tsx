@@ -263,6 +263,12 @@ interface AppContextType {
   resolveConflictOverwrite: () => void;
   simulateNetworkError: () => void;
 
+  // Session hydration guard — true once the Supabase session check (or the
+  // non-Supabase local-auth path) has completed. Use this before gating UI on
+  // user.id to avoid a race where the Guest placeholder fires redirects before
+  // the async loadCloudState() can restore a valid existing session.
+  authReady: boolean;
+
   // Notification / Toast
   toastMessage: string | null;
   showToast: (msg: string) => void;
@@ -2663,7 +2669,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         isConflictOpen,
         resolveConflictReload,
         resolveConflictOverwrite,
-        simulateNetworkError
+        simulateNetworkError,
+
+        // authReady: true after Supabase session check (or local-auth path)
+        // completes. Prevents login modal from flashing on refresh when a valid
+        // Supabase session is already persisted in storage.
+        authReady: cloudHydrated
 
       }}
     >

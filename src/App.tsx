@@ -28,6 +28,7 @@ const AppContent: React.FC = () => {
   const { 
     currentView, 
     user,
+    authReady,
     publishedProfile, 
     activeProfile, 
     publicViewingUsername, 
@@ -47,10 +48,16 @@ const AppContent: React.FC = () => {
   const isStudioRoute = currentView !== 'marketing' && currentView !== 'public_standalone';
 
   React.useEffect(() => {
+    // Wait for authReady before checking guest status.
+    // Without this guard, the Guest placeholder (user.id === 'usr-guest') that
+    // AppContext starts with on every refresh would trigger this effect and show
+    // the login modal before the async Supabase session check can restore a
+    // valid existing session — making the user log in on every refresh.
+    if (!authReady) return;
     if (!isStudioRoute || user.id !== 'usr-guest') return;
     setAuthModalMode('login');
     setIsAuthModalOpen(true);
-  }, [isStudioRoute, user.id]);
+  }, [authReady, isStudioRoute, user.id]);
 
   React.useEffect(() => {
     if (new URLSearchParams(window.location.search).get('password-recovery') === '1') {
