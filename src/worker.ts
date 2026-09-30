@@ -791,6 +791,18 @@ async function authenticateApiKey(request: Request, env: Env, requiredScope: str
   return { keyId: key.id, workspaceId: key.workspace_id, scopes: key.scopes, allowedProfileIds: key.allowed_profile_ids };
 }
 
+async function resolveApiProfileId(env: Env, auth: ApiKeyAuth, reference: string): Promise<string | Response> {
+  const base = `workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username`;
+  const byId = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(reference)}&${base}`, env);
+  const idRows = await byId.json() as Array<{ id: string }>;
+  const row = idRows[0] || (await (async () => {
+    const byUsername = await supabaseRequest(`profiles?username=eq.${encodeURIComponent(reference.trim().toLowerCase())}&${base}`, env);
+    return (await byUsername.json() as Array<{ id: string }>)[0];
+  })());
+  if (!row || (auth.allowedProfileIds && !auth.allowedProfileIds.includes(row.id))) return apiError('NOT_FOUND', 'Profile not found.', 404);
+  return row.id;
+}
+
 async function consumeApiRateLimit(env: Env, keyId: string, workspaceId: string, limit: number): Promise<{ limited: boolean; retryAfterSeconds: number }> {
   const response = await supabaseRequest('rpc/consume_api_rate_limit', env, {
     method: 'POST',
@@ -827,6 +839,9 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
   const writeScope = resource === 'blocks' ? 'blocks:write' : 'themes:write';
   const auth = await authenticateApiKey(request, env, request.method === 'GET' ? readScope : writeScope);
   if (auth instanceof Response) return auth;
+  const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
+  if (resolvedProfileId instanceof Response) return resolvedProfileId;
+  profileId = resolvedProfileId;
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
   const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = rows[0];
@@ -888,9 +903,61 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
   return json(result);
 }
 
+async function assertApiProfileAccess(env: Env, auth: ApiKeyAuth, profileId: string): Promise<Record<string, unknown> | Response> {
+  const response = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username`, env);
+  const rows = await response.json() as Array<Record<string, unknown>>;
+  const profile = rows[0];
+  if (!profile || (auth.allowedProfileIds && !auth.allowedProfileIds.includes(profileId))) return apiError('NOT_FOUND', 'Profile not found.', 404);
+  return profile;
+}
+
+async function handleApiAnalytics(request: Request, env: Env, profileId: string): Promise<Response> {
+  const auth = await authenticateApiKey(request, env, 'analytics:read');
+  if (auth instanceof Response) return auth;
+  const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
+  if (resolvedProfileId instanceof Response) return resolvedProfileId;
+  profileId = resolvedProfileId;
+  const profile = await assertApiProfileAccess(env, auth, profileId);
+  if (profile instanceof Response) return profile;
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(auth.workspaceId)}&select=plan,status,current_period_end`, env);
+  const workspace = (await workspaceResponse.json() as Array<{ plan?: string; status?: string; current_period_end?: string }>)[0];
+  const maxDays = workspace?.status === 'canceled' && workspace.current_period_end && workspace.current_period_end < new Date().toISOString()
+    ? 7 : workspace?.plan === 'agency' ? 730 : workspace?.plan === 'pro' ? 365 : 7;
+  const requestedDays = Number(new URL(request.url).searchParams.get('days') || 7);
+  if (!Number.isInteger(requestedDays) || requestedDays < 1 || requestedDays > maxDays) return apiError('VALIDATION_ERROR', `days must be an integer between 1 and ${maxDays} for this plan.`, 422);
+  const since = new Date(Date.now() - requestedDays * 24 * 60 * 60 * 1000).toISOString();
+  const response = await supabaseRequest(`analytics_events?workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&profile_id=eq.${encodeURIComponent(profileId)}&occurred_at=gte.${encodeURIComponent(since)}&is_bot=eq.false&select=event_type,visitor_hash,referrer`, env);
+  const events = await response.json() as Array<{ event_type?: string; visitor_hash?: string; referrer?: string }>;
+  const views = events.filter(event => event.event_type === 'page_view').length;
+  const clicks = events.filter(event => event.event_type === 'block_click').length;
+  const uniqueVisitors = new Set(events.filter(event => event.event_type === 'page_view').map(event => event.visitor_hash).filter(Boolean)).size;
+  const referrers = new Map<string, number>();
+  for (const event of events.filter(event => event.event_type === 'page_view')) {
+    const referrer = event.referrer || 'Direct';
+    referrers.set(referrer, (referrers.get(referrer) || 0) + 1);
+  }
+  return json({ data: { profileId, username: profile.username, period: `${requestedDays}d`, pageViews: views, uniqueVisitors, clicks, ctr: views ? Math.round((clicks / views) * 1000) / 10 : 0, topReferrers: [...referrers.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([referrer, count]) => ({ referrer, count })) }, requestId: crypto.randomUUID() });
+}
+
+async function handleApiFormSubmissions(request: Request, env: Env, profileId: string): Promise<Response> {
+  const auth = await authenticateApiKey(request, env, 'forms:read');
+  if (auth instanceof Response) return auth;
+  const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
+  if (resolvedProfileId instanceof Response) return resolvedProfileId;
+  profileId = resolvedProfileId;
+  const profile = await assertApiProfileAccess(env, auth, profileId);
+  if (profile instanceof Response) return profile;
+  const limit = Math.min(Math.max(Number(new URL(request.url).searchParams.get('limit') || 100), 1), 500);
+  const response = await supabaseRequest(`form_submissions?workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,block_id,form_title,form_type,data,responder_email,responder_name,submitted_at,consent_given,status&order=submitted_at.desc&limit=${limit}`, env);
+  return json({ data: await response.json(), limit, requestId: crypto.randomUUID() });
+}
+
 async function publishApiProfile(request: Request, env: Env, profileId: string): Promise<Response> {
   const auth = await authenticateApiKey(request, env, 'publish:write');
   if (auth instanceof Response) return auth;
+  const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
+  if (resolvedProfileId instanceof Response) return resolvedProfileId;
+  profileId = resolvedProfileId;
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&select=id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id`, env);
   const rows = await profileResponse.json() as Array<{ id: string; username: string; data: Record<string, unknown> } & DesignSystemColumns>;
   const profile = rows[0];
@@ -1470,6 +1537,11 @@ function profileApiResource(profile: { id: string; username: string; data: Recor
 async function handleApiProfiles(request: Request, env: Env, profileId?: string): Promise<Response> {
   const auth = await authenticateApiKey(request, env, request.method === 'GET' ? 'profiles:read' : 'profiles:write');
   if (auth instanceof Response) return auth;
+  if (profileId) {
+    const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
+    if (resolvedProfileId instanceof Response) return resolvedProfileId;
+    profileId = resolvedProfileId;
+  }
   const profileFilter = profileId ? `&id=eq.${encodeURIComponent(profileId)}` : '';
   const response = await supabaseRequest(`profiles?workspace_id=eq.${encodeURIComponent(auth.workspaceId)}${profileFilter}&select=id,username,data&order=created_at`, env);
   const profiles = await response.json() as Array<{ id: string; username: string; data: Record<string, unknown> }>;
@@ -2351,6 +2423,14 @@ export default {
       if (parts[4] === 'blocks' || parts[4] === 'themes') {
         if (!['GET', 'PATCH'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
         try { return await handleApiProfileSubresource(request, env, profileId, parts[4], parts[5]); } catch (error) { return internalApiError('API resource request failed', error, 'Resource request failed.'); }
+      }
+      if (parts[4] === 'analytics') {
+        if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+        try { return await handleApiAnalytics(request, env, profileId); } catch (error) { return internalApiError('API analytics request failed', error, 'Analytics request failed.'); }
+      }
+      if (parts[4] === 'forms' && parts[5] === 'submissions') {
+        if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+        try { return await handleApiFormSubmissions(request, env, profileId); } catch (error) { return internalApiError('API forms request failed', error, 'Form submissions request failed.'); }
       }
       if (!['GET', 'PATCH'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await handleApiProfiles(request, env, profileId); } catch (error) { return internalApiError('API profile request failed', error, 'API request failed.'); }
