@@ -49,15 +49,15 @@ export const CookieBanner: React.FC<CookieBannerProps> = ({ inStudio = false }) 
   return (
     <aside
       aria-label="Cookie preferences"
-      className={`fixed inset-x-3 ${placementClass} z-[60] max-h-[min(38rem,calc(100svh-1rem))] w-auto max-w-md overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl shadow-black/25 backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 duration-200 sm:left-6 sm:right-auto sm:p-5`}
+      className={`fixed inset-x-3 ${placementClass} z-[60] max-h-[min(24rem,calc(100svh-2rem))] w-auto max-w-md overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl shadow-black/25 backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 duration-200 sm:left-6 sm:right-auto sm:max-h-[min(38rem,calc(100svh-1rem))] sm:p-5`}
     >
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent" aria-hidden="true">
           <Cookie className="h-4 w-4" />
         </span>
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold tracking-tight text-ink">Your privacy, your choice</h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h2 className="text-xs font-semibold tracking-tight text-ink sm:text-sm">Your privacy, your choice</h2>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted sm:text-xs">
             We use essential storage to keep LynkFlow working. Optional analytics help us improve the product.
           </p>
         </div>
