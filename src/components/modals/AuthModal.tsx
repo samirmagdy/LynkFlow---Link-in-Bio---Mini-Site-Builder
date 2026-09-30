@@ -151,7 +151,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} labelledBy="auth-modal-title" className="w-full max-w-md bg-surface border border-line rounded-2xl p-6 shadow-2xl text-ink space-y-5">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      labelledBy="auth-modal-title"
+      describedBy="auth-modal-description"
+      className="w-full max-w-4xl max-h-[calc(100vh-1.5rem)] overflow-y-auto overflow-x-hidden rounded-3xl border border-line bg-surface text-ink shadow-2xl"
+    >
+      <div className="grid min-h-[min(620px,calc(100vh-1.5rem))] grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.78fr)]">
+        <section className="order-2 flex min-w-0 flex-col p-5 sm:p-7 md:order-1">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-line">
           <div className="flex items-center gap-2">
@@ -176,6 +184,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        <p id="auth-modal-description" className="mt-4 max-w-md text-xs leading-relaxed text-muted">
+          {mode === 'create' && 'Build a polished link-in-bio page and bring every destination into one place.'}
+          {mode === 'login' && 'Sign in to manage your pages, themes, analytics, and publishing workflow.'}
+          {mode === 'forgot' && 'We will send a secure reset link to the email connected to your account.'}
+          {mode === 'verify' && 'Verify your email to unlock live publishing and creator workspace features.'}
+          {mode === 'reset' && 'Choose a new password to secure your LynkFlow creator workspace.'}
+        </p>
 
         {/* Mode Selector for Create vs Login */}
         {(mode === 'create' || mode === 'login') && (
@@ -478,6 +494,50 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           </form>
         )}
+        </section>
+
+        <aside className="order-1 relative isolate flex min-h-48 flex-col overflow-hidden border-b border-line bg-[#101014] p-5 text-white md:order-2 md:min-h-0 md:border-b-0 md:border-l md:p-7">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-indigo-500/25 blur-3xl" aria-hidden="true" />
+          <div className="pointer-events-none absolute -bottom-24 -left-14 h-48 w-48 rounded-full bg-emerald-400/15 blur-3xl" aria-hidden="true" />
+
+          <div className="relative z-10 flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/8 px-2.5 py-1 text-[10px] font-mono tracking-wide text-indigo-200">
+              <Sparkles className="h-3 w-3 text-indigo-300" aria-hidden="true" />
+              lynkflow / creator studio
+            </span>
+            <span className="text-[10px] font-mono text-white/45">01 / 04</span>
+          </div>
+
+          <div className="relative z-10 mt-6 md:mt-auto">
+            <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-300/80">One link. More momentum.</p>
+            <h4 className="mt-2 max-w-xs font-['Syne'] text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
+              Your best work deserves a better home.
+            </h4>
+            <p className="mt-3 max-w-xs text-xs leading-relaxed text-white/60">
+              Shape your page, publish with confidence, and understand what moves your audience.
+            </p>
+          </div>
+
+          <div className="relative z-10 mt-5 rounded-2xl border border-white/12 bg-white/8 p-3 shadow-2xl backdrop-blur-sm md:mt-8">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-400 text-[9px] font-bold text-indigo-950">LF</span>
+                <div>
+                  <p className="text-[10px] font-semibold text-white">Creator page</p>
+                  <p className="text-[9px] text-white/45">@yourhandle</p>
+                </div>
+              </div>
+              <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.9)]" aria-label="Published" />
+            </div>
+            <div className="mt-3 space-y-2">
+              <div className="h-2.5 w-3/5 rounded-full bg-white/75" />
+              <div className="h-2 w-2/5 rounded-full bg-white/25" />
+              <div className="mt-3 h-9 rounded-xl border border-indigo-300/20 bg-indigo-400/20" />
+              <div className="h-9 rounded-xl border border-white/10 bg-white/8" />
+            </div>
+          </div>
+        </aside>
+      </div>
     </Dialog>
   );
 };
