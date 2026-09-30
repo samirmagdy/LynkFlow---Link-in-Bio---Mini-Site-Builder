@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { QrCode, Download, Smartphone, Sliders, Check } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
+import QRCode from 'qrcode';
 
 export const QrCodeStudio: React.FC = () => {
   const { activeProfile, updateDraftProfile, trackEvent, showToast } = useApp();
@@ -13,102 +14,54 @@ export const QrCodeStudio: React.FC = () => {
   const [targetUrl, setTargetUrl] = useState(activeProfile.qrConfig.dynamicTargetUrl || `https://lynkflow.me/${activeProfile.username}`);
   const [scannedMessage, setScannedMessage] = useState(false);
 
-  // Render QR Code onto Canvas
+  useEffect(() => {
+    setFgColor(activeProfile.qrConfig.fgColor || '#ffffff');
+    setBgColor(activeProfile.qrConfig.bgColor || '#09090b');
+    setPattern(activeProfile.qrConfig.pattern || 'dots');
+    setTargetUrl(activeProfile.qrConfig.dynamicTargetUrl || `https://lynkflow.me/${activeProfile.username}`);
+  }, [activeProfile.id]);
+
+  // Render a real, scannable QR matrix onto Canvas. The previous implementation
+  // was a decorative pseudo-pattern and could not be scanned by a phone.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx || !targetUrl.trim()) return;
 
     const size = 320;
+    const quietZone = 4;
+    const qr = QRCode.create(targetUrl.trim(), { errorCorrectionLevel: 'H' });
+    const moduleCount = qr.modules.size;
+    const cellSize = size / (moduleCount + quietZone * 2);
     canvas.width = size;
     canvas.height = size;
-
-    // Background
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, size, size);
-
-    // Deterministic pseudo-QR pattern derived from targetUrl
-    const gridCount = 25;
-    const cellSize = (size - 40) / gridCount;
-    const offset = 20;
-
-    let hash = 0;
-    for (let i = 0; i < targetUrl.length; i++) {
-      hash = (hash << 5) - hash + targetUrl.charCodeAt(i);
-      hash |= 0;
-    }
-
     ctx.fillStyle = fgColor;
 
-    // Corner Finder Patterns
-    const drawFinder = (startX: number, startY: number) => {
-      ctx.fillRect(startX, startY, cellSize * 7, cellSize * 7);
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(startX + cellSize, startY + cellSize, cellSize * 5, cellSize * 5);
-      ctx.fillStyle = fgColor;
-      ctx.fillRect(startX + cellSize * 2, startY + cellSize * 2, cellSize * 3, cellSize * 3);
-    };
+    const inFinder = (row: number, col: number) =>
+      (row < 8 && col < 8) ||
+      (row < 8 && col >= moduleCount - 8) ||
+      (row >= moduleCount - 8 && col < 8);
 
-    drawFinder(offset, offset);
-    drawFinder(offset + cellSize * (gridCount - 7), offset);
-    drawFinder(offset, offset + cellSize * (gridCount - 7));
-
-    // Fill data grid
-    for (let r = 0; r < gridCount; r++) {
-      for (let c = 0; c < gridCount; c++) {
-        // Skip finder areas
-        if (
-          (r < 8 && c < 8) ||
-          (r < 8 && c >= gridCount - 8) ||
-          (r >= gridCount - 8 && c < 8) ||
-          (r >= 10 && r <= 14 && c >= 10 && c <= 14) // center logo cutout
-        ) {
-          continue;
-        }
-
-        const pseudoRand = Math.sin(hash + r * 31 + c * 17) * 10000;
-        const isFilled = pseudoRand - Math.floor(pseudoRand) > 0.45;
-
-        if (isFilled) {
-          const x = offset + c * cellSize;
-          const y = offset + r * cellSize;
-
-          if (pattern === 'dots') {
-            ctx.beginPath();
-            ctx.arc(x + cellSize / 2, y + cellSize / 2, cellSize / 2.3, 0, Math.PI * 2);
-            ctx.fill();
-          } else if (pattern === 'rounded') {
-            ctx.beginPath();
-            ctx.roundRect(x + 1, y + 1, cellSize - 2, cellSize - 2, 3);
-            ctx.fill();
-          } else {
-            ctx.fillRect(x, y, cellSize, cellSize);
-          }
+    for (let row = 0; row < moduleCount; row += 1) {
+      for (let col = 0; col < moduleCount; col += 1) {
+        if (!qr.modules.get(row, col)) continue;
+        const x = (col + quietZone) * cellSize;
+        const y = (row + quietZone) * cellSize;
+        const inset = inFinder(row, col) || pattern === 'square' ? 0 : cellSize * 0.08;
+        if (pattern === 'dots' && !inFinder(row, col)) {
+          ctx.beginPath();
+          ctx.arc(x + cellSize / 2, y + cellSize / 2, Math.max(1, cellSize * 0.42), 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.roundRect(x + inset, y + inset, cellSize - inset * 2, cellSize - inset * 2, pattern === 'rounded' && !inFinder(row, col) ? cellSize * 0.22 : 0);
+          ctx.fill();
         }
       }
     }
-
-    // Center Badge
-    const centerSize = cellSize * 5;
-    const centerX = size / 2 - centerSize / 2;
-    const centerY = size / 2 - centerSize / 2;
-
-    ctx.fillStyle = bgColor;
-    ctx.beginPath();
-    ctx.roundRect(centerX - 2, centerY - 2, centerSize + 4, centerSize + 4, 8);
-    ctx.fill();
-
-    ctx.fillStyle = fgColor;
-    ctx.beginPath();
-    ctx.roundRect(centerX + 2, centerY + 2, centerSize - 4, centerSize - 4, 6);
-    ctx.fill();
-
-    ctx.fillStyle = bgColor;
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('LF', size / 2, size / 2);
   }, [fgColor, bgColor, pattern, targetUrl]);
 
   const handleDownload = () => {
