@@ -2114,7 +2114,8 @@ export default {
     }
     let publicHandlePath = '';
     try { publicHandlePath = url.pathname.startsWith('/@') ? decodeURIComponent(url.pathname.slice(2)) : ''; } catch { publicHandlePath = ''; }
-    const isPublicHandlePath = /^[a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?$/i.test(publicHandlePath);
+    const isReservedDevPath = publicHandlePath === 'react-refresh' || publicHandlePath === 'vite';
+    const isPublicHandlePath = !isReservedDevPath && /^[a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?$/i.test(publicHandlePath);
     if (isPublicHandlePath) {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       if (url.searchParams.get('demo') === '1') {
