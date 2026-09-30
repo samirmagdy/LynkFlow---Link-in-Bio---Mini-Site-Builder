@@ -118,6 +118,7 @@ type AppView =
   | 'settings' 
   | 'billing' 
   | 'api' 
+  | 'support'
   | 'admin' 
   | 'public_standalone';
 
@@ -132,6 +133,7 @@ const APP_VIEW_PATHS: Partial<Record<AppView, string>> = {
   settings: '/studio/settings',
   billing: '/studio/billing',
   api: '/studio/api',
+  support: '/studio/support',
   admin: '/studio/admin'
 };
 

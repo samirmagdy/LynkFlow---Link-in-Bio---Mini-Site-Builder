@@ -1536,10 +1536,74 @@ function mergeThemePatch(current: Record<string, unknown>, patch: Record<string,
   };
 }
 
-type SupabaseWorkspaceUser = { id: string; email: string; emailConfirmed: boolean; role: 'owner' | 'manager' | 'viewer'; assignedProfileIds: string[] };
+type SupabaseWorkspaceUser = { id: string; authUserId: string; email: string; emailConfirmed: boolean; role: 'owner' | 'manager' | 'viewer'; assignedProfileIds: string[] };
 
 function canManageProfile(user: SupabaseWorkspaceUser, profileId: string): boolean {
   return user.role === 'owner' || (user.role === 'manager' && user.assignedProfileIds.includes(profileId));
+}
+
+function supportEntitlement(plan: string): { priority: 'community' | 'standard' | 'priority'; slaHours: number } {
+  if (plan === 'agency') return { priority: 'priority', slaHours: 2 };
+  if (plan === 'pro') return { priority: 'standard', slaHours: 24 };
+  return { priority: 'community', slaHours: 72 };
+}
+
+async function supportWorkspacePlan(env: Env, workspaceId: string): Promise<'free' | 'pro' | 'agency'> {
+  const response = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(workspaceId)}&select=plan,status,current_period_end`, env);
+  const rows = await response.json() as Array<{ plan?: string; status?: string; current_period_end?: string | null }>;
+  const row = rows[0];
+  if (!row || (row.status === 'canceled' && row.current_period_end && row.current_period_end < new Date().toISOString())) return 'free';
+  return row.plan === 'agency' || row.plan === 'pro' ? row.plan : 'free';
+}
+
+async function handleSupportTickets(request: Request, env: Env, ticketId?: string): Promise<Response> {
+  const access = await getSupabaseUser(request, env);
+  if (access instanceof Response) return access;
+  if (request.method === 'GET') {
+    const query = `support_tickets?workspace_id=eq.${encodeURIComponent(access.id)}${ticketId ? `&id=eq.${encodeURIComponent(ticketId)}` : ''}&select=*&order=created_at.desc`;
+    const response = await supabaseRequest(query, env);
+    return json({ data: await response.json(), requestId: crypto.randomUUID() });
+  }
+  if (request.method === 'POST') {
+    let input: { subject?: string; message?: string };
+    try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+    const subject = typeof input.subject === 'string' ? input.subject.trim() : '';
+    const message = typeof input.message === 'string' ? input.message.trim() : '';
+    if (subject.length < 3 || subject.length > 160) return apiError('VALIDATION_ERROR', 'Subject must be 3-160 characters.', 422);
+    if (message.length < 10 || message.length > 10000) return apiError('VALIDATION_ERROR', 'Message must be 10-10,000 characters.', 422);
+    const plan = await supportWorkspacePlan(env, access.id);
+    const entitlement = supportEntitlement(plan);
+    const now = new Date();
+    const ticket = {
+      id: `sup_${crypto.randomUUID()}`,
+      workspace_id: access.id,
+      created_by: access.authUserId,
+      requester_email: access.email,
+      subject,
+      message,
+      plan,
+      priority: entitlement.priority,
+      status: 'open',
+      sla_hours: entitlement.slaHours,
+      due_at: new Date(now.getTime() + entitlement.slaHours * 3600_000).toISOString(),
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+    const response = await supabaseRequest('support_tickets', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(ticket) });
+    if (!response.ok) return apiError('SERVICE_UNAVAILABLE', 'Support ticket could not be created.', 503);
+    await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: access.id, actor: access.email, action: 'support.ticket.created', target: ticket.id, occurred_at: now.toISOString(), details: `${plan} plan; ${entitlement.slaHours}h SLA` }) });
+    return json({ data: (await response.json() as unknown[])[0] || ticket, requestId: crypto.randomUUID() }, 201);
+  }
+  if (!ticketId || access.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can update support tickets.', 403);
+  let input: { status?: string; assignedTo?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const statuses = new Set(['open', 'in_progress', 'waiting_on_customer', 'resolved']);
+  if (!input.status || !statuses.has(input.status)) return apiError('VALIDATION_ERROR', 'Unsupported support ticket status.', 422);
+  const now = new Date().toISOString();
+  const update = { status: input.status, assigned_to: typeof input.assignedTo === 'string' ? input.assignedTo.trim() || null : undefined, ...(input.status === 'resolved' ? { resolved_at: now } : {}), updated_at: now };
+  const response = await supabaseRequest(`support_tickets?id=eq.${encodeURIComponent(ticketId)}&workspace_id=eq.${encodeURIComponent(access.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify(update) });
+  if (!response.ok) return apiError('SERVICE_UNAVAILABLE', 'Support ticket could not be updated.', 503);
+  return json({ data: (await response.json() as unknown[])[0] || null, requestId: crypto.randomUUID() });
 }
 
 async function getSupabaseUser(request: Request, env: Env): Promise<SupabaseWorkspaceUser | Response> {
@@ -1561,7 +1625,7 @@ async function getSupabaseUser(request: Request, env: Env): Promise<SupabaseWork
       assignedProfileIds = Array.isArray(memberships[0].assigned_profile_ids) ? memberships[0].assigned_profile_ids.filter((id): id is string => typeof id === 'string') : [];
     }
   }
-  return { id: workspaceId, email: user.email, emailConfirmed: Boolean(user.email_confirmed_at || user.user_metadata?.email_verified === true), role, assignedProfileIds };
+  return { id: workspaceId, authUserId: user.id, email: user.email, emailConfirmed: Boolean(user.email_confirmed_at || user.user_metadata?.email_verified === true), role, assignedProfileIds };
 }
 
 async function issueApiKey(request: Request, env: Env): Promise<Response> {
@@ -2231,6 +2295,15 @@ export default {
     if (url.pathname === '/api/public/abuse-reports') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await submitPublicAbuseReport(request, env); } catch (error) { return internalApiError('Abuse report submission failed', error, 'Report submission failed.'); }
+    }
+    if (url.pathname === '/api/support/tickets') {
+      if (!['GET', 'POST'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await handleSupportTickets(request, env); } catch (error) { return internalApiError('Support ticket request failed', error, 'Support request failed.'); }
+    }
+    if (url.pathname.startsWith('/api/support/tickets/')) {
+      const ticketId = url.pathname.split('/').pop() || '';
+      if (request.method !== 'PATCH' && request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await handleSupportTickets(request, env, ticketId); } catch (error) { return internalApiError('Support ticket mutation failed', error, 'Support ticket update failed.'); }
     }
     if (url.pathname === '/api/webhooks') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

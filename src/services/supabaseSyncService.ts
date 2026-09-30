@@ -75,8 +75,22 @@ export async function loadCloudState(): Promise<CloudState | null> {
   if (membershipError) throw membershipError;
   const workspaceId = membershipRow?.workspace_id || authData.user.id;
 
+  // Retention is enforced at the persistence boundary as well as in the
+  // dashboard aggregator. Never hydrate analytics older than the workspace's
+  // entitled history window into the client.
+  const { data: workspaceData, error: workspaceError } = await supabase
+    .from('workspaces')
+    .select('id,name,plan,settings,billing_cycle,subscription_status,current_period_start,current_period_end,cancel_at_period_end,trial_ends_at,provider_customer_id,provider_subscription_id')
+    .eq('id', workspaceId)
+    .single();
+  if (workspaceError || !workspaceData) throw workspaceError || new Error('Workspace not found.');
+  const subscriptionExpired = workspaceData.subscription_status === 'canceled'
+    && workspaceData.current_period_end
+    && workspaceData.current_period_end < new Date().toISOString();
+  const historyDays = subscriptionExpired ? 7 : workspaceData.plan === 'agency' ? 730 : workspaceData.plan === 'pro' ? 365 : 7;
+  const analyticsSince = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString();
+
   const [
-    { data: workspaceData, error: workspaceError },
     { data: profileRows, error: profileError },
     { data: analyticsRows, error: analyticsError },
     { data: submissionRows, error: submissionsError },
@@ -92,9 +106,8 @@ export async function loadCloudState(): Promise<CloudState | null> {
     { data: subscriberRows, error: subscribersError },
     { data: memberRows, error: membersError },
   ] = await Promise.all([
-    supabase.from('workspaces').select('id,name,plan,settings,billing_cycle,subscription_status,current_period_start,current_period_end,cancel_at_period_end,trial_ends_at,provider_customer_id,provider_subscription_id').eq('id', workspaceId).single(),
     supabase.from('profiles').select('id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id').eq('workspace_id', workspaceId).order('created_at'),
-    supabase.from('analytics_events').select('*').eq('workspace_id', workspaceId),
+    supabase.from('analytics_events').select('*').eq('workspace_id', workspaceId).gte('occurred_at', analyticsSince),
     supabase.from('form_submissions').select('*').eq('workspace_id', workspaceId),
     supabase.from('audit_logs').select('*').eq('workspace_id', workspaceId).order('occurred_at', { ascending: false }).limit(500),
     supabase.from('abuse_reports').select('*').eq('workspace_id', workspaceId),
@@ -108,8 +121,8 @@ export async function loadCloudState(): Promise<CloudState | null> {
     supabase.from('subscribers').select('*').eq('workspace_id', workspaceId),
     supabase.from('workspace_members').select('id,email,name,role,assigned_profile_ids,status,added_by,invite_expires_at,created_at').eq('workspace_id', workspaceId).in('status', ['pending', 'active']).order('created_at', { ascending: true }),
   ]);
-  const firstError = workspaceError || profileError || analyticsError || submissionsError || auditError || reportsError || themesError || brandKitError || designThemesError || layoutsError || themeVersionsError || apiKeysError || webhooksError || subscribersError || membersError;
-  if (firstError || !workspaceData) throw firstError;
+  const firstError = profileError || analyticsError || submissionsError || auditError || reportsError || themesError || brandKitError || designThemesError || layoutsError || themeVersionsError || apiKeysError || webhooksError || subscribersError || membersError;
+  if (firstError) throw firstError;
   const assignedProfileIds = Array.isArray(membershipRow?.assigned_profile_ids)
     ? membershipRow.assigned_profile_ids.filter((id): id is string => typeof id === 'string')
     : [];

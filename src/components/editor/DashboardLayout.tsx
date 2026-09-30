@@ -9,6 +9,7 @@ const CustomDomainManager = lazy(() => import('../growth/CustomDomainManager').t
 const MultiProfileManager = lazy(() => import('../growth/MultiProfileManager').then(module => ({ default: module.MultiProfileManager })));
 const BillingSettings = lazy(() => import('../billing/BillingSettings').then(module => ({ default: module.BillingSettings })));
 const ApiExplorer = lazy(() => import('../developer/ApiExplorer').then(module => ({ default: module.ApiExplorer })));
+const SupportInbox = lazy(() => import('../support/SupportInbox').then(module => ({ default: module.SupportInbox })));
 const AdminSafetyConsole = lazy(() => import('../admin/AdminSafetyConsole').then(module => ({ default: module.AdminSafetyConsole })));
 import { 
   Sliders, 
@@ -20,6 +21,7 @@ import {
   CreditCard, 
   Terminal, 
   Shield,
+  LifeBuoy,
   ExternalLink,
   LogOut,
   Users,
@@ -49,6 +51,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     { id: 'settings' as const, label: 'Custom Domain', icon: <Globe className="w-4 h-4" /> },
     { id: 'billing' as const, label: 'Plans & Billing', icon: <CreditCard className="w-4 h-4" /> },
     { id: 'api' as const, label: 'API & Webhooks', icon: <Terminal className="w-4 h-4" /> },
+    { id: 'support' as const, label: 'Support', icon: <LifeBuoy className="w-4 h-4" /> },
     { id: 'admin' as const, label: 'Trust & Safety', icon: <Shield className="w-4 h-4" /> },
   ];
 
@@ -174,6 +177,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           {currentView === 'settings' && <CustomDomainManager />}
           {currentView === 'billing' && <BillingSettings />}
           {currentView === 'api' && <ApiExplorer />}
+          {currentView === 'support' && <SupportInbox />}
           {currentView === 'admin' && <AdminSafetyConsole />}
         </Suspense>
       </main>

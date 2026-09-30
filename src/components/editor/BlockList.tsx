@@ -61,6 +61,8 @@ export const BlockList: React.FC<BlockListProps> = ({
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
   const [dropPosition, setDropPosition] = React.useState<'before' | 'after' | null>(null);
+  const touchDragRef = useRef<{ index: number; pointerId: number } | null>(null);
+  const touchDropRef = useRef<{ index: number; position: 'before' | 'after' } | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -182,6 +184,53 @@ export const BlockList: React.FC<BlockListProps> = ({
     setDragOverIndex(null);
     setDropPosition(null);
   };
+
+  // HTML5 drag events do not consistently fire on mobile browsers. Keep the
+  // same reorder semantics with a pointer gesture started from the grip.
+  const handlePointerDown = (e: React.PointerEvent, index: number) => {
+    if (e.pointerType === 'mouse' || onReorder === undefined) return;
+    e.preventDefault();
+    touchDragRef.current = { index, pointerId: e.pointerId };
+    touchDropRef.current = null;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDraggedIndex(index);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const drag = touchDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-block-index]');
+    const targetIndex = target ? Number(target.dataset.blockIndex) : NaN;
+    if (!target || !Number.isInteger(targetIndex) || targetIndex === drag.index) {
+      touchDropRef.current = null;
+      setDragOverIndex(null);
+      setDropPosition(null);
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const position = e.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+    touchDropRef.current = { index: targetIndex, position };
+    setDragOverIndex(targetIndex);
+    setDropPosition(position);
+  };
+
+  const handlePointerEnd = (e: React.PointerEvent) => {
+    const drag = touchDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const drop = touchDropRef.current;
+    if (drop && onReorder) {
+      let toIndex = drop.index;
+      if (drop.position === 'after' && drag.index > drop.index) toIndex += 1;
+      if (drop.position === 'before' && drag.index < drop.index) toIndex -= 1;
+      if (toIndex >= 0 && toIndex < blocks.length && toIndex !== drag.index) onReorder(drag.index, toIndex);
+    }
+    touchDragRef.current = null;
+    touchDropRef.current = null;
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    setDropPosition(null);
+  };
   const getBlockIcon = (type: BlockType) => {
     const props = { className: 'w-4 h-4' };
     switch (type) {
@@ -223,6 +272,7 @@ export const BlockList: React.FC<BlockListProps> = ({
         return (
           <div
             key={block.id}
+            data-block-index={index}
             draggable
             onDragStart={(e) => handleDragStart(e, index)}
             onDragOver={(e) => handleDragOver(e, index)}
@@ -250,8 +300,12 @@ export const BlockList: React.FC<BlockListProps> = ({
             <div className="flex items-center gap-2">
               {/* Dedicated Drag Grip Handle */}
               <div 
-                className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-subtle hover:text-body transition-colors shrink-0"
+                className="cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 text-subtle hover:text-body transition-colors shrink-0"
                 title="Drag to reorder"
+                onPointerDown={(e) => handlePointerDown(e, index)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerEnd}
+                onPointerCancel={handlePointerEnd}
               >
                 <GripVertical className="w-4 h-4" />
               </div>
