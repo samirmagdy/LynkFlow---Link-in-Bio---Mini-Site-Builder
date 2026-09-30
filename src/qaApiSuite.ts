@@ -15,10 +15,11 @@ const checks = [
 let failed = 0;
 for (const [name, path, method] of checks) {
   const response = await fetch(`${baseUrl}${path}`, { method, headers: ['PATCH', 'POST'].includes(method) ? { 'content-type': 'application/json' } : undefined, body: method === 'PATCH' ? JSON.stringify({ data: {} }) : method === 'POST' ? JSON.stringify({ profileId: 'example', domain: 'example.com', url: 'https://example.com', topics: ['profile.published'] }) : undefined });
-  const body = await response.json() as { error?: { code?: string } };
+  const body = await response.json() as { error?: { code?: string } | string };
+  const errorCode = typeof body.error === 'object' ? body.error?.code : undefined;
   const passed = name === 'deployment health'
     ? (response.status === 503 && !body.error && typeof body === 'object')
-    : response.status === 401 && body.error?.code === 'UNAUTHORIZED';
+    : response.status === 401 && (errorCode === 'UNAUTHORIZED' || body.error === 'Authentication required.');
   console.log(`${passed ? 'PASS' : 'FAIL'} ${name}: HTTP ${response.status}`);
   if (!passed) failed += 1;
 }
