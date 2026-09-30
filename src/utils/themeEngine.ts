@@ -12,6 +12,12 @@ const isSafeHexColor = (value: unknown): value is string => typeof value === 'st
 
 const safeColor = (value: unknown, fallback: string): string => isSafeHexColor(value) ? String(value).trim() : fallback;
 
+const readableTextOn = (preferred: string, background: string, minimum = 4.5): string => {
+  const candidates = [preferred, '#000000', '#FFFFFF'].filter((value, index, values) => values.indexOf(value) === index);
+  return candidates.find(candidate => calculateContrastRatio(candidate, background) >= minimum)
+    || (calculateContrastRatio('#FFFFFF', background) >= calculateContrastRatio('#000000', background) ? '#FFFFFF' : '#000000');
+};
+
 const safeFontStack = (value: unknown, fallback: string): string => {
   if (typeof value !== 'string' || value.length > 180 || /url\s*\(|@import|[;<>]/i.test(value)) return fallback;
   const familyNames = value.split(',').map(part => part.trim().replace(/^['"]|['"]$/g, ''));
@@ -429,8 +435,10 @@ export function normalizeTheme(raw: any): StandardTheme {
   const surfaceRaised = safeColor(colors.surfaceRaised, panelBg);
   const border = safeColor(colors.border || colors.borderSubtle || raw.cardBorder, '#30394D');
   const cardBg = safeColor(colors.cardBg || colors.panelBackground || colors.surfaceRaised || raw.cardBg, panelBg);
-  const cardTextColor = safeColor(colors.cardTextColor || raw.cardTextColor, calculateContrastRatio(primaryText, cardBg) >= 4.0 ? primaryText : (calculateContrastRatio('#FFFFFF', cardBg) >= calculateContrastRatio('#000000', cardBg) ? '#FFFFFF' : '#000000'));
-  const cardSubtitleColor = safeColor(colors.cardSubtitleColor || raw.cardSubtitleColor, secondaryText);
+  const cardTextColor = readableTextOn(safeColor(colors.cardTextColor || raw.cardTextColor, primaryText), cardBg, 4.5);
+  // Form labels, help text and consent copy render on the card surface. Do not
+  // inherit a page-secondary color when it becomes unreadable on a light card.
+  const cardSubtitleColor = readableTextOn(safeColor(colors.cardSubtitleColor || raw.cardSubtitleColor, secondaryText), cardBg, 4.5);
   const cardBorder = safeColor(colors.cardBorder || raw.cardBorder, border);
   const focusRing = safeColor(colors.focusRing, '#A5B4FC');
   const surfaceMuted = safeColor(colors.surfaceMuted, pageBg);
@@ -761,6 +769,9 @@ export function toLegacyCompatTheme(theme: StandardTheme): ThemeConfig {
 export function compileThemeToCssVariables(theme: StandardTheme): Record<string, string> {
   const { colors, typography, shape, spacing, elevation, motion } = theme.tokens;
   const layout = theme.layout || { maxWidth: '680px' };
+  const cardBackground = safeColor(theme.cards?.background || colors.cardBg || colors.panelBackground, colors.panelBackground);
+  const cardText = readableTextOn(safeColor(theme.cards?.text || colors.cardTextColor || colors.primaryText, colors.primaryText), cardBackground, 4.5);
+  const cardSubtitle = readableTextOn(colors.cardSubtitleColor || colors.secondaryText, cardBackground, 4.5);
 
   return {
     '--theme-page-bg': colors.pageBackground,
@@ -818,8 +829,8 @@ export function compileThemeToCssVariables(theme: StandardTheme): Record<string,
     ,'--theme-button-border': theme.buttons?.border || colors.border
     ,'--theme-button-height': `${theme.buttons?.height || 56}px`
     ,'--theme-button-blur': `${theme.buttons?.blur || 0}px`
-    ,'--theme-card-bg': theme.cards?.background || colors.cardBg || colors.panelBackground
-    ,'--theme-card-text': theme.cards?.text || colors.cardTextColor || colors.primaryText
+    ,'--theme-card-bg': cardBackground
+    ,'--theme-card-text': cardText
     ,'--theme-card-border': theme.cards?.border || colors.cardBorder || colors.border
     ,'--theme-card-radius-explicit': `${theme.cards?.radius ?? shape.cardRadius}px`
     ,'--theme-card-shadow': theme.cards?.shadow || elevation.card
@@ -828,7 +839,7 @@ export function compileThemeToCssVariables(theme: StandardTheme): Record<string,
     // contrasts correctly on both light (white card) and dark panel themes.
     // Falls back to the theme's secondaryText, then to a 65%-opacity blend of
     // card-text against card-bg so it's always readable without theme authoring.
-    ,'--theme-card-subtitle': colors.secondaryText || `color-mix(in srgb, var(--theme-card-text) 65%, var(--theme-card-bg))`
+    ,'--theme-card-subtitle': cardSubtitle
     ,'--theme-social-color': theme.socialIcons?.color || colors.primaryText
     ,'--theme-social-size': `${theme.socialIcons?.size || 36}px`
     ,'--theme-surface-blur': `${theme.effects?.blur || 0}px`
