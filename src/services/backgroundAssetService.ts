@@ -35,6 +35,17 @@ export interface BackgroundAsset {
   createdAt: string;
 }
 
+export interface RemoteBackgroundAssetInput {
+  id: number;
+  kind: 'image' | 'video';
+  assetUrl: string;
+  sourceUrl?: string | null;
+  photographer?: string | null;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+}
+
 const inspectMediaFile = (file: File): Promise<{ width: number; height: number; durationSeconds?: number }> => new Promise((resolve, reject) => {
   const url = URL.createObjectURL(file);
   const isVideo = file.type.startsWith('video/');
@@ -163,10 +174,57 @@ export async function listBackgroundAssets(profileId?: string): Promise<Backgrou
   }));
 }
 
+/** Register a remote provider asset so a selected Pexels result is durable and reusable. */
+export async function registerRemoteBackgroundAsset(input: RemoteBackgroundAssetInput, profileId: string): Promise<BackgroundAsset> {
+  if (!supabase) throw new Error('Supabase Storage is not configured.');
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('Sign in before saving a remote background asset.');
+  if (!input.assetUrl || !input.id || !profileId) throw new Error('The selected background asset is incomplete.');
+
+  const storagePath = `pexels:${input.kind}:${input.id}`;
+  const row = {
+    id: storagePath,
+    workspace_id: userData.user.id,
+    profile_id: profileId,
+    storage_path: storagePath,
+    asset_url: input.assetUrl,
+    kind: input.kind,
+    mime_type: input.kind === 'video' ? 'video/mp4' : 'image/jpeg',
+    byte_size: 0,
+    width: input.width || null,
+    height: input.height || null,
+    duration_seconds: input.durationSeconds || null,
+    source: 'pexels',
+    source_url: input.sourceUrl || 'https://www.pexels.com',
+    photographer: input.photographer || 'Pexels creator',
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('background_assets').upsert(row, { onConflict: 'storage_path' }).select('*').single();
+  if (error || !data) throw new Error(error?.message || 'Remote background asset could not be saved.');
+  return {
+    id: data.id,
+    profileId: data.profile_id,
+    storagePath: data.storage_path,
+    assetUrl: data.asset_url,
+    kind: data.kind,
+    mimeType: data.mime_type,
+    byteSize: Number(data.byte_size || 0),
+    width: data.width,
+    height: data.height,
+    durationSeconds: data.duration_seconds,
+    source: data.source,
+    sourceUrl: data.source_url,
+    photographer: data.photographer,
+    createdAt: data.created_at,
+  };
+}
+
 export async function removeBackgroundAsset(assetId: string): Promise<void> {
-  if (!supabase || !assetId || assetId.startsWith('pexels:')) return;
-  const { error } = await supabase.storage.from(BUCKET).remove([assetId]);
-  if (error) throw new Error(error.message || 'Background asset removal failed.');
+  if (!supabase || !assetId) return;
+  if (!assetId.startsWith('pexels:')) {
+    const { error } = await supabase.storage.from(BUCKET).remove([assetId]);
+    if (error) throw new Error(error.message || 'Background asset removal failed.');
+  }
   const { error: metadataError } = await supabase.from('background_assets').delete().eq('storage_path', assetId);
   if (metadataError) throw new Error(metadataError.message || 'Background asset metadata removal failed.');
 }

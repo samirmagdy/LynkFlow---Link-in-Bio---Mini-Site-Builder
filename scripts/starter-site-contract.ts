@@ -27,6 +27,11 @@ for (const template of PERSONA_TEMPLATES) {
   if (composition?.starterSiteId !== template.id || composition.includesStarterContent !== true || composition.changesContent !== true || composition.changesLayout !== true) {
     throw new Error(`Starter site ${template.id} does not produce explicit composition metadata.`);
   }
+
+  const serialized = JSON.stringify(template);
+  if (/example\.com|your-name|your-business|your-release|your-artist-name|hello@example|\$0\.00/i.test(serialized)) {
+    throw new Error(`Starter site ${template.id} contains a fake destination or placeholder identity.`);
+  }
 }
 
 console.log(`Starter-site contract passed: ${PERSONA_TEMPLATES.length} catalog entries with explicit content/theme/layout composition.`);

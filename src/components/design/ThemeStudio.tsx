@@ -36,7 +36,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { ANIME_ENTRANCE_PRESETS, AnimeEntrancePreset } from '../../utils/animeAnimations';
-import { uploadBackgroundAsset, removeBackgroundAsset, listBackgroundAssets, BackgroundAsset } from '../../services/backgroundAssetService';
+import { uploadBackgroundAsset, removeBackgroundAsset, listBackgroundAssets, registerRemoteBackgroundAsset, BackgroundAsset } from '../../services/backgroundAssetService';
 import { extractImageAccentGradient } from '../../utils/imageAccent';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
 import { Dialog } from '../common/Dialog';
@@ -317,6 +317,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ThemeConfirmRequest | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [presetSaveError, setPresetSaveError] = useState<string | null>(null);
   const [previewTheme, setPreviewTheme] = useState<StandardTheme | null>(null);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
@@ -324,6 +325,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [pexelsQuery, setPexelsQuery] = useState('abstract background');
   const [pexelsResults, setPexelsResults] = useState<PexelsMedia[]>([]);
   const [isSearchingPexels, setIsSearchingPexels] = useState(false);
+  const [isApplyingPexels, setIsApplyingPexels] = useState(false);
   const [pexelsError, setPexelsError] = useState<string | null>(null);
   const [backgroundAssets, setBackgroundAssets] = useState<BackgroundAsset[]>([]);
   const [isLoadingBackgroundAssets, setIsLoadingBackgroundAssets] = useState(false);
@@ -676,18 +678,36 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }
   };
 
-  const applyPexelsMedia = (media: PexelsMedia) => {
-    updateStandardTheme(prev => ({
-      ...prev,
-      background: {
-        ...prev.background,
-        type: media.kind,
-        assetId: `pexels:${media.id}`,
+  const applyPexelsMedia = async (media: PexelsMedia) => {
+    setPexelsError(null);
+    setIsApplyingPexels(true);
+    try {
+      const asset = await registerRemoteBackgroundAsset({
+        id: media.id,
+        kind: media.kind,
         assetUrl: media.assetUrl,
-        overlay: Math.max(prev.background.overlay ?? 0, 0.28),
-        fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
-      }
-    }));
+        sourceUrl: media.sourceUrl,
+        photographer: media.photographer,
+        width: media.width,
+        height: media.height,
+      }, activeProfile.id);
+      updateStandardTheme(prev => ({
+        ...prev,
+        background: {
+          ...prev.background,
+          type: asset.kind,
+          assetId: asset.storagePath,
+          assetUrl: asset.assetUrl,
+          overlay: Math.max(prev.background.overlay ?? 0, 0.28),
+          fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
+        }
+      }));
+      setBackgroundAssets(await listBackgroundAssets(activeProfile.id));
+    } catch (error) {
+      setPexelsError(error instanceof Error ? error.message : 'Pexels background could not be saved.');
+    } finally {
+      setIsApplyingPexels(false);
+    }
   };
 
   const handleUpdateLayout = (key: keyof NonNullable<StandardTheme['layout']>, value: string | boolean) => {
@@ -835,12 +855,27 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }));
   };
 
-  const handleSaveCustom = (e: React.FormEvent) => {
+  const handleSaveCustom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (customPresetName.trim()) {
-      saveCustomPreset(customPresetName.trim());
-      setCustomPresetName('');
-      setShowSaveModal(false);
+      setPresetSaveError(null);
+      try {
+        await saveCustomPreset(customPresetName.trim());
+        setCustomPresetName('');
+        setShowSaveModal(false);
+      } catch (error) {
+        setPresetSaveError(error instanceof Error ? error.message : 'Custom preset could not be saved.');
+      }
+    }
+  };
+
+  const duplicateCurrentPreset = async () => {
+    setPresetSaveError(null);
+    try {
+      await saveCustomPreset(`${standardTheme.name} Copy`);
+      setIsMoreActionsOpen(false);
+    } catch (error) {
+      setPresetSaveError(error instanceof Error ? error.message : 'Custom preset could not be saved.');
     }
   };
 
@@ -879,10 +914,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       starterSiteId: template.id,
       category: template.category,
       bio: prev.bio && !prev.bio.toLowerCase().includes('welcome to my') ? prev.bio : template.bio,
-      socialLinks: template.socialLinks.map((social, index) => ({
+        socialLinks: template.socialLinks.map((social, index) => ({
         id: `persona-social-${stamp}-${index}`,
         platform: social.platform,
-        url: social.platform === 'email' ? 'mailto:hello@example.com' : `https://${social.platform === 'twitter' ? 'x.com' : `${social.platform}.com`}/your-name`,
+        url: '',
         active: true
       })),
       tabs: [{
@@ -1035,7 +1070,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <button type="button" onClick={exportThemeJson} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><Download className="h-3.5 w-3.5" /> Export theme JSON</button>
                   <button type="button" onClick={() => themeImportRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><Upload className="h-3.5 w-3.5" /> Import theme JSON</button>
                   <button type="button" onClick={() => { resetThemeToPublished(); setIsMoreActionsOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><RotateCcw className="h-3.5 w-3.5" /> Reset unsaved theme</button>
-                  <button type="button" onClick={() => { saveCustomPreset(`${standardTheme.name} Copy`); setIsMoreActionsOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><BookmarkPlus className="h-3.5 w-3.5" /> Duplicate as preset</button>
+                <button type="button" onClick={() => void duplicateCurrentPreset()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors"><BookmarkPlus className="h-3.5 w-3.5" /> Duplicate as preset</button>
                 </div>
               )}
             </div>
@@ -1047,6 +1082,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           <div role="status" className="flex items-start gap-2 rounded-xl border border-success/30 bg-success-surface px-3 py-2 text-xs text-success">
             <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{actionFeedback}</span>
+          </div>
+        )}
+        {presetSaveError && !showSaveModal && (
+          <div role="alert" className="rounded-xl border border-danger/30 bg-danger-surface px-3 py-2 text-xs text-danger">
+            {presetSaveError}
           </div>
         )}
         {themeImportError && (
@@ -1882,7 +1922,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="https://example.com/background.mp4"
+                    placeholder="Paste a video URL or upload a file"
                     value={standardTheme.background.assetUrl || ''}
                     onChange={(e) => handleUpdateBackground('assetUrl', e.target.value)}
                     className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
@@ -1903,7 +1943,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder={standardTheme.background.type === 'video' ? 'https://example.com/mobile-background.mp4' : 'https://images.example.com/mobile-background.webp'}
+                      placeholder={standardTheme.background.type === 'video' ? 'Paste a mobile video URL or upload a file' : 'Paste a mobile image URL or upload a file'}
                       value={standardTheme.background.mobileAssetUrl || ''}
                       onChange={(e) => handleUpdateBackground('mobileAssetUrl', e.target.value)}
                       className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"
@@ -1945,7 +1985,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   {pexelsResults.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Pexels background results">
                       {pexelsResults.map(media => (
-                        <button key={`${media.kind}-${media.id}`} type="button" onClick={() => applyPexelsMedia(media)} className="group relative overflow-hidden rounded-lg border border-line bg-surface text-left focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button key={`${media.kind}-${media.id}`} type="button" onClick={() => void applyPexelsMedia(media)} disabled={isApplyingPexels} className="group relative overflow-hidden rounded-lg border border-line bg-surface text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-wait disabled:opacity-60">
                           {media.kind === 'video' ? <video src={media.assetUrl} poster={media.thumbnail || undefined} muted playsInline preload="metadata" className="h-20 w-full object-cover" /> : <img src={media.thumbnail || media.assetUrl} alt={`Photo by ${media.photographer} on Pexels`} loading="lazy" className="h-20 w-full object-cover" />}
                           <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-1 text-[9px] text-white">Photo by {media.photographer}</span>
                         </button>
@@ -2644,6 +2684,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
               <p className="text-xs text-muted">
                 Saves the theme, layout reference, brand-kit reference, and block variants. Applying it changes appearance and layout only; it does not replace profile content or blocks.
               </p>
+              {presetSaveError && <p role="alert" className="rounded-lg border border-danger/30 bg-danger-surface px-3 py-2 text-xs text-danger">{presetSaveError}</p>}
               <form onSubmit={handleSaveCustom} className="space-y-3">
                 <label htmlFor="custom-preset-name" className="sr-only">Preset name</label>
                 <input

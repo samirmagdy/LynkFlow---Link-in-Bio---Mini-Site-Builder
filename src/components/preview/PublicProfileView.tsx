@@ -738,13 +738,21 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   return (
                     <a
                       key={block.id}
-                      href={linkHref || '#'}
+                      href={linkHref || undefined}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(e) => handleLinkClick(block.id, linkHref || '', e)}
+                      aria-disabled={!linkHref || undefined}
+                      title={!linkHref ? 'This destination still needs to be configured.' : undefined}
+                      onClick={(e) => {
+                        if (!linkHref) {
+                          e.preventDefault();
+                          return;
+                        }
+                        handleLinkClick(block.id, linkHref, e);
+                      }}
                       onMouseEnter={(e) => legacyTheme.animeMicroInteractions !== false && animateHoverEnter(e.currentTarget)}
                       onMouseLeave={(e) => legacyTheme.animeMicroInteractions !== false && animateHoverLeave(e.currentTarget)}
-                      className="p-4 cursor-pointer flex items-center justify-between group relative transition-all duration-200 overflow-hidden outline-none focus-visible:ring-3 focus-visible:ring-[var(--theme-focus-ring)]"
+                      className={`p-4 flex items-center justify-between group relative transition-all duration-200 overflow-hidden outline-none focus-visible:ring-3 focus-visible:ring-[var(--theme-focus-ring)] ${linkHref ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
                       style={{
                         backgroundColor: block.style?.backgroundColor || (
                           linkVariant === 'outline' ? 'transparent'
@@ -927,7 +935,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 const productHref = safePublicHref(payload.url);
                 const productImageHref = safePublicHref(payload.image);
                 return (
-                  <a key={block.id} href={productHref || '#'} target="_blank" rel="noopener noreferrer" className={`${cardClasses} overflow-hidden block`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
+                  <a key={block.id} href={productHref || undefined} target="_blank" rel="noopener noreferrer" aria-disabled={!productHref || undefined} title={!productHref ? 'This product destination still needs to be configured.' : undefined} className={`${cardClasses} overflow-hidden block ${productHref ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
                     {productImageHref && <img src={productImageHref} alt={block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px) var(--theme-card-radius, 16px) 0 0' }} />}
                     <div className="p-4"><div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-sm">{block.title}</h4>{payload.price && <span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || '$'} {payload.price}</span>}</div>{payload.description && <p className="text-xs mt-1" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{payload.description}</p>}<span className="inline-flex mt-3 text-xs font-semibold" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.buttonLabel || 'View product'} <ExternalLink className="w-3 h-3 ml-1" /></span></div>
                   </a>
@@ -1031,11 +1039,20 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                         {payload.items.map((item, itemIdx) => (
                           <a
                             key={item.id || `${block.id}-folder-${itemIdx}`}
-                            href={safePublicHref(item.url) || '#'}
+                            href={safePublicHref(item.url) || undefined}
                             target="_blank"
                             rel="noopener noreferrer"
-                            onClick={(e) => handleLinkClick(block.id, safePublicHref(item.url) || '', e)}
-                            className="p-2.5 rounded-lg flex items-center justify-between text-xs cursor-pointer hover:opacity-90 transition-opacity"
+                            aria-disabled={!safePublicHref(item.url) || undefined}
+                            title={!safePublicHref(item.url) ? 'This destination still needs to be configured.' : undefined}
+                            onClick={(e) => {
+                              const itemHref = safePublicHref(item.url);
+                              if (!itemHref) {
+                                e.preventDefault();
+                                return;
+                              }
+                              handleLinkClick(block.id, itemHref, e);
+                            }}
+                            className={`p-2.5 rounded-lg flex items-center justify-between text-xs transition-opacity ${safePublicHref(item.url) ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed opacity-70'}`}
                             style={{
                               backgroundColor: 'rgba(255, 255, 255, 0.05)',
                               border: `1px solid var(--theme-border, #30394D)`

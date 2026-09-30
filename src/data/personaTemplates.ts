@@ -69,8 +69,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     fields: ['Display name', 'Bio', 'Avatar', 'Social links', 'Featured media', 'Portfolio links', 'Contact form', 'SEO title'],
     socialLinks: [{ platform: 'instagram' }, { platform: 'youtube' }, { platform: 'tiktok' }, { platform: 'email' }],
     blocks: [
-      { type: 'media', title: 'Featured reel or project', payload: { mediaType: 'video', url: 'https://example.com/your-featured-reel', caption: 'Add your strongest project here.', aspectRatio: '16:9' } },
-      { type: 'link', title: 'View my portfolio', payload: { url: 'https://example.com/portfolio', subtitle: 'Selected work, case studies, and collaborations', highlightBadge: 'Featured', animation: 'none', openInNewTab: true } },
+      { type: 'media', title: 'Featured reel or project', payload: { mediaType: 'video', url: '', caption: 'Add your strongest project here.', aspectRatio: '16:9' } },
+      { type: 'link', title: 'View my portfolio', payload: { url: '', subtitle: 'Selected work, case studies, and collaborations', highlightBadge: 'Featured', animation: 'none', openInNewTab: true } },
       { type: 'gallery', title: 'Selected work', payload: { items: [], columns: 2 } },
       { type: 'form', title: 'Work with me', payload: { formType: 'contact', description: 'Tell me about your project and timeline.', fields: [{ id: 'name', label: 'Your name', type: 'text', required: true }, { id: 'email', label: 'Email', type: 'email', required: true }, { id: 'message', label: 'Project details', type: 'textarea', required: true }], submitButtonText: 'Send inquiry', successMessage: 'Thanks — your inquiry has been received.' } }
     ]
@@ -87,7 +87,7 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     socialLinks: [{ platform: 'linkedin' }, { platform: 'instagram' }, { platform: 'youtube' }, { platform: 'email' }],
     blocks: [
       { type: 'text', title: 'What I help with', payload: { textType: 'h2', content: 'Clarity, strategy, and practical next steps.', alignment: 'left' } },
-      { type: 'link', title: 'Book a discovery call', payload: { url: 'https://cal.com/your-name', subtitle: 'A focused 30-minute conversation to see if we fit', highlightBadge: 'Start here', animation: 'none', openInNewTab: true } },
+      { type: 'link', title: 'Book a discovery call', payload: { url: '', subtitle: 'A focused 30-minute conversation to see if we fit', highlightBadge: 'Start here', animation: 'none', openInNewTab: true } },
       { type: 'testimonial', title: 'Client result', payload: { quote: 'Add a short, specific result from a client or partner.', authorName: 'Client name', authorRole: 'Role or company' } },
       { type: 'form', title: 'Tell me what you need', payload: { formType: 'lead', description: 'Share a little context and I will follow up.', fields: [{ id: 'name', label: 'Your name', type: 'text', required: true }, { id: 'email', label: 'Work email', type: 'email', required: true }, { id: 'goal', label: 'What would you like help with?', type: 'textarea', required: true }], submitButtonText: 'Start the conversation', successMessage: 'Thanks — I will be in touch soon.' } }
     ]
@@ -103,10 +103,10 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     fields: ['Business name', 'Short description', 'Location', 'Avatar or logo', 'Social links', 'Featured product', 'Store link', 'FAQ', 'Contact details'],
     socialLinks: [{ platform: 'instagram' }, { platform: 'linkedin' }, { platform: 'tiktok' }, { platform: 'email' }],
     blocks: [
-      { type: 'product', title: 'Featured product', payload: { description: 'Add your best-selling product or current offer.', price: '$0.00', currency: 'USD', url: 'https://example.com/shop', buttonLabel: 'Shop now' } },
-      { type: 'link', title: 'Shop everything', payload: { url: 'https://example.com/shop', subtitle: 'Browse the full collection', highlightBadge: 'Shop', animation: 'none', openInNewTab: true } },
+      { type: 'product', title: 'Featured product', payload: { description: 'Add your best-selling product or current offer.', price: '', currency: 'USD', url: '', buttonLabel: 'Shop now' } },
+      { type: 'link', title: 'Shop everything', payload: { url: '', subtitle: 'Browse the full collection', highlightBadge: 'Shop', animation: 'none', openInNewTab: true } },
       { type: 'faq', title: 'Before you order', payload: { items: [{ id: 'shipping', question: 'How long does delivery take?', answer: 'Add your shipping timeline here.' }, { id: 'returns', question: 'What is your returns policy?', answer: 'Add your returns policy here.' }] } },
-      { type: 'contact', title: 'Contact the shop', payload: { contactType: 'email', value: 'hello@example.com', presetSubject: 'Customer question' } }
+      { type: 'contact', title: 'Contact the shop', payload: { contactType: 'email', value: '', presetSubject: 'Customer question' } }
     ]
   },
   {
@@ -120,9 +120,9 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     fields: ['Artist name', 'Bio', 'Avatar or cover art', 'Social links', 'Featured release', 'Streaming links', 'Tour dates', 'Email signup'],
     socialLinks: [{ platform: 'instagram' }, { platform: 'tiktok' }, { platform: 'youtube' }, { platform: 'spotify' }],
     blocks: [
-      { type: 'media', title: 'Listen to the latest release', payload: { mediaType: 'audio', url: 'https://open.spotify.com/your-release', caption: 'Add your newest single, album, or playlist.', aspectRatio: '1:1' } },
-      { type: 'link', title: 'Stream everywhere', payload: { url: 'https://linktr.ee/your-artist-name', subtitle: 'Spotify, Apple Music, YouTube, and more', highlightBadge: 'New release', animation: 'pulseGlow', openInNewTab: true } },
-      { type: 'link', title: 'Upcoming shows', payload: { url: 'https://example.com/tour', subtitle: 'Tickets, dates, and venues', animation: 'none', openInNewTab: true } },
+      { type: 'media', title: 'Listen to the latest release', payload: { mediaType: 'audio', url: '', caption: 'Add your newest single, album, or playlist.', aspectRatio: '1:1' } },
+      { type: 'link', title: 'Stream everywhere', payload: { url: '', subtitle: 'Spotify, Apple Music, YouTube, and more', highlightBadge: 'New release', animation: 'pulseGlow', openInNewTab: true } },
+      { type: 'link', title: 'Upcoming shows', payload: { url: '', subtitle: 'Tickets, dates, and venues', animation: 'none', openInNewTab: true } },
       { type: 'emailSignup', title: 'Join the mailing list', payload: { formType: 'newsletter', description: 'Get new music and show announcements first.', fields: [{ id: 'email', label: 'Email address', type: 'email', required: true }], submitButtonText: 'Join the list', successMessage: 'You are on the list.' } }
     ]
   },
@@ -137,9 +137,9 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     fields: ['Business name', 'Service description', 'Profile image', 'Social links', 'Service menu', 'Results gallery', 'Booking link', 'Contact form'],
     socialLinks: [{ platform: 'instagram' }, { platform: 'linkedin' }, { platform: 'tiktok' }, { platform: 'email' }],
     blocks: [
-      { type: 'link', title: 'Book an appointment', payload: { url: 'https://cal.com/your-business', subtitle: 'Choose a service and a time that works for you', highlightBadge: 'Book now', animation: 'none', openInNewTab: true } },
+      { type: 'link', title: 'Book an appointment', payload: { url: '', subtitle: 'Choose a service and a time that works for you', highlightBadge: 'Book now', animation: 'none', openInNewTab: true } },
       { type: 'gallery', title: 'Recent work', payload: { items: [], columns: 2 } },
-      { type: 'folder', title: 'Services & pricing', payload: { description: 'Add your core services and starting prices.', items: [{ id: 'service-1', title: 'Signature service', url: 'https://example.com/services', subtitle: 'From $0' }], defaultOpen: true } },
+      { type: 'folder', title: 'Services & pricing', payload: { description: 'Add your core services and starting prices.', items: [{ id: 'service-1', title: 'Signature service', url: '', subtitle: 'Add starting price' }], defaultOpen: true } },
       { type: 'form', title: 'Ask a question', payload: { formType: 'contact', description: 'Not sure what to book? Send a message.', fields: [{ id: 'name', label: 'Your name', type: 'text', required: true }, { id: 'email', label: 'Email', type: 'email', required: true }, { id: 'message', label: 'How can we help?', type: 'textarea', required: true }], submitButtonText: 'Send message', successMessage: 'Thanks — we will reply soon.' } }
     ]
   },
@@ -155,8 +155,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     socialLinks: [{ platform: 'instagram' }, { platform: 'twitter' }, { platform: 'linkedin' }, { platform: 'email' }],
     blocks: [
       { type: 'text', title: 'Our mission', payload: { textType: 'h2', content: 'Small actions create a stronger community.', alignment: 'center' } },
-      { type: 'link', title: 'Support the work', payload: { url: 'https://example.com/donate', subtitle: 'Donate, volunteer, or share our mission', highlightBadge: 'Take action', animation: 'none', openInNewTab: true } },
-      { type: 'link', title: 'Current programs', payload: { url: 'https://example.com/programs', subtitle: 'See what is happening in your community', animation: 'none', openInNewTab: true } },
+      { type: 'link', title: 'Support the work', payload: { url: '', subtitle: 'Donate, volunteer, or share our mission', highlightBadge: 'Take action', animation: 'none', openInNewTab: true } },
+      { type: 'link', title: 'Current programs', payload: { url: '', subtitle: 'See what is happening in your community', animation: 'none', openInNewTab: true } },
       { type: 'form', title: 'Stay connected', payload: { formType: 'newsletter', description: 'Receive updates, events, and ways to help.', fields: [{ id: 'name', label: 'Your name', type: 'text', required: false }, { id: 'email', label: 'Email address', type: 'email', required: true }], submitButtonText: 'Keep me updated', successMessage: 'Thanks for joining us.' } }
     ]
   }

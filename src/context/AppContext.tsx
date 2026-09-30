@@ -195,7 +195,7 @@ interface AppContextType {
   canUndoTheme: boolean;
   canRedoTheme: boolean;
   rollbackToSnapshot: (snapshotId: string) => void;
-  saveCustomPreset: (name: string) => void;
+  saveCustomPreset: (name: string) => Promise<void>;
   customPresets: import('../types/themeSchema').StandardTheme[];
 
   // Analytics & Submissions
@@ -344,7 +344,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Custom User Themes saved to Workspace
   const [customPresets, setCustomPresets] = useState<StandardTheme[]>(() => {
-    if (lightweight) return [];
+    // Supabase is the source of truth in the configured build. Do not render
+    // stale device-only presets while the workspace is hydrating.
+    if (lightweight || isSupabaseConfigured) return [];
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CUSTOM_THEMES);
       return saved ? JSON.parse(saved) : [];
@@ -610,11 +612,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
     saveCloudReports(abuseReports, user.id).catch(error => console.error('Supabase reports save failed', error));
   }, [abuseReports, user.id]);
-
-  useEffect(() => {
-    if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudThemes(customPresets, user.id).catch(error => console.error('Supabase themes save failed', error));
-  }, [customPresets, user.id]);
 
   useEffect(() => {
     if (lightweight) return;
@@ -1713,7 +1710,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     showToast(`Rolled back theme to version v${target.version}`);
   };
 
-  const saveCustomPreset = (name: string) => {
+  const saveCustomPreset = async (name: string): Promise<void> => {
     const current = normalizeTheme(draftProfile.standardTheme || draftProfile.theme);
     const custom: StandardTheme = {
       ...JSON.parse(JSON.stringify(current)),
@@ -1733,10 +1730,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       createdAt: new Date().toISOString()
     };
 
+    // A configured workspace must confirm the authoritative server write
+    // before the preset appears as saved in the UI.
+    if (isSupabaseConfigured) {
+      if (!user.id || user.id === 'usr-guest') throw new Error('Please sign in before saving a custom preset.');
+      await saveCloudThemes([custom], user.id);
+    }
+
     setCustomPresets(prev => {
       const next = [custom, ...prev];
       try {
-        localStorage.setItem(STORAGE_KEYS.CUSTOM_THEMES, JSON.stringify(next));
+        if (!isSupabaseConfigured) localStorage.setItem(STORAGE_KEYS.CUSTOM_THEMES, JSON.stringify(next));
       } catch (e) {
         console.error(e);
       }
