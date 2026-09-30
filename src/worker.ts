@@ -1856,8 +1856,14 @@ export default {
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === '/privacy' || url.pathname === '/privacy.html') return legalResponse('privacy', request);
-    if (url.pathname === '/terms' || url.pathname === '/terms.html') return legalResponse('terms', request);
+    if (url.pathname === '/privacy' || url.pathname === '/privacy.html') {
+      if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed.', { status: 405 });
+      return legalResponse('privacy', request);
+    }
+    if (url.pathname === '/terms' || url.pathname === '/terms.html') {
+      if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed.', { status: 405 });
+      return legalResponse('terms', request);
+    }
     if (url.pathname === '/robots.txt') {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       return robotsResponse(request, env);
