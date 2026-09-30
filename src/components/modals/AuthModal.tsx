@@ -192,6 +192,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {mode === 'verify' && 'Verify your email to unlock live publishing and creator workspace features.'}
           {mode === 'reset' && 'Choose a new password to secure your LynkFlow creator workspace.'}
         </p>
+        {mode === 'create' && (
+          <p className="mt-2 max-w-md text-[11px] leading-relaxed text-subtle">
+            Start with a starter site, tune your theme, and publish your first page when it is ready. No credit card required.
+          </p>
+        )}
 
         {/* Mode Selector for Create vs Login */}
         {(mode === 'create' || mode === 'login') && (

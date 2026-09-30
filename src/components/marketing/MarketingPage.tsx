@@ -47,11 +47,35 @@ interface MarketingPageProps {
   onOpenAuth?: (mode: 'create' | 'login') => void;
 }
 
+type ThemeFilter = 'all' | 'minimal' | 'creator' | 'portfolio' | 'business' | 'dark' | 'editorial';
+
+const THEME_FILTERS: Array<{ id: ThemeFilter; label: string }> = [
+  { id: 'all', label: 'All themes' },
+  { id: 'minimal', label: 'Minimal' },
+  { id: 'creator', label: 'Creator' },
+  { id: 'portfolio', label: 'Portfolio' },
+  { id: 'business', label: 'Business' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'editorial', label: 'Editorial' },
+];
+
+const themeMatchesFilter = (theme: (typeof SPEC_THEME_PRESETS)[number], filter: ThemeFilter) => {
+  if (filter === 'all') return true;
+  const haystack = `${theme.name} ${theme.category || ''}`.toLowerCase();
+  if (filter === 'dark') return theme.mode === 'dark' || /dark|noir|night|midnight|black|onyx/.test(haystack);
+  if (filter === 'minimal') return /minimal|simple|clean|mono|neutral/.test(haystack);
+  if (filter === 'creator') return /creator|artist|beauty|salon|nature|music|podcast|influencer/.test(haystack);
+  if (filter === 'portfolio') return /portfolio|studio|editorial|photography|photographer|designer/.test(haystack);
+  if (filter === 'business') return /business|professional|finance|agency|coach|consult|brand|shop|bakery/.test(haystack);
+  return /editorial|magazine|fashion|serif|journal/.test(haystack);
+};
+
 export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
   const { setCurrentView, workspace, upgradePlan } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
   const [selectedThemeId, setSelectedThemeId] = useState(SPEC_THEME_PRESETS[0]?.id || '');
+  const [themeFilter, setThemeFilter] = useState<ThemeFilter>('all');
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [newsletterMessage, setNewsletterMessage] = useState<string | null>(null);
@@ -237,6 +261,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     }
   ];
   const selectedTheme = SPEC_THEME_PRESETS.find((theme) => theme.id === selectedThemeId) || SPEC_THEME_PRESETS[0];
+  const visibleThemes = SPEC_THEME_PRESETS.filter((theme) => themeMatchesFilter(theme, themeFilter));
 
 
   return (
@@ -319,6 +344,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <span>See product preview</span>
             </a>
           </div>
+          <p className="anime-hero-item text-xs text-subtle">Free to start · no credit card required · publish when you’re ready</p>
 
           <HeroProductStage />
 
@@ -592,10 +618,23 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   <div className="text-xs font-bold text-ink">Theme samples</div>
                   <div className="mt-1 text-[11px] text-muted">Select a direction to preview it.</div>
                 </div>
-                <span className="text-[10px] font-mono text-muted">{SPEC_THEME_PRESETS.length} systems</span>
+                <span className="text-[10px] font-mono text-muted">{visibleThemes.length} of {SPEC_THEME_PRESETS.length} systems</span>
               </div>
-              <div className="grid max-h-[34rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
-                {SPEC_THEME_PRESETS.map((theme) => {
+              <div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Filter theme samples">
+                {THEME_FILTERS.map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    aria-pressed={themeFilter === filter.id}
+                    onClick={() => setThemeFilter(filter.id)}
+                    className={`min-h-10 shrink-0 rounded-full border px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${themeFilter === filter.id ? 'border-accent bg-accent text-white' : 'border-line bg-canvas text-muted hover:border-line-strong hover:text-ink'}`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid max-h-[34rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4" aria-live="polite">
+                {visibleThemes.map((theme) => {
                   return (
                     <button
                       key={theme.id}
