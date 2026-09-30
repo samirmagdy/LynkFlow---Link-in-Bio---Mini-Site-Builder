@@ -747,6 +747,11 @@ function apiError(code: string, message: string, status: number): Response {
   return json({ error: { code, message } }, status);
 }
 
+function internalApiError(context: string, error: unknown, message: string, status = 500): Response {
+  console.error(context, error);
+  return apiError('INTERNAL_ERROR', message, status);
+}
+
 async function authenticateApiKey(request: Request, env: Env, requiredScope: string): Promise<ApiKeyAuth | Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return apiError('SERVICE_UNAVAILABLE', 'API service is not configured.', 503);
   const authorization = request.headers.get('authorization');
@@ -1928,15 +1933,15 @@ export default {
     }
     if (url.pathname === '/api/profile/publish') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await publishDashboardProfile(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to publish profile.', 500); }
+      try { return await publishDashboardProfile(request, env); } catch (error) { return internalApiError('Publish profile failed', error, 'Unable to publish profile.'); }
     }
     if (url.pathname === '/api/profile/unpublish') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await unpublishDashboardProfile(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to unpublish profile.', 500); }
+      try { return await unpublishDashboardProfile(request, env); } catch (error) { return internalApiError('Unpublish profile failed', error, 'Unable to unpublish profile.'); }
     }
     if (url.pathname === '/api/profile/draft') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await saveDashboardDraft(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to save draft.', 500); }
+      try { return await saveDashboardDraft(request, env); } catch (error) { return internalApiError('Save draft failed', error, 'Unable to save draft.'); }
     }
     if (url.pathname === '/api/design/custom-themes') {
       if (request.method !== 'POST' && request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
@@ -1944,37 +1949,35 @@ export default {
         return request.method === 'DELETE'
           ? await deleteCustomTheme(request, env)
           : await saveCustomThemes(request, env);
-      } catch (error) {
-        return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to update custom presets.', 500);
-      }
+      } catch (error) { return internalApiError('Custom preset mutation failed', error, 'Unable to update custom presets.'); }
     }
     if (url.pathname === '/api/profile/rollback') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await rollbackDashboardProfile(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to roll back profile.', 500); }
+      try { return await rollbackDashboardProfile(request, env); } catch (error) { return internalApiError('Rollback profile failed', error, 'Unable to roll back profile.'); }
     }
     if (url.pathname === '/api/profile/preview-token') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await createPreviewToken(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to create preview link.', 500); }
+      try { return await createPreviewToken(request, env); } catch (error) { return internalApiError('Create preview token failed', error, 'Unable to create preview link.'); }
     }
     if (url.pathname === '/api/public/preview') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await resolvePreviewToken(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to resolve preview link.', 500); }
+      try { return await resolvePreviewToken(request, env); } catch (error) { return internalApiError('Resolve preview token failed', error, 'Unable to resolve preview link.'); }
     }
     if (url.pathname === '/api/stripe/checkout') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
-      try { return await createCheckout(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Unable to start checkout.' }, 502); }
+      try { return await createCheckout(request, env); } catch (error) { return internalApiError('Create checkout failed', error, 'Unable to start checkout.', 502); }
     }
     if (url.pathname === '/api/stripe/cancel') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
-      try { return await cancelStripeSubscription(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Unable to cancel subscription.' }, 502); }
+      try { return await cancelStripeSubscription(request, env); } catch (error) { return internalApiError('Cancel subscription failed', error, 'Unable to cancel subscription.', 502); }
     }
     if (url.pathname === '/api/stripe/webhook') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
-      try { return await handleStripeWebhook(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Webhook processing failed.' }, 500); }
+      try { return await handleStripeWebhook(request, env); } catch (error) { return internalApiError('Stripe webhook processing failed', error, 'Webhook processing failed.'); }
     }
     if (url.pathname === '/api/public/forms') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
-      try { return await submitPublicForm(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Form submission failed.' }, 500); }
+      try { return await submitPublicForm(request, env); } catch (error) { return internalApiError('Public form submission failed', error, 'Form submission failed.'); }
     }
     if (url.pathname === '/api/public/newsletter') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
@@ -1992,62 +1995,62 @@ export default {
     }
     if (url.pathname === '/api/public/abuse-reports') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
-      try { return await submitPublicAbuseReport(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Report submission failed.' }, 500); }
+      try { return await submitPublicAbuseReport(request, env); } catch (error) { return internalApiError('Abuse report submission failed', error, 'Report submission failed.'); }
     }
     if (url.pathname === '/api/webhooks') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await createWebhookSubscription(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to create webhook.', 500); }
+      try { return await createWebhookSubscription(request, env); } catch (error) { return internalApiError('Create webhook failed', error, 'Unable to create webhook.'); }
     }
     if (url.pathname.startsWith('/api/webhooks/') && url.pathname.endsWith('/test')) {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       const hookId = url.pathname.split('/')[3];
-      try { return await testWebhookSubscription(request, env, hookId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Webhook delivery failed.', 500); }
+      try { return await testWebhookSubscription(request, env, hookId); } catch (error) { return internalApiError('Test webhook failed', error, 'Webhook delivery failed.'); }
     }
     if (url.pathname.startsWith('/api/webhooks/')) {
       const hookId = url.pathname.split('/')[3];
       if (request.method === 'PATCH') {
-        try { return await updateWebhookSubscription(request, env, hookId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to update webhook.', 500); }
+        try { return await updateWebhookSubscription(request, env, hookId); } catch (error) { return internalApiError('Update webhook failed', error, 'Unable to update webhook.'); }
       }
       if (request.method === 'DELETE') {
-        try { return await deleteWebhookSubscription(request, env, hookId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to delete webhook.', 500); }
+        try { return await deleteWebhookSubscription(request, env, hookId); } catch (error) { return internalApiError('Delete webhook failed', error, 'Unable to delete webhook.'); }
       }
       return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
     }
     if (url.pathname === '/api/domains/verify' || url.pathname === '/api/domains/recheck') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await verifyCustomDomain(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Domain verification failed.', 500); }
+      try { return await verifyCustomDomain(request, env); } catch (error) { return internalApiError('Verify custom domain failed', error, 'Domain verification failed.'); }
     }
     if (url.pathname === '/api/domains/remove') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await removeCustomDomain(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Domain removal failed.', 500); }
+      try { return await removeCustomDomain(request, env); } catch (error) { return internalApiError('Remove custom domain failed', error, 'Domain removal failed.'); }
     }
     if (url.pathname === '/api/v1/profiles' || url.pathname.startsWith('/api/v1/profiles/')) {
       const parts = url.pathname.split('/').filter(Boolean);
       const profileId = parts[3];
       if (parts[4] === 'publish') {
         if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-        try { return await publishApiProfile(request, env, profileId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Publish request failed.', 500); }
+        try { return await publishApiProfile(request, env, profileId); } catch (error) { return internalApiError('API publish failed', error, 'Publish request failed.'); }
       }
       if (parts[4] === 'blocks' || parts[4] === 'themes') {
         if (!['GET', 'PATCH'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-        try { return await handleApiProfileSubresource(request, env, profileId, parts[4], parts[5]); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Resource request failed.', 500); }
+        try { return await handleApiProfileSubresource(request, env, profileId, parts[4], parts[5]); } catch (error) { return internalApiError('API resource request failed', error, 'Resource request failed.'); }
       }
       if (!['GET', 'PATCH'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await handleApiProfiles(request, env, profileId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'API request failed.', 500); }
+      try { return await handleApiProfiles(request, env, profileId); } catch (error) { return internalApiError('API profile request failed', error, 'API request failed.'); }
     }
     if (url.pathname === '/api/api-keys') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      try { return await issueApiKey(request, env); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to issue API key.', 500); }
+      try { return await issueApiKey(request, env); } catch (error) { return internalApiError('Issue API key failed', error, 'Unable to issue API key.'); }
     }
     if (url.pathname.startsWith('/api/api-keys/') && url.pathname.endsWith('/rotate')) {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       const keyId = url.pathname.split('/')[3];
-      try { return await rotateApiKey(request, env, keyId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to rotate API key.', 500); }
+      try { return await rotateApiKey(request, env, keyId); } catch (error) { return internalApiError('Rotate API key failed', error, 'Unable to rotate API key.'); }
     }
     if (url.pathname.startsWith('/api/api-keys/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       const keyId = url.pathname.split('/')[3];
-      try { return await revokeApiKey(request, env, keyId); } catch (error) { return apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Unable to revoke API key.', 500); }
+      try { return await revokeApiKey(request, env, keyId); } catch (error) { return internalApiError('Revoke API key failed', error, 'Unable to revoke API key.'); }
     }
     if (request.method === 'GET' && SEO_LANDING_PAGES[url.pathname]) {
       return marketingSeoPageResponse(url.pathname, request);
