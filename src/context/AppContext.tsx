@@ -183,7 +183,7 @@ interface AppContextType {
   rollbackToPublishedSnapshot: (snapshotId: string, reason?: string) => Promise<boolean>;
   generatePreviewLink: (ttlMinutes?: number) => Promise<{ previewUrl: string; token: string; expiresAt: string }>;
   scheduleRelease: (scheduledIsoString: string, timezone: string) => Promise<boolean>;
-  cancelScheduledRelease: () => boolean;
+  cancelScheduledRelease: () => Promise<boolean>;
   switchActiveProfile: (id: string) => void;
   createNewProfile: (username: string, displayName: string, category: string, themeId?: string) => Promise<string>;
   duplicateProfile: (profileId: string) => Promise<boolean>;
@@ -1039,10 +1039,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         timezone,
         user.email
       );
-      setDraftProfile(prev => ({
-        ...prev,
-        scheduledPublish: config
-      }));
+      const nextProfile = { ...draftProfile, scheduledPublish: config, updatedAt: new Date().toISOString() };
+      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(nextProfile, user.id);
+      setDraftProfile(nextProfile);
       showToast(`Release scheduled for ${new Date(config.scheduledTimeUtc).toLocaleString()} (${config.timezone})`);
       return true;
     } catch (error: unknown) {
@@ -1051,13 +1050,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
   };
 
-  const cancelScheduledRelease = (): boolean => {
+  const cancelScheduledRelease = async (): Promise<boolean> => {
     const success = contentLifecycleService.cancelScheduledPublish(draftProfile.id, user.email);
     if (success) {
-      setDraftProfile(prev => ({
-        ...prev,
-        scheduledPublish: null
-      }));
+      const nextProfile = { ...draftProfile, scheduledPublish: null, updatedAt: new Date().toISOString() };
+      try {
+        if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(nextProfile, user.id);
+        setDraftProfile(nextProfile);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Failed to cancel scheduled release');
+        return false;
+      }
       showToast('Scheduled release cancelled.');
     }
     return success;

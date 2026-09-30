@@ -1120,6 +1120,71 @@ async function publishDashboardProfile(request: Request, env: Env): Promise<Resp
   return json(result);
 }
 
+type ScheduledProfileRow = {
+  id: string;
+  username: string;
+  workspace_id: string;
+  data: Record<string, unknown>;
+} & DesignSystemColumns;
+
+async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.now()): Promise<void> {
+  const response = await supabaseRequest('profiles?select=id,username,workspace_id,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id&limit=1000', env);
+  if (!response.ok) throw new Error('Scheduled publish profiles could not be loaded.');
+  const profiles = await response.json() as ScheduledProfileRow[];
+
+  for (const profile of profiles) {
+    const schedule = profile.data.scheduledPublish as Record<string, unknown> | null | undefined;
+    if (!schedule || schedule.status !== 'pending') continue;
+    const scheduledAt = Date.parse(String(schedule.scheduledTimeUtc || ''));
+    if (!Number.isFinite(scheduledAt) || scheduledAt > scheduledTime) continue;
+
+    const markSchedule = async (status: 'executed' | 'failed', failureReason?: string) => {
+      const nextSchedule = { ...schedule, status, ...(failureReason ? { failureReason } : {}), ...(status === 'executed' ? { executedAt: new Date(scheduledTime).toISOString() } : {}) };
+      await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profile.id)}&workspace_id=eq.${encodeURIComponent(profile.workspace_id)}`, env, {
+        method: 'PATCH', headers: { prefer: 'return=minimal' },
+        body: JSON.stringify({ data: withoutDraftDesignTheme({ ...profile.data, scheduledPublish: nextSchedule }), updated_at: new Date().toISOString() })
+      });
+    };
+
+    try {
+      const target = schedule.targetSnapshotDraft;
+      if (!target || typeof target !== 'object' || Array.isArray(target)) throw new Error('Scheduled draft is missing.');
+      const targetDraft = await hydrateProfileDesignSystem(env, profile.workspace_id, profile.id, target as Record<string, unknown>, profile);
+      const validationError = validatePublishData(targetDraft);
+      if (validationError) { await markSchedule('failed', validationError); continue; }
+
+      const publishedAt = new Date(scheduledTime).toISOString();
+      const version = Number(profile.data.publishedVersion || targetDraft.publishedVersion || 0) + 1;
+      const publisher = String(schedule.createdBy || 'scheduled-publish');
+      const snapshot = createPublicSnapshot(targetDraft, profile.id, version, publishedAt, publisher);
+      const themeSnapshot = createThemeSnapshot(snapshot, profile.id, version, publishedAt, publisher, 'Scheduled release');
+      const nextData = {
+        ...targetDraft,
+        scheduledPublish: { ...schedule, status: 'executed', executedAt: publishedAt },
+        status: 'published', publishedVersion: version, publishedAt, publishedSnapshot: snapshot,
+        snapshotHistory: [snapshot, ...(Array.isArray(profile.data.snapshotHistory) ? profile.data.snapshotHistory : [])].slice(0, 50),
+        themeSnapshots: [themeSnapshot, ...(Array.isArray(profile.data.themeSnapshots) ? profile.data.themeSnapshots : [])].slice(0, 50),
+        updatedAt: publishedAt,
+      };
+      const profileUpdate = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profile.id)}&workspace_id=eq.${encodeURIComponent(profile.workspace_id)}`, env, {
+        method: 'PATCH', headers: { prefer: 'return=minimal' },
+        body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: publishedAt })
+      });
+      if (!profileUpdate.ok) throw new Error('Scheduled profile could not be updated.');
+      const publishedUpdate = await supabaseRequest('published_profiles?on_conflict=profile_id', env, {
+        method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ profile_id: profile.id, workspace_id: profile.workspace_id, username: String(snapshot.username), snapshot, published_version: version, published_at: publishedAt, updated_at: publishedAt })
+      });
+      if (!publishedUpdate.ok) throw new Error('Scheduled public snapshot could not be updated.');
+      await dispatchWebhookEvent(env, profile.workspace_id, 'profile.published', { profileId: profile.id, username: profile.username, publishedVersion: version, publishedAt });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Scheduled publish failed.';
+      try { await markSchedule('failed', reason); } catch (markError) { console.error('Scheduled publish failure state could not be saved', markError); }
+      console.error(`Scheduled publish failed for profile ${profile.id}`, error);
+    }
+  }
+}
+
 async function unpublishDashboardProfile(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -1891,7 +1956,8 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 }
 
 export default {
-  async scheduled(_controller: { scheduledTime: number }, env: Env, _context: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
+  async scheduled(controller: { scheduledTime: number }, env: Env, _context: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
+    await executeScheduledProfilePublishes(env, controller.scheduledTime);
     await retryPendingWebhooks(env);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
