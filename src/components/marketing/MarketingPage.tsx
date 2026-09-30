@@ -44,6 +44,7 @@ interface MarketingPageProps {
 export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
   const { setCurrentView, workspace, upgradePlan } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [showComparison, setShowComparison] = useState(false);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterConsent, setNewsletterConsent] = useState(false);
@@ -249,7 +250,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
               Crafted for creators, studios & modern brands.
             </h2>
-            <p className="text-xs sm:text-sm text-muted">
+            <p className="text-sm sm:text-base leading-relaxed text-muted">
               Explore example LynkFlow sites built for different creator and agency goals.
             </p>
           </div>
@@ -257,7 +258,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Alex Vance */}
             <a
-              href="#get-started"
+              href="/@alexvance?demo=1"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
               className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
@@ -270,12 +271,12 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 </div>
                 <span className="text-[11px] font-mono text-subtle">@alexvance</span>
               </div>
-              <p className="text-xs text-muted leading-relaxed">
+              <p className="text-sm leading-relaxed text-muted">
                 Features YouTube cinema reel, Lightroom preset sales, PDF media kit download, and newsletter signup.
               </p>
               <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
                 <span className="flex items-center gap-1">
-                  Use this creator direction
+                  See creator example
                   <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </span>
                 <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Onyx Minimal</span>
@@ -284,7 +285,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
             {/* Studio Nova */}
             <a
-              href="#get-started"
+              href="/@studionova_agency?demo=1"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
               className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
@@ -297,12 +298,12 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 </div>
                 <span className="text-[11px] font-mono text-subtle">@studionova_agency</span>
               </div>
-              <p className="text-xs text-muted leading-relaxed">
+              <p className="text-sm leading-relaxed text-muted">
                 Features custom lead qualification intake form, typography license sales, and case study monograph.
               </p>
               <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
                 <span className="flex items-center gap-1">
-                  Use this agency direction
+                  See agency example
                   <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </span>
                 <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Nordic Clean</span>
@@ -311,7 +312,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
             {/* Chef Maya Lin */}
             <a
-              href="#get-started"
+              href="/@mayakitchen?demo=1"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
               className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
@@ -324,12 +325,12 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 </div>
                 <span className="text-[11px] font-mono text-subtle">@mayakitchen</span>
               </div>
-              <p className="text-xs text-muted leading-relaxed">
+              <p className="text-sm leading-relaxed text-muted">
                 Features cookbook pre-orders, sourdough troubleshooting PDF guide, and workshop inquiries.
               </p>
               <div className="pt-2 flex items-center justify-between text-xs text-accent font-medium">
                 <span className="flex items-center gap-1">
-                  Use this professional direction
+                  See professional example
                   <ArrowRight className="anime-icon-target w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </span>
                 <span className="text-subtle font-mono text-[10px] bg-canvas px-2 py-0.5 rounded border border-line">Editorial Cream</span>
@@ -351,7 +352,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
             Engineered for conversion, not just navigation.
           </h2>
-          <p className="text-xs sm:text-sm text-muted">
+          <p className="text-sm sm:text-base leading-relaxed text-muted">
             Everything you need to turn visitors into followers, clients, and revenue.
           </p>
         </div>
@@ -360,7 +361,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.25)')}
             className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/40 transition-colors space-y-3 cursor-default"
           >
             <ProductIllustration variant="assembly" className="mb-3 max-h-32" />
@@ -368,7 +368,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <Layers className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-ink">Modular Block Architecture</h3>
-            <p className="text-xs text-muted leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted">
               Combine video embeds, links with animation badges, collapsible folders, FAQ accordions, and downloadable resources with drag-and-drop ease.
             </p>
           </div>
@@ -376,7 +376,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(16, 185, 129, 0.25)')}
             className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-emerald-500/40 transition-colors space-y-3 cursor-default"
           >
             <ProductIllustration variant="theme" className="mb-3 max-h-32" />
@@ -384,7 +383,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <Palette className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-ink">Deep Token Theme Engine</h3>
-            <p className="text-xs text-muted leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted">
               Customize fonts, border radii, shadows, background meshes, and color palettes. Your link-in-bio looks like an editorial mini-site, not a template clone.
             </p>
           </div>
@@ -392,7 +391,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(6, 182, 212, 0.25)')}
             className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-cyan-500/40 transition-colors space-y-3 cursor-default"
           >
             <ProductIllustration variant="privacy" className="mb-3 max-h-32" />
@@ -400,7 +398,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <BarChart2 className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-ink">Privacy-First Analytics</h3>
-            <p className="text-xs text-muted leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted">
               Real-time page views, unique visitors, link-level click counts, and CTR calculation with zero invasive cookies or tracking bloat.
             </p>
           </div>
@@ -408,7 +406,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(245, 158, 11, 0.25)')}
             className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-amber-500/40 transition-colors space-y-3 cursor-default"
           >
             <ProductIllustration variant="qr" className="mb-3 max-h-32" />
@@ -416,7 +413,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <QrCode className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-ink">Dynamic QR Code Studio</h3>
-            <p className="text-xs text-muted leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted">
               Generate styled vector QR codes with custom dots and colors. Update destination URLs anytime without reprinting packaging or physical cards.
             </p>
           </div>
@@ -424,7 +421,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(244, 63, 94, 0.25)')}
             className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-rose-500/40 transition-colors space-y-3 cursor-default"
           >
             <ProductIllustration variant="route" className="mb-3 max-h-32" />
@@ -432,7 +428,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <Globe className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-ink">Custom Domains &amp; Automated SSL</h3>
-            <p className="text-xs text-muted leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted">
               Point your domain or subdomain directly with automatic CNAME diagnostics, verification checks, and automated TLS certificate issuance.
             </p>
           </div>
@@ -440,7 +436,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(139, 92, 246, 0.25)')}
             className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-violet-500/40 transition-colors space-y-3 cursor-default"
           >
             <ProductIllustration variant="profiles" className="mb-3 max-h-32" />
@@ -448,7 +443,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <h3 className="text-base font-bold text-ink">Multi-Profile Agency Workspaces</h3>
-            <p className="text-xs text-muted leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted">
               Isolate client profiles, duplicate structures, export CSV form submissions, and manage permissions from a centralized console.
             </p>
           </div>
@@ -524,7 +519,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   <div className="space-y-4">
                     <div>
                       <h3 className="text-lg font-bold text-ink tracking-tight">{plan.name}</h3>
-                      <p className="text-xs text-muted mt-1">{plan.tagline}</p>
+                      <p className="text-sm leading-relaxed text-muted mt-1">{plan.tagline}</p>
                     </div>
 
                     <div className="flex items-baseline gap-1 py-1">
@@ -540,7 +535,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                       </div>
                     )}
 
-                    <p className="text-xs text-body leading-relaxed pt-1">
+                    <p className="text-sm text-body leading-relaxed pt-1">
                       {plan.description}
                     </p>
 
@@ -548,7 +543,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                       <div className="text-[11px] font-bold text-muted uppercase tracking-wider">
                         Included Features
                       </div>
-                      <ul className="space-y-2 text-xs text-body">
+                      <ul className="space-y-2 text-sm text-body">
                         {plan.features.map((feature, fIdx) => (
                           <li key={fIdx} className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
@@ -590,14 +585,26 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           {/* Deep Feature Entitlement Comparison Table */}
-          <div className="pt-8 space-y-4">
+          <div className="pt-2 flex justify-center">
+            <button
+              type="button"
+              aria-expanded={showComparison}
+              onClick={() => setShowComparison(value => !value)}
+              className="touch-target inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-body transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {showComparison ? 'Hide detailed comparison' : 'Compare all capabilities'}
+              {showComparison ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          </div>
+          {showComparison && <div className="pt-4 space-y-4">
             <div className="text-center space-y-1">
               <h3 className="text-xl font-bold text-ink font-['Syne']">Detailed Plan Capability Comparison</h3>
               <p className="text-xs text-muted">Concrete limits without ambiguous or misleading promises.</p>
             </div>
 
             <div className="rounded-2xl border border-line bg-surface overflow-x-auto shadow-xl">
-              <table className="w-full text-left text-xs min-w-[600px]">
+              <table className="w-full text-left text-sm min-w-[600px]">
+                <caption className="sr-only">LynkFlow plan capability comparison</caption>
                 <thead className="bg-canvas border-b border-line text-muted">
                   <tr>
                     <th className="py-3 px-4 font-semibold">Capability</th>
@@ -654,7 +661,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </div>}
         </div>
       </section>
 
@@ -668,9 +675,9 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       >
         <div className="faq-anime-header text-center space-y-2">
           <h2 className="text-2xl sm:text-3xl font-bold text-ink font-['Syne'] tracking-tight">
-            Frequently Answered Questions
+            Frequently Asked Questions
           </h2>
-          <p className="text-xs text-muted">Everything you need to know before publishing.</p>
+          <p className="text-sm leading-relaxed text-muted">Everything you need to know before publishing.</p>
         </div>
 
         <div className="space-y-3">
@@ -708,7 +715,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                     aria-labelledby={`faq-question-${idx}`}
                     hidden={!isOpen}
                     ref={(el) => { faqAnswerRefs.current[idx] = el; }}
-                    className="px-4 sm:px-5 pb-5 pt-1 text-xs text-muted leading-relaxed border-t border-line/60"
+                    className="px-4 sm:px-5 pb-5 pt-1 text-sm leading-relaxed text-muted border-t border-line/60"
                   >
                     {faq.a}
                   </div>
@@ -735,7 +742,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             Ready to build your link-in-bio page?
           </h2>
           <p className="cta-anime-item text-sm text-muted max-w-xl mx-auto">
-            Get started in under 3 minutes. Test out all block types, themes, dynamic QR codes, and Anime.js physics with a 14-day free trial.
+            Get started in under 3 minutes. Build with flexible blocks, themes, forms, and analytics before you publish.
           </p>
           <div className="cta-anime-item mx-auto max-w-xl rounded-3xl border border-indigo-500/15 bg-indigo-500/5 p-3">
             <ProductIllustration variant="assembly" />
@@ -780,7 +787,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       </section>
 
       {/* Clean Brand Footer with Legal & Help Entry Points */}
-      <footer className="relative z-10 py-12 px-4 sm:px-6 border-t border-line text-muted text-xs">
+      <footer className="relative z-10 py-12 px-4 sm:px-6 border-t border-line text-muted text-sm">
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="relative isolate overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-surface to-emerald-400/5 p-6 shadow-xl shadow-black/5 sm:p-10">
             <div className="pointer-events-none absolute -right-16 -top-20 -z-10 h-56 w-56 rounded-full bg-indigo-500/15 blur-3xl" aria-hidden="true" />
@@ -803,7 +810,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 className="w-full"
                 onSubmit={handleNewsletterSubmit}
               >
-                <label htmlFor="marketing-newsletter-email" className="mb-2 block text-[11px] font-semibold text-ink">
+                <label htmlFor="marketing-newsletter-email" className="mb-2 block text-sm font-semibold text-ink">
                   Email address
                 </label>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -817,7 +824,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                       setNewsletterMessage(null);
                     }}
                     placeholder="you@example.com"
-                    aria-describedby={newsletterMessage ? 'newsletter-status' : undefined}
+                    aria-describedby={newsletterSubmitted ? 'newsletter-success-status' : newsletterMessage ? 'newsletter-error-status' : undefined}
                     className="min-h-12 min-w-0 flex-1 rounded-xl border border-line-strong bg-canvas/80 px-4 text-sm text-ink placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                   />
                   <button
@@ -829,7 +836,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
-                <label className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-subtle">
+                <label className="mt-3 flex items-start gap-2 text-sm leading-relaxed text-subtle">
                   <input
                     type="checkbox"
                     required
@@ -843,12 +850,12 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   <span>Keep me updated about LynkFlow. <a href="/unsubscribe" className="text-accent underline underline-offset-2">Unsubscribe anytime.</a></span>
                 </label>
                 {newsletterSubmitted && (
-                  <p id="newsletter-status" role="status" className="mt-3 rounded-lg border border-success/30 bg-success-surface px-3 py-2 text-[11px] leading-relaxed text-success">
+                  <p id="newsletter-success-status" role="status" className="mt-3 rounded-lg border border-success/30 bg-success-surface px-3 py-2 text-sm leading-relaxed text-success">
                     You’re on the list. We’ll send useful product updates occasionally.
                   </p>
                 )}
                 {newsletterMessage && (
-                  <p id="newsletter-status" role="status" className="mt-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-[11px] leading-relaxed text-warning">
+                  <p id="newsletter-error-status" role="alert" className="mt-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning">
                     {newsletterMessage}
                   </p>
                 )}
@@ -861,14 +868,14 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <div className="font-['Syne'] font-bold text-ink text-base">
                 LynkFlow
               </div>
-              <p className="text-subtle leading-relaxed text-[11px]">
+              <p className="text-subtle leading-relaxed text-sm">
                 The modular, production-ready link-in-bio & mini-site platform with zero visual hacks and validated design tokens.
               </p>
             </div>
 
             <div className="space-y-2">
               <h3 className="font-semibold text-ink uppercase text-[10px] tracking-wider">Product</h3>
-              <ul className="space-y-1.5 text-muted text-xs">
+              <ul className="space-y-1.5 text-muted text-sm">
                 <li>
                   <a href="#features" className="hover:text-ink transition-colors">Features & Blocks</a>
                 </li>
@@ -894,7 +901,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
             <div className="space-y-2">
               <h3 className="font-semibold text-ink uppercase text-[10px] tracking-wider">Platform &amp; Dev</h3>
-              <ul className="space-y-1.5 text-muted text-xs">
+              <ul className="space-y-1.5 text-muted text-sm">
                 <li>
                   <button onClick={() => setCurrentView('api')} className="hover:text-ink transition-colors cursor-pointer">
                     Developer REST API
@@ -919,7 +926,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
             <div className="space-y-2">
               <h3 className="font-semibold text-ink uppercase text-[10px] tracking-wider">Help &amp; Legal</h3>
-              <ul className="space-y-1.5 text-muted text-xs">
+              <ul className="space-y-1.5 text-muted text-sm">
                 <li>
                   <a href="#faq" className="hover:text-ink transition-colors">Help Center & FAQ</a>
                 </li>
@@ -949,7 +956,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               © 2026 LynkFlow Technologies. Production-ready link in bio platform with Anime.js.
             </div>
             <div className="flex items-center gap-4">
-              <span>Status: All Systems Operational</span>
+              <a href="/contact" className="text-subtle underline-offset-2 hover:text-ink hover:underline">Contact support</a>
               <span>·</span>
                   <span>Accessibility foundations in place</span>
             </div>

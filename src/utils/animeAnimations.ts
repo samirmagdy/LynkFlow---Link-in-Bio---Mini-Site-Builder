@@ -1255,7 +1255,6 @@ export function animateHeroEntrance(container: HTMLElement | null) {
   if (elements.length === 0) return null;
 
   return animate(Array.from(elements), {
-    opacity: [0, 1],
     translateY: [28, 0],
     scale: [0.96, 1],
     delay: stagger(80, { start: 100 }),

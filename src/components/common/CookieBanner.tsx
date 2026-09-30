@@ -49,7 +49,7 @@ export const CookieBanner: React.FC<CookieBannerProps> = ({ inStudio = false }) 
   return (
     <aside
       aria-label="Cookie preferences"
-      className={`fixed inset-x-3 ${placementClass} z-[60] w-auto max-w-md rounded-2xl border border-line-strong bg-surface/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 duration-200 sm:left-6 sm:right-auto sm:p-5`}
+      className={`fixed inset-x-3 ${placementClass} z-[60] max-h-[min(38rem,calc(100svh-1rem))] w-auto max-w-md overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl shadow-black/25 backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 duration-200 sm:left-6 sm:right-auto sm:p-5`}
     >
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent" aria-hidden="true">
@@ -91,14 +91,14 @@ export const CookieBanner: React.FC<CookieBannerProps> = ({ inStudio = false }) 
         <button
           type="button"
           onClick={() => saveChoice('accepted', true)}
-          className="min-h-10 rounded-xl bg-inverse px-3.5 py-2 text-xs font-semibold text-inverse-text transition-colors hover:bg-inverse-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="min-h-11 rounded-xl bg-inverse px-3.5 py-2 text-xs font-semibold text-inverse-text transition-colors hover:bg-inverse-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           Accept all
         </button>
         <button
           type="button"
           onClick={() => saveChoice('rejected', false)}
-          className="min-h-10 rounded-xl border border-line-strong bg-surface px-3.5 py-2 text-xs font-semibold text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="min-h-11 rounded-xl border border-line-strong bg-surface px-3.5 py-2 text-xs font-semibold text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           Reject optional
         </button>

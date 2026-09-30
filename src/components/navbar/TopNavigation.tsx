@@ -168,7 +168,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
             onClick={handleOpenLiveDemo}
             onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
             onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-            className="relative hidden xl:inline-flex h-9 overflow-hidden px-3 text-xs font-semibold text-body hover:text-ink transition-colors border border-line hover:border-line-strong bg-surface rounded-lg whitespace-nowrap items-center gap-1.5 cursor-pointer shadow-xs focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+            className="relative hidden lg:inline-flex h-9 overflow-hidden px-3 text-xs font-semibold text-body hover:text-ink transition-colors border border-line hover:border-line-strong bg-surface rounded-lg whitespace-nowrap items-center gap-1.5 cursor-pointer shadow-xs focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
           >
             <span>Live Demo</span>
             <span className="text-[10px] text-subtle font-mono">@{activeProfile.username}</span>
