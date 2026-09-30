@@ -16,6 +16,7 @@ interface TopNavigationProps {
 export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
   const { currentView, setCurrentView, activeProfile, setPublicViewingUsername, setPublicDemo, user, logOut } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isMarketing = currentView === 'marketing';
 
   const handleOpenLiveDemo = (e: React.MouseEvent<HTMLButtonElement>) => {
     triggerAnimeRipple(e, e.currentTarget, 'rgba(100, 100, 100, 0.18)');
@@ -72,8 +73,8 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-line bg-canvas/90 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto min-w-0 px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <header className={`sticky top-0 z-40 w-full ${isMarketing ? 'pointer-events-none bg-transparent px-3 pt-3 sm:px-5 sm:pt-4' : 'border-b border-line bg-canvas/90 backdrop-blur-md'}`}>
+      <div className={`${isMarketing ? 'pointer-events-auto mx-auto max-w-6xl rounded-full border border-line/80 bg-canvas/90 shadow-lg shadow-black/10 backdrop-blur-xl' : 'max-w-7xl mx-auto'} min-w-0 px-3 sm:px-6 h-16 flex items-center justify-between gap-3`}>
         {/* Zone 1: Single text element wordmark */}
         <button
           onClick={(e) => {
@@ -224,7 +225,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
 
       {/* Mobile Drawer (Accessible at 320px & 200% text zoom) */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-line bg-canvas/98 px-4 py-4 space-y-3 animate-in slide-in-from-top-2 duration-150 shadow-2xl">
+        <div className={`pointer-events-auto md:hidden px-4 py-4 space-y-3 animate-in slide-in-from-top-2 duration-150 shadow-2xl ${isMarketing ? 'mx-3 mt-2 rounded-3xl border border-line bg-canvas/98 sm:mx-5' : 'border-t border-line bg-canvas/98'}`}>
           <div className="grid grid-cols-2 gap-2 pb-3 border-b border-line text-xs">
             <button
               onClick={() => {

@@ -44,6 +44,8 @@ import { SPEC_THEME_PRESETS } from '../../data/themePresets';
 import { animate, stagger } from 'animejs';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 import { LandingMotionBackground } from './LandingMotionBackground';
+import { HeroProductStage } from './HeroProductStage';
+import './heroProductStage.css';
 
 interface MarketingPageProps {
   onOpenAuth?: (mode: 'create' | 'login') => void;
@@ -334,57 +336,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             </button>
           </div>
 
-          <div className="anime-hero-item mx-auto mt-8 w-full max-w-2xl rounded-3xl border border-indigo-500/20 bg-indigo-500/5 p-3 shadow-2xl shadow-indigo-950/20">
-            <ProductIllustration variant="assembly" />
-          </div>
-
-          {/* Product proof: the authoring system becoming a published page. */}
-          <div className="anime-hero-item relative mx-auto mt-10 w-full max-w-4xl rounded-[2rem] border border-line bg-surface/80 p-2 shadow-2xl shadow-indigo-950/20 backdrop-blur-xl text-left">
-            <div className="flex items-center justify-between border-b border-line px-3 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-subtle">
-              <span>Live composition</span>
-              <span className="flex items-center gap-1.5 text-success normal-case tracking-normal">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Published preview
-              </span>
-            </div>
-            <div className="grid gap-2 p-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)_minmax(0,0.8fr)]">
-              <div className="hidden rounded-2xl border border-line bg-canvas/80 p-3 sm:block">
-                <div className="mb-4 flex items-center justify-between text-[10px] font-mono text-subtle">
-                  <span>Blocks</span><Layers className="h-3.5 w-3.5 text-accent" />
-                </div>
-                <div className="space-y-2">
-                  {['Hero link', 'Video reel', 'Inquiry form', 'Download'].map((label, index) => (
-                    <div key={label} className={`rounded-lg border px-2.5 py-2 text-[10px] ${index === 0 ? 'border-indigo-500/50 bg-indigo-500/10 text-accent-soft' : 'border-line bg-surface/70 text-subtle'}`}>
-                      <span className="mr-1.5 text-subtle">0{index + 1}</span>{label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-line bg-canvas p-4 sm:p-5">
-                <div className="mx-auto max-w-[240px] space-y-3 text-center">
-                  <div className="mx-auto h-12 w-12 rounded-full bg-linear-to-br from-indigo-400 via-purple-500 to-emerald-300 ring-4 ring-line" />
-                  <div>
-                    <div className="text-sm font-bold text-ink">Alex Vance</div>
-                    <div className="mt-1 text-[10px] leading-relaxed text-subtle">Visual director, photographer and storyteller.</div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="rounded-xl bg-inverse px-3 py-2 text-[10px] font-semibold text-inverse-text">Watch the cinema reel</div>
-                    <div className="rounded-xl border border-line-strong bg-surface px-3 py-2 text-[10px] text-body">Download the media kit</div>
-                    <div className="rounded-xl border border-line bg-surface/70 px-3 py-2 text-[10px] text-subtle">Start a collaboration</div>
-                  </div>
-                </div>
-              </div>
-              <div className="hidden rounded-2xl border border-line bg-canvas/80 p-3 sm:block">
-                <div className="mb-4 flex items-center justify-between text-[10px] font-mono text-subtle">
-                  <span>Signals</span><BarChart2 className="h-3.5 w-3.5 text-success" />
-                </div>
-                <div className="space-y-3">
-                  <div><div className="mb-1 flex justify-between text-[10px] text-subtle"><span>Visitors</span><span className="text-body">8.4k</span></div><div className="h-1 rounded-full bg-surface-2"><div className="h-1 w-4/5 rounded-full bg-indigo-400" /></div></div>
-                  <div><div className="mb-1 flex justify-between text-[10px] text-subtle"><span>Clicks</span><span className="text-body">2.1k</span></div><div className="h-1 rounded-full bg-surface-2"><div className="h-1 w-3/5 rounded-full bg-emerald-400" /></div></div>
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 text-[10px] leading-relaxed text-success">One source of truth from draft to live.</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <HeroProductStage />
 
           {/* Social Proof Text Row with Animated Counters */}
           <div className="anime-hero-item pt-8 flex flex-wrap items-center justify-center gap-4 text-xs text-muted font-mono">
