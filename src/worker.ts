@@ -308,6 +308,14 @@ const SEO_LANDING_PAGES: Record<string, { title: string; description: string; ey
   }
 };
 
+// Preserve common marketing URLs used by older campaigns and search results.
+// Redirect aliases to canonical pages instead of returning a raw Worker 404.
+const SEO_PAGE_ALIASES: Record<string, string> = {
+  '/features': '/link-in-bio',
+  '/themes': '/features/themes',
+  '/faq': '/contact'
+};
+
 function marketingSeoPageResponse(path: string, request: Request): Response {
   const page = SEO_LANDING_PAGES[path];
   const origin = new URL(request.url).origin;
@@ -2273,6 +2281,9 @@ export default {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       const keyId = url.pathname.split('/')[3];
       try { return await revokeApiKey(request, env, keyId); } catch (error) { return internalApiError('Revoke API key failed', error, 'Unable to revoke API key.'); }
+    }
+    if (request.method === 'GET' && SEO_PAGE_ALIASES[url.pathname]) {
+      return Response.redirect(new URL(SEO_PAGE_ALIASES[url.pathname], request.url).toString(), 301);
     }
     if (request.method === 'GET' && SEO_LANDING_PAGES[url.pathname]) {
       return marketingSeoPageResponse(url.pathname, request);
