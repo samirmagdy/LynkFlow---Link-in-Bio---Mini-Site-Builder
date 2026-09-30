@@ -15,6 +15,7 @@ import { publicProfileService } from './services/publicProfileService';
 import type { PublicProfileResolutionResult } from './services/publicProfileService';
 import { contentLifecycleService } from './services/contentLifecycleService';
 import { Profile } from './types';
+import { isSupabaseConfigured } from './lib/supabase';
 
 const MarketingPage = lazy(() => import('./components/marketing/MarketingPage').then(module => ({ default: module.MarketingPage })));
 const PublicProfileView = lazy(() => import('./components/preview/PublicProfileView').then(module => ({ default: module.PublicProfileView })));
@@ -132,13 +133,15 @@ const AppContent: React.FC = () => {
 
   // Background cron-like runner for scheduled publishes
   React.useEffect(() => {
-    if (currentView === 'marketing' || currentView === 'public_standalone') return;
+    // Cloud profiles are executed by the Worker cron. Keep the browser runner
+    // only for local/demo mode so a signed-in tab cannot publish twice.
+    if (currentView === 'marketing' || currentView === 'public_standalone' || (isSupabaseConfigured && user.id !== 'usr-guest')) return;
     contentLifecycleService.executeDueScheduledPublishes();
     const interval = setInterval(() => {
       contentLifecycleService.executeDueScheduledPublishes();
     }, 15000);
     return () => clearInterval(interval);
-  }, [currentView]);
+  }, [currentView, user.id]);
 
   const handleOpenAuth = (mode: 'create' | 'login' | 'forgot' | 'verify' | 'reset' = 'create') => {
     setAuthModalMode(mode);
