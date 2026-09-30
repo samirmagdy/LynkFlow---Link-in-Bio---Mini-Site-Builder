@@ -90,6 +90,7 @@ export async function loadCloudState(): Promise<CloudState | null> {
     { data: apiKeyRows, error: apiKeysError },
     { data: webhookRows, error: webhooksError },
     { data: subscriberRows, error: subscribersError },
+    { data: memberRows, error: membersError },
   ] = await Promise.all([
     supabase.from('workspaces').select('id,name,plan,settings,billing_cycle,subscription_status,current_period_start,current_period_end,cancel_at_period_end,trial_ends_at,provider_customer_id,provider_subscription_id').eq('id', workspaceId).single(),
     supabase.from('profiles').select('id,username,data,active_theme_id,active_layout_id,theme_overrides_json,layout_overrides_json,active_starter_site_id').eq('workspace_id', workspaceId).order('created_at'),
@@ -105,8 +106,9 @@ export async function loadCloudState(): Promise<CloudState | null> {
     supabase.from('api_keys').select('*').eq('workspace_id', workspaceId),
     supabase.from('webhook_subscriptions').select('id,workspace_id,url,description,topics,signing_secret_prefix,status,created_at,created_by,last_delivery_at,last_delivery_status,consecutive_failures').eq('workspace_id', workspaceId),
     supabase.from('subscribers').select('*').eq('workspace_id', workspaceId),
+    supabase.from('workspace_members').select('id,email,name,role,assigned_profile_ids,status,added_by,invite_expires_at,created_at').eq('workspace_id', workspaceId).in('status', ['pending', 'active']).order('created_at', { ascending: true }),
   ]);
-  const firstError = workspaceError || profileError || analyticsError || submissionsError || auditError || reportsError || themesError || brandKitError || designThemesError || layoutsError || themeVersionsError || apiKeysError || webhooksError || subscribersError;
+  const firstError = workspaceError || profileError || analyticsError || submissionsError || auditError || reportsError || themesError || brandKitError || designThemesError || layoutsError || themeVersionsError || apiKeysError || webhooksError || subscribersError || membersError;
   if (firstError || !workspaceData) throw firstError;
   const assignedProfileIds = Array.isArray(membershipRow?.assigned_profile_ids)
     ? membershipRow.assigned_profile_ids.filter((id): id is string => typeof id === 'string')
@@ -129,6 +131,16 @@ export async function loadCloudState(): Promise<CloudState | null> {
     trialEndsAt: cloudWorkspace.trial_ends_at,
     providerCustomerId: cloudWorkspace.provider_customer_id,
     providerSubscriptionId: cloudWorkspace.provider_subscription_id,
+    members: (memberRows || []).map(row => ({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role as ProfileRole,
+      assignedProfileIds: Array.isArray(row.assigned_profile_ids) ? row.assigned_profile_ids.filter((id): id is string => typeof id === 'string') : [],
+      addedAt: row.created_at,
+      addedBy: row.added_by,
+      pendingInviteExpiresAt: row.invite_expires_at || undefined,
+    })),
   };
   const storedBrandKit = (brandKitRows?.[0] as { tokens_json?: BrandKit; locked_fields_json?: Record<string, boolean> } | undefined);
   if (storedBrandKit?.tokens_json) {
