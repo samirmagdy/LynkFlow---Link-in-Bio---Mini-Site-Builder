@@ -250,6 +250,7 @@ interface AppContextType {
   abuseReports: AbuseReport[];
   submitAbuseReport: (report: Omit<AbuseReport, 'id' | 'timestamp' | 'status'>) => Promise<void>;
   updateAbuseReportStatus: (id: string, status: AbuseReport['status']) => Promise<boolean>;
+  appendAuditLog: (action: string, target: string, details?: string) => void;
   exportAccountData: () => void;
   resetAllData: () => void;
 
@@ -1998,6 +1999,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     return true;
   };
 
+  const appendAuditLog = (action: string, target: string, details?: string) => {
+    const entry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      actor: user.email || 'operator@lynkflow.internal',
+      action,
+      target,
+      timestamp: Date.now(),
+      details,
+    };
+    setAuditLogs(prev => [entry, ...prev].slice(0, 500));
+  };
+
   // Export & Reset
   const exportAccountData = () => {
     const exportBundle = {
@@ -2254,6 +2267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         abuseReports,
         submitAbuseReport,
         updateAbuseReportStatus,
+        appendAuditLog,
         exportAccountData,
         resetAllData,
 

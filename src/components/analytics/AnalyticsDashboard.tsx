@@ -20,7 +20,7 @@ import { analyticsEngineService, AnalyticsAggregateSummary } from '../../service
 const ProfileAnalyticsDashboard = lazy(() => import('./ProfileAnalyticsDashboard').then(module => ({ default: module.ProfileAnalyticsDashboard })));
 
 export const AnalyticsDashboard: React.FC = () => {
-  const { activeProfile, analytics, user, showToast } = useApp();
+  const { activeProfile, analytics, user, showToast, appendAuditLog } = useApp();
   const [analyticsEngine, setAnalyticsEngine] = useState<'recharts' | 'anime'>('recharts');
   const [timeRange, setTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
 
@@ -134,6 +134,7 @@ export const AnalyticsDashboard: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      appendAuditLog('analytics_exported', `@${activeProfile.username}`, `Exported ${rowCount} analytics events (range: ${timeRange}, export: ${exportId})`);
       showToast(`Exported ${rowCount.toLocaleString()} events with audit ID ${exportId}`);
     } catch {
       showToast('Export failed. Please check permissions.');

@@ -80,7 +80,7 @@ const CustomChartTooltip: React.FC<CustomTooltipProps> = ({ active, payload, lab
 };
 
 export const ProfileAnalyticsDashboard: React.FC = () => {
-  const { activeProfile, analytics, profiles, switchActiveProfile, showToast, user, updateDraftProfile } = useApp();
+  const { activeProfile, analytics, profiles, switchActiveProfile, showToast, user, updateDraftProfile, appendAuditLog } = useApp();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [chartType, setChartType] = useState<ChartType>('area');
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -215,6 +215,7 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      appendAuditLog('analytics_exported', `@${activeProfile.username}`, `Exported ${rowCount} analytics events (range: ${timeRange}, export: ${exportId})`);
       showToast(`Exported ${rowCount.toLocaleString()} events with audit ID ${exportId}`);
     } catch {
       showToast('Export failed. Please check permissions.');

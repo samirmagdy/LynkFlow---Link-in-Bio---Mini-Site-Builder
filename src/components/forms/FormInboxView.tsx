@@ -18,7 +18,7 @@ import {
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
 export const FormInboxView: React.FC = () => {
-  const { submissions, deleteSubmission, unsubscribeSubscriber, activeProfile, user, showToast } = useApp();
+  const { submissions, deleteSubmission, unsubscribeSubscriber, activeProfile, user, showToast, appendAuditLog } = useApp();
   
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers'>('submissions');
@@ -87,6 +87,8 @@ export const FormInboxView: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
 
+    appendAuditLog('form_submissions_exported', `@${activeProfile.username}`, `Exported ${rowCount} submissions${truncated ? ' (bounded to 5,000 rows)' : ''}`);
+
     if (showToast) {
       showToast(`Exported ${rowCount} submissions with audit verification${truncated ? ' (bounded to 5,000)' : ''}`);
     }
@@ -108,6 +110,8 @@ export const FormInboxView: React.FC = () => {
     a.download = `subscribers_audience_${activeProfile.username}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+
+    appendAuditLog('subscribers_exported', `@${activeProfile.username}`, `Exported ${rowCount} subscribers`);
 
     if (showToast) {
       showToast(`Audience list exported (${rowCount} subscribers)`);
