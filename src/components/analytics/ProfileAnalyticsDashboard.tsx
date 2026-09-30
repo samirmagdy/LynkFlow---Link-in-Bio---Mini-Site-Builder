@@ -34,6 +34,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { analyticsEngineService, AnalyticsAggregateSummary } from '../../services/analyticsEngineService';
+import { billingService } from '../../services/billingService';
 
 type TimeRange = 'today' | '7d' | '30d' | '90d' | 'all';
 type ChartType = 'area' | 'bar' | 'line';
@@ -80,7 +81,11 @@ const CustomChartTooltip: React.FC<CustomTooltipProps> = ({ active, payload, lab
 };
 
 export const ProfileAnalyticsDashboard: React.FC = () => {
-  const { activeProfile, analytics, profiles, switchActiveProfile, showToast, user, updateDraftProfile, appendAuditLog } = useApp();
+  const { activeProfile, analytics, profiles, switchActiveProfile, showToast, user, updateDraftProfile, appendAuditLog, workspace } = useApp();
+
+  // BIL-003: Derive plan retention entitlement — caps which date ranges are visible
+  const planHistoryDays = billingService.getWorkspaceEntitlements(workspace).analyticsHistoryDays;
+
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [chartType, setChartType] = useState<ChartType>('area');
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -120,15 +125,17 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
   }, [activeBlocks]);
 
   // Authoritative aggregation summary derived strictly from raw events (AN-001, AN-002, AN-003)
+  // maxHistoryDays enforces BIL-003 plan retention at query time — events outside window are excluded.
   const aggregateSummary: AnalyticsAggregateSummary = useMemo(() => {
     return analyticsEngineService.aggregateProfileAnalytics(
       activeProfile.id,
       timeRange,
       timezone,
       allKnownBlocks,
-      analytics
+      analytics,
+      planHistoryDays
     );
-  }, [activeProfile.id, timeRange, timezone, allKnownBlocks, analytics]);
+  }, [activeProfile.id, timeRange, timezone, allKnownBlocks, analytics, planHistoryDays]);
 
   const timeSeriesData = useMemo(() => {
     return aggregateSummary.timeSeries.map(bucket => ({
@@ -437,19 +444,29 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
               </button>
             </div>
 
-            {/* Time Range Selector (AN-002) */}
+            {/* Time Range Selector (AN-002) — options beyond plan retention are locked */}
             <div className="flex items-center bg-canvas p-1 rounded-xl border border-line text-xs">
-              {(['today', '7d', '30d', '90d', 'all'] as const).map(range => (
-                <button
-                  key={range}
-                  onClick={() => setTimeRange(range)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors uppercase cursor-pointer ${
-                    timeRange === range ? 'bg-indigo-600 text-white' : 'text-muted hover:text-ink'
-                  }`}
-                >
-                  {range}
-                </button>
-              ))}
+              {(['today', '7d', '30d', '90d', 'all'] as const).map(range => {
+                const rangeDays: Record<string, number> = { today: 1, '7d': 7, '30d': 30, '90d': 90, all: Infinity };
+                const isLocked = rangeDays[range] > planHistoryDays;
+                return (
+                  <button
+                    key={range}
+                    onClick={() => !isLocked && setTimeRange(range)}
+                    disabled={isLocked}
+                    title={isLocked ? `Upgrade to access ${range} history (your plan: ${planHistoryDays}d)` : undefined}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors uppercase ${
+                      isLocked
+                        ? 'text-muted/40 cursor-not-allowed opacity-50'
+                        : timeRange === range
+                        ? 'bg-indigo-600 text-white cursor-pointer'
+                        : 'text-muted hover:text-ink cursor-pointer'
+                    }`}
+                  >
+                    {range}{isLocked ? ' 🔒' : ''}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

@@ -24,6 +24,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { billingService } from '../../services/billingService';
 import { sanitizeMediaEmbed, validateUrl } from '../../utils/blockValidator';
 import { compileThemeToCssVariables } from '../../utils/themeEngine';
 import type { StandardTheme } from '../../types/themeSchema';
@@ -58,7 +59,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   isStandalone = false,
   onOpenReportModal
 }) => {
-  const { trackEvent, submitForm, setCurrentView, animationTrigger, triggerReplayAnimation } = useApp();
+  const { trackEvent, submitForm, setCurrentView, animationTrigger, triggerReplayAnimation, workspace } = useApp();
+
+  // BIL-003: Derive removeBranding entitlement — the footer badge is ONLY hidden when
+  // the workspace plan explicitly grants removeBranding AND the theme toggle is off.
+  // Free-tier users can never hide the badge, even via the theme layout toggle.
+  const entitlements = billingService.getWorkspaceEntitlements(workspace);
+  const canRemoveBranding = profile.publicEntitlements?.removeBranding === true || entitlements.removeBranding;
 
   // Support deep-link tab URL routing (e.g. #tab=slug or #slug)
   const getInitialTabId = (): string => {
@@ -1375,7 +1382,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         )}
 
         {/* Public Footer */}
-        {layout.showFooter !== false && (
+        {/* Platform badge: only suppressed when plan grants removeBranding AND theme explicitly hides it */}
+        {(layout.showFooter !== false || !canRemoveBranding) && (
           <footer className="mt-12 text-center text-xs pb-4">
             <div className="flex items-center justify-center gap-3" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
               <span className="font-medium">

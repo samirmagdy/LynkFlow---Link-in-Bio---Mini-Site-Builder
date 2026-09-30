@@ -117,7 +117,10 @@ class BillingService {
   /**
    * BIL-001 & BIL-003: Derive authoritative workspace entitlements from active plan & status
    */
-  public getWorkspaceEntitlements(workspace: Workspace): WorkspaceEntitlements {
+  public getWorkspaceEntitlements(workspace?: Workspace): WorkspaceEntitlements {
+    // Public and contract-render contexts may not have an authenticated workspace.
+    // Never fail rendering or accidentally grant paid capabilities in that state.
+    if (!workspace) return this.getPlanConfig('free').capabilities;
     // If canceled and past period, fallback to Free tier entitlements
     if (workspace.status === 'canceled') {
       const now = new Date().toISOString();

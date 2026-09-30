@@ -903,7 +903,7 @@ async function publishApiProfile(request: Request, env: Env, profileId: string):
   if (replay) return replay;
   const version = Number(profileData.publishedVersion || 0) + 1;
   const publishedAt = new Date().toISOString();
-  const snapshot = createPublicSnapshot(profileData, profile.id, version, publishedAt, `api-key:${auth.keyId}`);
+  const snapshot = createPublicSnapshot(profileData, profile.id, version, publishedAt, `api-key:${auth.keyId}`, await workspaceCanRemoveBranding(env, auth.workspaceId));
   const themeSnapshot = createThemeSnapshot(snapshot, profileId, version, publishedAt, `api-key:${auth.keyId}`);
   const nextData = {
     ...profileData,
@@ -1051,7 +1051,7 @@ function createThemeSnapshot(snapshot: Record<string, unknown>, profileId: strin
   };
 }
 
-function createPublicSnapshot(data: Record<string, unknown>, profileId: string, version: number, publishedAt: string, publisher: string): Record<string, unknown> {
+function createPublicSnapshot(data: Record<string, unknown>, profileId: string, version: number, publishedAt: string, publisher: string, removeBranding = false): Record<string, unknown> {
   const username = String(data.username).trim().toLowerCase();
   return {
     snapshotId: `snap-${profileId}-v${version}-${Date.now()}`,
@@ -1079,7 +1079,17 @@ function createPublicSnapshot(data: Record<string, unknown>, profileId: string, 
     },
     publishedAt,
     publishedBy: publisher,
+    publicEntitlements: { removeBranding },
   };
+}
+
+async function workspaceCanRemoveBranding(env: Env, workspaceId: string): Promise<boolean> {
+  const response = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(workspaceId)}&select=plan,status,current_period_end`, env);
+  const rows = await response.json() as Array<{ plan?: string; status?: string; current_period_end?: string | null }>;
+  const workspace = rows[0];
+  if (!workspace || !['pro', 'agency'].includes(String(workspace.plan))) return false;
+  if (workspace.status === 'canceled' && workspace.current_period_end && workspace.current_period_end < new Date().toISOString()) return false;
+  return true;
 }
 
 async function publishDashboardProfile(request: Request, env: Env): Promise<Response> {
@@ -1106,7 +1116,7 @@ async function publishDashboardProfile(request: Request, env: Env): Promise<Resp
 
   const publishedAt = new Date().toISOString();
   const version = Number(profileData.publishedVersion || 0) + 1;
-  const snapshot = createPublicSnapshot(profileData, profile.id, version, publishedAt, user.email);
+  const snapshot = createPublicSnapshot(profileData, profile.id, version, publishedAt, user.email, await workspaceCanRemoveBranding(env, user.id));
   const themeSnapshot = createThemeSnapshot(snapshot, profile.id, version, publishedAt, user.email, input.changeNote, input.versionName, input.versionNotes);
   const nextData = {
     ...profileData,
@@ -1168,7 +1178,7 @@ async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.n
       const publishedAt = new Date(scheduledTime).toISOString();
       const version = Number(profile.data.publishedVersion || targetDraft.publishedVersion || 0) + 1;
       const publisher = String(schedule.createdBy || 'scheduled-publish');
-      const snapshot = createPublicSnapshot(targetDraft, profile.id, version, publishedAt, publisher);
+      const snapshot = createPublicSnapshot(targetDraft, profile.id, version, publishedAt, publisher, await workspaceCanRemoveBranding(env, profile.workspace_id));
       const themeSnapshot = createThemeSnapshot(snapshot, profile.id, version, publishedAt, publisher, 'Scheduled release');
       const nextData = {
         ...targetDraft,
@@ -1375,7 +1385,7 @@ async function rollbackDashboardProfile(request: Request, env: Env): Promise<Res
 
   const now = new Date().toISOString();
   const version = Number(profile.data.publishedVersion || 0) + 1;
-  const snapshot = createPublicSnapshot(restoredData, profile.id, version, now, user.email);
+  const snapshot = createPublicSnapshot(restoredData, profile.id, version, now, user.email, await workspaceCanRemoveBranding(env, user.id));
   const themeSnapshot = createThemeSnapshot(snapshot, profile.id, version, now, user.email, input.reason || `Rollback to ${snapshotId}`);
   const nextData = {
     ...restoredData,

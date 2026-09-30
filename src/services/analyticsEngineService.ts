@@ -146,14 +146,18 @@ class AnalyticsEngineService {
   }
 
   /**
-   * Authoritative aggregation engine for a profile over a date range with timezone awareness (AN-001, AN-002, AN-003)
+   * Authoritative aggregation engine for a profile over a date range with timezone awareness (AN-001, AN-002, AN-003).
+   * @param maxHistoryDays - BIL-003 plan retention cap. Events older than this window are excluded.
+   *                         Pass the workspace entitlement value (analyticsHistoryDays) to enforce billing limits.
+   *                         Defaults to Infinity (no cap) for backward compatibility.
    */
   public aggregateProfileAnalytics(
     profileId: string,
     range: 'today' | '7d' | '30d' | '90d' | 'all',
     timezone: string = 'UTC',
     allKnownBlocks: Array<{ id: string; title: string; type: string }> = [],
-    sourceEvents?: AnalyticsEvent[]
+    sourceEvents?: AnalyticsEvent[],
+    maxHistoryDays: number = Infinity
   ): AnalyticsAggregateSummary {
     let rawEvents: AnalyticsEvent[] = sourceEvents ? [...sourceEvents] : [];
     if (!sourceEvents) {
@@ -180,7 +184,15 @@ class AnalyticsEngineService {
       '90d': 90 * 24 * 60 * 60 * 1000,
       all: Infinity
     };
-    const cutoff = now - (durationMap[range] || durationMap['7d']);
+
+    // BIL-003: Enforce plan-level retention cap. The effective cutoff is the MOST RECENT
+    // of: the requested range start OR the plan's retention window start.
+    // This prevents free users from querying 90-day data even if events exist in storage.
+    const requestedCutoff = now - (durationMap[range] || durationMap['7d']);
+    const planRetentionCutoff = isFinite(maxHistoryDays)
+      ? now - maxHistoryDays * 24 * 60 * 60 * 1000
+      : 0;
+    const cutoff = Math.max(requestedCutoff, planRetentionCutoff);
 
     const inRangeEvents = profileEvents.filter(e => e.timestamp >= cutoff);
 

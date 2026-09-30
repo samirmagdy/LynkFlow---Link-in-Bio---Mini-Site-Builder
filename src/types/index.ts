@@ -451,6 +451,8 @@ export interface Profile {
   status: 'draft' | 'published' | 'suspended' | 'deleted';
   publishedVersion: number;
   publishedSnapshot?: PublishedProfileSnapshot;
+  /** Server-published capabilities used by the public renderer; never client-authoritative. */
+  publicEntitlements?: { removeBranding: boolean };
   snapshotHistory?: PublishedProfileSnapshot[];
   etag?: string;
   draftVersion?: number;
