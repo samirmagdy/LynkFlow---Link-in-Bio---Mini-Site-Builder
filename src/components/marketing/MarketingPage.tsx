@@ -32,7 +32,6 @@ import {
   formatPlanPrice 
 } from '../../data/pricingPlans';
 import { BillingCycle } from '../../types';
-import { SPEC_THEME_PRESETS } from '../../data/themePresets';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 import { LandingMotionBackground } from './LandingMotionBackground';
 import { HeroProductStage } from './HeroProductStage';
@@ -42,35 +41,10 @@ interface MarketingPageProps {
   onOpenAuth?: (mode: 'create' | 'login') => void;
 }
 
-type ThemeFilter = 'all' | 'minimal' | 'creator' | 'portfolio' | 'business' | 'dark' | 'editorial';
-
-const THEME_FILTERS: Array<{ id: ThemeFilter; label: string }> = [
-  { id: 'all', label: 'All themes' },
-  { id: 'minimal', label: 'Minimal' },
-  { id: 'creator', label: 'Creator' },
-  { id: 'portfolio', label: 'Portfolio' },
-  { id: 'business', label: 'Business' },
-  { id: 'dark', label: 'Dark' },
-  { id: 'editorial', label: 'Editorial' },
-];
-
-const themeMatchesFilter = (theme: (typeof SPEC_THEME_PRESETS)[number], filter: ThemeFilter) => {
-  if (filter === 'all') return true;
-  const haystack = `${theme.name} ${theme.category || ''}`.toLowerCase();
-  if (filter === 'dark') return theme.mode === 'dark' || /dark|noir|night|midnight|black|onyx/.test(haystack);
-  if (filter === 'minimal') return /minimal|simple|clean|mono|neutral/.test(haystack);
-  if (filter === 'creator') return /creator|artist|beauty|salon|nature|music|podcast|influencer/.test(haystack);
-  if (filter === 'portfolio') return /portfolio|studio|editorial|photography|photographer|designer/.test(haystack);
-  if (filter === 'business') return /business|professional|finance|agency|coach|consult|brand|shop|bakery/.test(haystack);
-  return /editorial|magazine|fashion|serif|journal/.test(haystack);
-};
-
 export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
   const { setCurrentView, workspace, upgradePlan } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
-  const [selectedThemeId, setSelectedThemeId] = useState(SPEC_THEME_PRESETS[0]?.id || '');
-  const [themeFilter, setThemeFilter] = useState<ThemeFilter>('all');
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [newsletterMessage, setNewsletterMessage] = useState<string | null>(null);
@@ -81,7 +55,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
   const heroContainerRef = useRef<HTMLDivElement>(null);
   const featuredSectionRef = useRef<HTMLDivElement>(null);
   const featuresSectionRef = useRef<HTMLDivElement>(null);
-  const playgroundSectionRef = useRef<HTMLDivElement>(null);
   const comparisonSectionRef = useRef<HTMLDivElement>(null);
   const faqSectionRef = useRef<HTMLDivElement>(null);
   const ctaSectionRef = useRef<HTMLDivElement>(null);
@@ -149,7 +122,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     const sectionsToObserve = [
       featuredSectionRef.current,
       featuresSectionRef.current,
-      playgroundSectionRef.current,
       comparisonSectionRef.current,
       faqSectionRef.current,
       ctaSectionRef.current,
@@ -255,10 +227,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       a: 'Agency Studio plans support multi-profile workspace management, allowing you to create, duplicate, and operate isolated profiles for different brands and clients from a single login.'
     }
   ];
-  const selectedTheme = SPEC_THEME_PRESETS.find((theme) => theme.id === selectedThemeId) || SPEC_THEME_PRESETS[0];
-  const visibleThemes = SPEC_THEME_PRESETS.filter((theme) => themeMatchesFilter(theme, themeFilter));
-
-
   return (
     <div className="relative isolate w-full bg-canvas text-ink overflow-x-hidden">
       <LandingMotionBackground />
@@ -483,86 +451,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             <p className="text-xs text-muted leading-relaxed">
               Isolate client profiles, duplicate structures, export CSV form submissions, and manage permissions from a centralized console.
             </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Theme samples: show the actual design systems instead of animation presets. */}
-      <section id="themes" tabIndex={-1} ref={playgroundSectionRef} data-section-key="playground" className="py-20 px-4 sm:px-6 border-t border-line bg-linear-to-b from-surface/40 via-canvas to-surface/30 focus:outline-none">
-        <div className="max-w-6xl mx-auto space-y-10">
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-accent text-xs font-mono border border-indigo-500/20">
-              <Palette className="w-3.5 h-3.5 text-warning" />
-              <span>Theme Studio</span>
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-['Syne'] tracking-tight text-balance">
-              Start with a visual system, not a template.
-            </h2>
-            <p className="text-sm text-muted leading-relaxed">
-              Explore the same profile across distinct palettes, typography, surfaces, and button treatments before you build.
-            </p>
-          </div>
-
-          <div>
-            <div className="rounded-3xl border border-line bg-surface/90 p-4 shadow-xl sm:p-5">
-              <div className="mb-4 flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-xs font-bold text-ink">Theme samples</div>
-                  <div className="mt-1 text-[11px] text-muted">Select a direction to preview it.</div>
-                </div>
-                <span className="text-[10px] font-mono text-muted">{visibleThemes.length} of {SPEC_THEME_PRESETS.length} systems</span>
-              </div>
-              <div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Filter theme samples">
-                {THEME_FILTERS.map((filter) => (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    aria-pressed={themeFilter === filter.id}
-                    onClick={() => setThemeFilter(filter.id)}
-                    className={`min-h-10 shrink-0 rounded-full border px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${themeFilter === filter.id ? 'border-accent bg-accent text-white' : 'border-line bg-canvas text-muted hover:border-line-strong hover:text-ink'}`}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-              <div className="grid max-h-[34rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4" aria-live="polite">
-                {visibleThemes.map((theme) => {
-                  return (
-                    <button
-                      key={theme.id}
-                      type="button"
-                      aria-label={`Preview ${theme.name} theme`}
-                      aria-pressed={selectedThemeId === theme.id}
-                      onClick={() => setSelectedThemeId(theme.id)}
-                      className={`group rounded-2xl border p-2 text-left transition-all cursor-pointer ${selectedThemeId === theme.id ? 'border-accent ring-2 ring-accent/20' : 'border-line hover:border-line-strong'}`}
-                    >
-                      <div className="h-20 rounded-xl p-2" style={{ background: theme.background.type === 'gradient' && theme.background.gradientStops ? theme.background.gradientStops : theme.tokens.colors.pageBackground }}>
-                        <div className="flex items-center gap-1.5">
-                          <span className="h-4 w-4 rounded-full" style={{ backgroundColor: theme.tokens.colors.accent }} />
-                          <span className="h-1.5 w-12 rounded-full" style={{ backgroundColor: theme.tokens.colors.primaryText, opacity: 0.8 }} />
-                        </div>
-                        <div className="mt-3 space-y-1.5">
-                          <div className="h-2 rounded-full" style={{ backgroundColor: theme.tokens.colors.panelBackground }} />
-                          <div className="h-2 w-4/5 rounded-full" style={{ backgroundColor: theme.tokens.colors.panelBackground, opacity: 0.72 }} />
-                        </div>
-                      </div>
-                      <div className="truncate px-1 pb-1 pt-2 text-[11px] font-semibold text-ink">{theme.name}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedTheme && (
-                <div className="mt-4 grid gap-4 rounded-2xl border border-line bg-canvas/70 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-accent">Live theme preview</p>
-                    <h3 className="mt-1 text-base font-bold text-ink">{selectedTheme.name}</h3>
-                    <p className="mt-1 text-xs leading-relaxed text-muted">Preview the visual direction before opening Studio. Your selection is not saved until you apply it inside the builder.</p>
-                  </div>
-                  <a href="/signup" onClick={(event) => { event.preventDefault(); onOpenAuth ? onOpenAuth('create') : setCurrentView('editor'); }} className="inline-flex min-h-10 items-center justify-center rounded-xl bg-inverse px-4 text-xs font-bold text-inverse-text hover:bg-inverse-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Use this direction <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></a>
-                </div>
-              )}
-            </div>
-
           </div>
         </div>
       </section>
@@ -992,9 +880,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 </li>
                 <li>
                   <a href="/link-in-bio-for-agencies" className="hover:text-ink transition-colors">For Agencies</a>
-                </li>
-                <li>
-                  <a href="#themes" className="hover:text-ink transition-colors">Design Token Studio</a>
                 </li>
                 <li>
                   <a href="#pricing" className="hover:text-ink transition-colors">Pricing & Plans</a>

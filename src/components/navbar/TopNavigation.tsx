@@ -108,13 +108,6 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
             Features
           </a>
           <a
-            href="#themes"
-            onClick={(e) => handleScrollToAnchor('themes', e)}
-            className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
-          >
-            Themes
-          </a>
-          <a
             href="#pricing"
             onClick={(e) => handleScrollToAnchor('pricing', e)}
             className="transition-colors hover:text-ink cursor-pointer py-1 px-1.5 rounded focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
@@ -263,13 +256,6 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
               className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
             >
               Features
-            </a>
-            <a
-              href="#themes"
-              onClick={(e) => handleScrollToAnchor('themes', e)}
-              className="touch-target w-full justify-start py-2 px-3 rounded-lg hover:bg-surface hover:text-ink transition-colors"
-            >
-              Themes
             </a>
             <a
               href="#pricing"
