@@ -2091,7 +2091,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                         {pexelsResults.map(media => (
                           <div key={`${media.kind}-${media.id}`} className="overflow-hidden rounded-lg border border-line bg-surface">
                             <div className="relative">
-                              {media.kind === 'video' ? <video src={media.assetUrl} poster={media.thumbnail || undefined} muted playsInline preload="metadata" className="h-20 w-full object-cover" /> : <img src={media.thumbnail || media.assetUrl} alt={`Photo by ${media.photographer} on Pexels`} loading="lazy" className="h-20 w-full object-cover" />}
+                              {media.kind === 'video' ? <video src={media.assetUrl} poster={media.thumbnail || undefined} muted autoPlay loop playsInline preload="auto" className="h-20 w-full object-cover" aria-label={`Video by ${media.photographer} on Pexels`} /> : <img src={media.thumbnail || media.assetUrl} alt={`Photo by ${media.photographer} on Pexels`} loading="lazy" className="h-20 w-full object-cover" />}
                               <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-1 text-[9px] text-white">Photo by {media.photographer}</span>
                             </div>
                             <div className="flex gap-1 p-1.5">

@@ -530,16 +530,17 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       {bgType === 'video' && standardTheme.background.assetUrl && !(prefersReducedMotion && standardTheme.background.reducedMotionFallback === 'solid') && (
         <video
           className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
+          src={standardTheme.background.assetUrl}
           poster={standardTheme.background.posterUrl || undefined}
           autoPlay={standardTheme.background.autoplay !== false && !prefersReducedMotion}
           muted={standardTheme.background.muted !== false}
           loop={standardTheme.background.loop !== false}
+          preload="auto"
           playsInline
           aria-hidden="true"
           style={{ objectFit: standardTheme.background.fit === 'contain' ? 'contain' : 'cover', objectPosition: standardTheme.background.focalPoint ? `${standardTheme.background.focalPoint.x}% ${standardTheme.background.focalPoint.y}%` : (standardTheme.background.position || 'center'), filter: standardTheme.background.blur ? `blur(${standardTheme.background.blur}px)` : undefined }}
         >
           {standardTheme.background.mobileAssetUrl && <source media="(max-width: 639px)" src={standardTheme.background.mobileAssetUrl} />}
-          <source src={standardTheme.background.assetUrl} />
         </video>
       )}
       {/* Standalone Top Floating Control Bar */}

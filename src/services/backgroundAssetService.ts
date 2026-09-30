@@ -200,7 +200,14 @@ export async function registerRemoteBackgroundAsset(input: RemoteBackgroundAsset
   const remoteBlob = await remoteResponse.blob();
   if (!remoteBlob.size || remoteBlob.size > MAX_BYTES) throw new Error('The selected provider asset is too large to save (maximum 50 MB).');
   const isVideo = input.kind === 'video';
-  const contentType = remoteBlob.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+  // Some Pexels CDN responses are labelled application/octet-stream even
+  // though the payload is a browser-playable MP4. Persist a media MIME type
+  // that Supabase Storage and <video> can use for decoding and range requests.
+  const remoteType = remoteBlob.type.toLowerCase();
+  const urlLooksWebm = /\.webm(?:$|[?#])/i.test(input.assetUrl);
+  const contentType = isVideo
+    ? (remoteType === 'video/webm' || urlLooksWebm ? 'video/webm' : 'video/mp4')
+    : (remoteType.startsWith('image/') ? remoteType : 'image/jpeg');
   const extension = isVideo ? (contentType.includes('webm') ? 'webm' : 'mp4') : (contentType.includes('png') ? 'png' : 'jpg');
   const storagePath = `${userData.user.id}/${profileId}/pexels-${input.id}.${extension}`;
   const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, remoteBlob, {
