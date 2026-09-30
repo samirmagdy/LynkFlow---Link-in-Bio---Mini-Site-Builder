@@ -699,6 +699,23 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const applyPexelsMedia = async (media: PexelsMedia) => {
     setPexelsError(null);
     setIsApplyingPexels(true);
+    // Apply the provider URL first so the preview responds immediately. The
+    // Storage copy below is still authoritative for persistence/public pages,
+    // but it should not block the editor from showing the user's selection.
+    updateStandardTheme(prev => ({
+      ...prev,
+      background: {
+        ...prev.background,
+        type: media.kind,
+        assetId: null,
+        assetUrl: media.assetUrl,
+        placeholderUrl: null,
+        posterUrl: media.kind === 'video' ? (media.thumbnail || prev.background.posterUrl) : null,
+        gradientStops: undefined,
+        overlay: media.kind === 'image' ? Math.max(prev.background.overlay ?? 0, 0.08) : prev.background.overlay,
+        fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
+      }
+    }));
     try {
       const asset = await registerRemoteBackgroundAsset({
         id: media.id,
@@ -709,20 +726,24 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         width: media.width,
         height: media.height,
       }, activeProfile.id);
-      updateStandardTheme(prev => ({
-        ...prev,
-        background: {
-          ...prev.background,
-          type: asset.kind,
-          assetId: asset.storagePath,
-          assetUrl: asset.assetUrl,
-          overlay: Math.max(prev.background.overlay ?? 0, 0.28),
-          fallbackColor: prev.background.fallbackColor || prev.tokens.colors.pageBackground
-        }
-      }));
+      updateStandardTheme(prev => {
+        // Do not overwrite a newer user selection if the Storage copy finishes
+        // after the user has clicked a different result.
+        if (prev.background.assetUrl !== media.assetUrl || prev.background.type !== media.kind) return prev;
+        return {
+          ...prev,
+          background: {
+            ...prev.background,
+            type: asset.kind,
+            assetId: asset.storagePath,
+            assetUrl: asset.assetUrl,
+            posterUrl: asset.kind === 'video' ? (prev.background.posterUrl || null) : null
+          }
+        };
+      });
       await refreshBackgroundAssets();
     } catch (error) {
-      setPexelsError(error instanceof Error ? error.message : 'Pexels background could not be saved.');
+      setPexelsError(`Preview applied, but the workspace copy could not be saved. ${error instanceof Error ? error.message : 'Retry to save it.'}`);
     } finally {
       setIsApplyingPexels(false);
     }
