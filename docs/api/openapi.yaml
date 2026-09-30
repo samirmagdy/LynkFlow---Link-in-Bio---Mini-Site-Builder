@@ -8,6 +8,27 @@ servers:
 security:
   - ApiKey: []
 paths:
+  /api/public/newsletter:
+    post:
+      operationId: submit-marketing-newsletter
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, consent]
+              properties:
+                email: {type: string, format: email, maxLength: 320}
+                consent: {type: boolean, const: true}
+                source: {type: string, maxLength: 64}
+      responses:
+        '200': {description: Subscription saved}
+        '405': {description: Method not allowed}
+        '422': {description: Invalid email or missing consent}
+        '429': {description: Rate limited}
+        '503': {description: Service unavailable}
   /api/health:
     get:
       operationId: get-health

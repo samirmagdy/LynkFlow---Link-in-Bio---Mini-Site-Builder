@@ -346,7 +346,7 @@ async function sitemapResponse(request: Request, env: Env): Promise<Response> {
 
 function robotsResponse(request: Request, env: Env): Response {
   const origin = env.APP_URL && !env.APP_URL.includes('workers.dev') ? env.APP_URL.replace(/\/$/, '') : PUBLIC_SITE_ORIGIN;
-  return new Response(`User-agent: *\nDisallow: /api/\nDisallow: /admin/\nDisallow: /?view=\nAllow: /@\nSitemap: ${origin}/sitemap.xml\n`, { headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'public, max-age=3600, s-maxage=86400' } });
+  return new Response(`User-agent: *\nDisallow: /api/\nDisallow: /admin/\nDisallow: /studio\nDisallow: /?view=\nAllow: /@\nSitemap: ${origin}/sitemap.xml\n`, { headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'public, max-age=3600, s-maxage=86400' } });
 }
 
 function legalResponse(kind: 'privacy' | 'terms', request: Request): Response {
@@ -535,6 +535,64 @@ function rateLimitedResponse(message: string, retryAfterSeconds: number): Respon
   const response = json({ error: message, rateLimited: true }, 429);
   response.headers.set('retry-after', String(Math.max(1, retryAfterSeconds)));
   return response;
+}
+
+async function submitMarketingNewsletter(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return apiError('SERVICE_UNAVAILABLE', 'Newsletter service is not configured.', 503);
+  }
+
+  let input: { email?: string; consent?: boolean; source?: string };
+  try {
+    input = await request.json();
+  } catch {
+    return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400);
+  }
+
+  const email = String(input.email || '').trim().toLowerCase();
+  const source = String(input.source || 'landing_page').trim().replace(/[^a-z0-9_-]/gi, '').slice(0, 64) || 'landing_page';
+  if (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return apiError('VALIDATION_ERROR', 'A valid email address is required.', 422);
+  }
+  if (input.consent !== true) {
+    return apiError('CONSENT_REQUIRED', 'Explicit newsletter consent is required.', 422);
+  }
+
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const rateKey = await hashValue('marketing-newsletter:' + ip, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL);
+  let rate: { allowed: boolean; retryAfterSeconds: number };
+  try {
+    rate = await consumePublicRateLimit(env, 'marketing-newsletter:' + rateKey, 5);
+  } catch (error) {
+    console.error('Marketing newsletter rate limiter failed', error);
+    return apiError('SERVICE_UNAVAILABLE', 'Newsletter protection is temporarily unavailable. Please retry shortly.', 503);
+  }
+  if (!rate.allowed) {
+    const response = apiError('RATE_LIMITED', 'Too many newsletter attempts. Please try again later.', 429);
+    response.headers.set('retry-after', String(Math.max(1, rate.retryAfterSeconds)));
+    return response;
+  }
+
+  const subscribedAt = new Date().toISOString();
+  try {
+    await supabaseRequest('marketing_subscribers?on_conflict=email', env, {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        id: 'mkt-sub-' + crypto.randomUUID(),
+        email,
+        source,
+        consent_given: true,
+        subscribed_at: subscribedAt,
+        updated_at: subscribedAt
+      })
+    });
+  } catch (error) {
+    console.error('Marketing newsletter persistence failed', error);
+    return apiError('PERSISTENCE_ERROR', 'We could not save your subscription. Please try again.', 503);
+  }
+
+  return json({ data: { subscribed: true } });
 }
 
 
@@ -1828,6 +1886,13 @@ export default {
     if (url.pathname === '/api/public/forms') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await submitPublicForm(request, env); } catch (error) { return json({ error: error instanceof Error ? error.message : 'Form submission failed.' }, 500); }
+    }
+    if (url.pathname === '/api/public/newsletter') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await submitMarketingNewsletter(request, env); } catch (error) {
+        console.error('Marketing newsletter submission failed', error);
+        return apiError('INTERNAL_ERROR', 'Newsletter submission failed. Please try again.', 500);
+      }
     }
     if (url.pathname === '/api/public/abuse-reports') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);

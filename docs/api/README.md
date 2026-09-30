@@ -6,6 +6,7 @@ OpenAPI: [`openapi.yaml`](./openapi.yaml)
 
 Implemented resources:
 
+- POST /api/public/newsletter
 - `GET /api/v1/profiles`
 - `GET/PATCH /api/v1/profiles/{profileId}`
 - `GET/PATCH /api/v1/profiles/{profileId}/blocks/{blockId}`

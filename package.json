@@ -26,7 +26,8 @@
     "check:design-persistence": "tsx scripts/design-system-persistence-contract.ts",
     "check:theme-visual": "tsx scripts/theme-visual-smoke.ts",
     "check:theme-a11y": "tsx scripts/theme-accessibility-smoke.ts",
-    "check:api": "node /Users/samirmagdy/.agents/skills/backend-first/scripts/api-contract-check.mjs --src src --no-routes"
+    "check:api": "node /Users/samirmagdy/.agents/skills/backend-first/scripts/api-contract-check.mjs --src src --no-routes",
+    "check:newsletter": "tsx src/qaMarketingNewsletterSuite.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

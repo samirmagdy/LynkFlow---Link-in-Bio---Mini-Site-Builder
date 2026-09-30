@@ -15,15 +15,11 @@ import {
   Sparkles,
   Smartphone,
   ExternalLink,
-  Play,
   Flame,
   CheckCircle2
 } from 'lucide-react';
 import { 
-  ANIME_ENTRANCE_PRESETS, 
-  AnimeEntrancePreset, 
   runStaggeredEntrance, 
-  animateCounter, 
   triggerAnimeRipple, 
   animateHoverEnter, 
   animateHoverLeave,
@@ -54,22 +50,18 @@ interface MarketingPageProps {
 export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
   const { setCurrentView, switchActiveProfile, profiles, setPublicViewingUsername, setPublicDemo, workspace, upgradePlan } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [demoPreset, setDemoPreset] = useState<AnimeEntrancePreset>('springPop');
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
-  const [showAllPresets, setShowAllPresets] = useState(false);
   const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [newsletterMessage, setNewsletterMessage] = useState<string | null>(null);
+  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
+  const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
 
   // Component refs for Anime.js animations
   const heroContainerRef = useRef<HTMLDivElement>(null);
-  const stat1Ref = useRef<HTMLSpanElement>(null);
-  const stat2Ref = useRef<HTMLSpanElement>(null);
-  const stat3Ref = useRef<HTMLSpanElement>(null);
-
   const featuredSectionRef = useRef<HTMLDivElement>(null);
   const featuresSectionRef = useRef<HTMLDivElement>(null);
   const playgroundSectionRef = useRef<HTMLDivElement>(null);
-  const demoCardsRef = useRef<HTMLDivElement>(null);
   const comparisonSectionRef = useRef<HTMLDivElement>(null);
   const faqSectionRef = useRef<HTMLDivElement>(null);
   const ctaSectionRef = useRef<HTMLDivElement>(null);
@@ -86,19 +78,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       if (heroAnimation) activeAnimations.push(heroAnimation as { pause?: () => void; cancel?: () => void });
     }
 
-    // 2. Hero rolling metric counters
-    [
-      animateCounter(stat1Ref.current, 0, 140, { prefix: '+', suffix: '%', duration: 1200 }),
-      animateCounter(stat2Ref.current, 0, 99.9, { decimals: 1, suffix: '%', duration: 1200 }),
-      animateCounter(stat3Ref.current, 0, 300, { prefix: '<', suffix: 'ms', duration: 1200 })
-    ].forEach(animation => {
-      if (animation) activeAnimations.push(animation as { pause?: () => void; cancel?: () => void });
-    });
-
-    // 3. Initial demo cards cascade in playground
-    triggerDemoAnimation();
-
-    // 4. Scroll-triggered IntersectionObserver for all landing page components
+    // 2. Scroll-triggered IntersectionObserver for all landing page components
     const animatedSections = new Set<string>();
 
     const observerCallback: IntersectionObserverCallback = (entries) => {
@@ -177,24 +157,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     };
   }, []);
 
-  const triggerDemoAnimation = (presetOverride?: AnimeEntrancePreset) => {
-    if (prefersReducedMotion()) return;
-    const cards = demoCardsRef.current?.querySelectorAll<HTMLElement>('.demo-anime-card');
-    if (cards?.length) runStaggeredEntrance(cards, presetOverride || demoPreset);
-  };
-
-  const handleSelectPreset = (preset: AnimeEntrancePreset, e: React.MouseEvent<HTMLButtonElement>) => {
-    triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.4)');
-    setDemoPreset(preset);
-    triggerDemoAnimation(preset);
-  };
-
-  const handleReplayClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    triggerAnimeRipple(e, e.currentTarget, 'rgba(255, 255, 255, 0.3)');
-    triggerSuccessBurst(e.currentTarget);
-    triggerDemoAnimation();
-  };
-
   const toggleFaq = (idx: number) => {
     const willOpen = openFaq !== idx;
     setOpenFaq(willOpen ? idx : null);
@@ -235,6 +197,36 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     animateHoverLeave(e.currentTarget);
   };
 
+  const handleNewsletterSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setNewsletterMessage(null);
+    setNewsletterSubmitted(false);
+    setNewsletterSubmitting(true);
+
+    try {
+      const response = await fetch('/api/public/newsletter', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: newsletterEmail.trim(),
+          consent: newsletterConsent,
+          source: 'landing_page'
+        })
+      });
+      const payload = await response.json() as { data?: { subscribed?: boolean }; error?: { message?: string } };
+      if (!response.ok || payload.data?.subscribed !== true) {
+        throw new Error(payload.error?.message || 'We could not save your subscription. Please try again.');
+      }
+      setNewsletterSubmitted(true);
+      setNewsletterEmail('');
+      setNewsletterConsent(false);
+    } catch (error) {
+      setNewsletterMessage(error instanceof Error ? error.message : 'We could not save your subscription. Please try again.');
+    } finally {
+      setNewsletterSubmitting(false);
+    }
+  };
+
   const faqs = [
     {
       q: 'How is LynkFlow different from basic link-in-bio tools?',
@@ -273,16 +265,14 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           {/* Eyebrow Pill */}
           <div className="anime-hero-item inline-flex items-center gap-2 text-xs text-muted font-medium px-4 py-1.5 rounded-full bg-surface/80 border border-line shadow-sm backdrop-blur-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Next-Generation Link-in-Bio</span>
+            <span>Branded link-in-bio pages for creators, studios, and brands</span>
             <span aria-hidden="true" className="text-subtle">·</span>
-            <span>Zero Slop Architecture</span>
-            <span aria-hidden="true" className="text-subtle">·</span>
-            <span>Powered by Anime.js Physics</span>
+            <span>Publish in minutes</span>
           </div>
 
           {/* Main Headline */}
           <h1 className="anime-hero-item text-4xl sm:text-6xl font-extrabold tracking-tight text-ink font-['Syne'] leading-[1.1] text-balance">
-            Turn your social traffic into a branded, high-converting destination.
+            Build a branded link-in-bio page that turns clicks into clients.
           </h1>
 
           {/* Subtitle */}
@@ -338,31 +328,31 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
           <HeroProductStage />
 
-          {/* Social Proof Text Row with Animated Counters */}
+          {/* Product proof row: concrete capabilities instead of unverified metrics. */}
           <div className="anime-hero-item pt-8 flex flex-wrap items-center justify-center gap-4 text-xs text-muted font-mono">
             <div 
               onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
               onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
               className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-emerald-500/40 transition-colors"
             >
-              <span ref={stat1Ref} className="font-bold text-success tabular-nums">Higher</span>
-              <span>Qualified Inbound Focus</span>
+              <span className="font-bold text-success">Publish</span>
+              <span>in minutes</span>
             </div>
             <div 
               onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
               onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
               className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-indigo-500/40 transition-colors"
             >
-              <span ref={stat2Ref} className="font-bold text-accent tabular-nums">Edge</span>
-              <span>Ready Delivery</span>
+              <span className="font-bold text-accent">Custom</span>
+              <span>domain ready</span>
             </div>
             <div 
               onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
               onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
               className="flex items-center gap-1.5 bg-surface/60 px-3.5 py-1.5 rounded-full border border-line shadow-sm cursor-default hover:border-cyan-500/40 transition-colors"
             >
-              <span ref={stat3Ref} className="font-bold text-info tabular-nums">Fast</span>
-              <span>Global Edge Delivery</span>
+              <span className="font-bold text-info">Privacy-first</span>
+              <span>analytics</span>
             </div>
           </div>
         </div>
@@ -642,189 +632,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
         </div>
       </section>
 
-      {/* Legacy motion playground retained below for internal animation testing. */}
-      <section className="hidden" aria-hidden="true">
-      <section 
-        id="themes-legacy"
-        tabIndex={-1}
-        className="py-20 px-4 sm:px-6 border-t border-line bg-linear-to-b from-surface/40 via-canvas to-surface/30 focus:outline-none"
-      >
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="playground-anime-header text-center max-w-2xl mx-auto space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-accent text-xs font-mono border border-indigo-500/20 shadow-sm">
-              <Sparkles className="w-3.5 h-3.5 text-warning" />
-              <span>animejs.com Integration Engine</span>
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-['Syne'] tracking-tight">
-              Fluid Physics. High-Impact Motion.
-            </h2>
-            <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              LynkFlow replaces sluggish CSS transitions with spring dynamics and elastic easing powered by Anime.js. Select any animation preset below and test the cascade interactively.
-            </p>
-          </div>
-
-          {/* Interactive Playground Control & Stage */}
-          <div className="p-4 sm:p-6 rounded-3xl bg-surface/90 border border-line shadow-2xl space-y-4">
-            <div className="grid gap-4 rounded-2xl border border-line bg-canvas/60 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <div>
-                <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted font-mono">
-                  <span>Selected personality</span>
-                  <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-accent normal-case tracking-normal">
-                    {ANIME_ENTRANCE_PRESETS[demoPreset]?.name}
-                  </span>
-                </div>
-                <div className="max-w-2xl text-xs leading-relaxed text-muted">
-                  {ANIME_ENTRANCE_PRESETS[demoPreset]?.description}
-                </div>
-              </div>
-
-              <div className="flex sm:justify-end">
-                <button
-                  type="button"
-                  onClick={handleReplayClick}
-                  onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
-                  onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-                  className="touch-target relative w-full overflow-hidden rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500 cursor-pointer sm:w-auto"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Replay Cascade</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Curated preset shelf; the full library remains one click away. */}
-            <div className="rounded-2xl border border-line bg-surface-2/40 p-3">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-bold text-ink">Choose an entrance</div>
-                  <div className="text-[11px] text-muted">Preview the same blocks with a different motion personality.</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAllPresets((visible) => !visible)}
-                  className="min-h-10 rounded-lg px-2.5 text-[11px] font-semibold text-accent transition-colors hover:bg-indigo-500/10 cursor-pointer"
-                >
-                  {showAllPresets ? 'Show fewer' : `Show all ${Object.keys(ANIME_ENTRANCE_PRESETS).length}`}
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-              {(Object.keys(ANIME_ENTRANCE_PRESETS) as AnimeEntrancePreset[])
-                .slice(0, showAllPresets ? undefined : 5)
-                .map((key) => {
-                const isSelected = demoPreset === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={(e) => handleSelectPreset(key, e)}
-                    aria-pressed={isSelected}
-                    onMouseEnter={(e) => animateHoverEnter(e.currentTarget)}
-                    onMouseLeave={(e) => animateHoverLeave(e.currentTarget)}
-                    className={`touch-target relative min-w-0 overflow-hidden rounded-xl px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/20'
-                        : 'bg-canvas text-body hover:text-ink border border-line hover:border-line-strong'
-                    }`}
-                  >
-                    <span className="block truncate">{ANIME_ENTRANCE_PRESETS[key].name}</span>
-                  </button>
-                );
-              })}
-              </div>
-            </div>
-
-            {/* Interactive Animated Cards Stage */}
-            <div
-              ref={demoCardsRef}
-              className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-3"
-            >
-              <div 
-                onMouseEnter={handleCardMouseEnter}
-                onMouseLeave={handleCardMouseLeave}
-                onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.3)')}
-                className="demo-anime-card p-4 rounded-2xl bg-canvas border border-line hover:border-indigo-500/50 transition-colors cursor-pointer space-y-2 relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between text-xs font-semibold text-ink">
-                  <span>✨ Interactive Link Block</span>
-                  <ExternalLink className="anime-icon-target w-3.5 h-3.5 text-accent" />
-                </div>
-                <p className="text-[11px] text-muted">
-                  Click to trigger Anime.js ripple wave or hover for magnetic spring physics.
-                </p>
-                <div className="text-[10px] font-mono text-success font-medium pt-1">
-                  ease: {ANIME_ENTRANCE_PRESETS[demoPreset]?.ease}
-                </div>
-              </div>
-
-              <div 
-                onMouseEnter={handleCardMouseEnter}
-                onMouseLeave={handleCardMouseLeave}
-                onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(16, 185, 129, 0.3)')}
-                className="demo-anime-card p-4 rounded-2xl bg-canvas border border-line hover:border-emerald-500/50 transition-colors cursor-pointer space-y-2 relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between text-xs font-semibold text-ink">
-                  <span>📹 Video & Media Hub</span>
-                  <ExternalLink className="anime-icon-target w-3.5 h-3.5 text-success" />
-                </div>
-                <p className="text-[11px] text-muted">
-                  Spring arrival with stagger delay of {ANIME_ENTRANCE_PRESETS[demoPreset]?.staggerDelay}ms.
-                </p>
-                <div className="text-[10px] font-mono text-info font-medium pt-1">
-                  duration: {ANIME_ENTRANCE_PRESETS[demoPreset]?.duration}ms
-                </div>
-              </div>
-
-              <div 
-                onMouseEnter={handleCardMouseEnter}
-                onMouseLeave={handleCardMouseLeave}
-                onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(236, 72, 153, 0.3)')}
-                className="demo-anime-card p-4 rounded-2xl bg-canvas border border-line hover:border-pink-500/50 transition-colors cursor-pointer space-y-2 relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between text-xs font-semibold text-ink">
-                  <span>📨 Client Inquiry Form</span>
-                  <ExternalLink className="anime-icon-target w-3.5 h-3.5 text-danger" />
-                </div>
-                <p className="text-[11px] text-muted">
-                  Real-time physics calculation running on animejs.com v4 engine.
-                </p>
-                <div className="text-[10px] font-mono text-danger font-medium pt-1">
-                  Click card for Anime.js ripple
-                </div>
-              </div>
-            </div>
-
-            {/* Interactive Block Animation Library Showcase */}
-            <div className="pt-6 border-t border-line space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-bold text-ink flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-accent" />
-                    <span>Per-Block Anime.js Animation Studio</span>
-                  </div>
-                  <p className="text-[11px] text-muted mt-0.5">
-                    Assign any Anime.js animation choice to individual blocks — continuous ambient loops, spring entrance reveals, hacker cipher text scrambling, 3D perspective turns, and tactile micro-physics.
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-accent-soft border border-indigo-500/30">
-                    23 Animation Choices
-                  </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-success border border-emerald-500/30">
-                    5 Hover Physics
-                  </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-pink-500/20 text-danger border border-pink-500/30">
-                    4 Click FX
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      </section>
-
       {/* Pricing & Plan Comparison Section (MKT-003: Configuration-Driven Plans) */}
-      <section 
+      <section
         id="pricing"
         tabIndex={-1}
         ref={comparisonSectionRef}
@@ -1070,17 +879,16 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                     )}
                   </div>
                 </button>
-                {isOpen && (
-                  <div 
+                <div
                     id={`faq-answer-${idx}`}
                     role="region"
                     aria-labelledby={`faq-question-${idx}`}
+                    hidden={!isOpen}
                     ref={(el) => { faqAnswerRefs.current[idx] = el; }}
                     className="px-4 sm:px-5 pb-5 pt-1 text-xs text-muted leading-relaxed border-t border-line/60"
                   >
                     {faq.a}
                   </div>
-                )}
               </div>
             );
           })}
@@ -1089,6 +897,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
       {/* CTA Footer Banner (MKT-001 & Flow 3) */}
       <section 
+        id="get-started"
         ref={ctaSectionRef}
         data-section-key="cta"
         className="py-20 px-4 sm:px-6 border-t border-line bg-gradient-to-b from-canvas via-surface/60 to-canvas text-center"
@@ -1163,14 +972,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
 
               <form
                 className="w-full"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setNewsletterMessage(
-                    newsletterEmail.trim()
-                      ? 'Newsletter delivery is not connected yet. Add the subscriber endpoint before collecting addresses.'
-                      : 'Enter your email address to continue.'
-                  );
-                }}
+                onSubmit={handleNewsletterSubmit}
               >
                 <label htmlFor="marketing-newsletter-email" className="mb-2 block text-[11px] font-semibold text-ink">
                   Email address
@@ -1191,15 +993,31 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                   />
                   <button
                     type="submit"
-                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-inverse px-5 text-sm font-bold text-inverse-text shadow-lg transition-colors hover:bg-inverse-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    disabled={newsletterSubmitting || !newsletterConsent}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-inverse px-5 text-sm font-bold text-inverse-text shadow-lg transition-colors hover:bg-inverse-hover disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    Join the list
+                    {newsletterSubmitting ? 'Joining…' : 'Join the list'}
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
-                <p className="mt-3 text-[11px] leading-relaxed text-subtle">
-                  By subscribing, you agree to receive occasional product updates. Unsubscribe anytime.
-                </p>
+                <label className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-subtle">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={newsletterConsent}
+                    onChange={(event) => {
+                      setNewsletterConsent(event.target.checked);
+                      setNewsletterMessage(null);
+                    }}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--lf-accent)]"
+                  />
+                  <span>Keep me updated about LynkFlow. I can unsubscribe anytime.</span>
+                </label>
+                {newsletterSubmitted && (
+                  <p id="newsletter-status" role="status" className="mt-3 rounded-lg border border-success/30 bg-success-surface px-3 py-2 text-[11px] leading-relaxed text-success">
+                    You’re on the list. We’ll send useful product updates occasionally.
+                  </p>
+                )}
                 {newsletterMessage && (
                   <p id="newsletter-status" role="status" className="mt-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-[11px] leading-relaxed text-warning">
                     {newsletterMessage}
