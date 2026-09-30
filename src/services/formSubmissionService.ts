@@ -10,6 +10,7 @@
  */
 
 import { FormSubmission, Subscriber, FormBlockPayload, FormField, AuditLog } from '../types';
+import { serializeCsv } from '../utils/csv';
 
 export const FORM_STORAGE_KEYS = {
   SUBMISSIONS: 'lynkflow_submissions_v1',
@@ -471,28 +472,22 @@ class FormSubmissionService {
       ...customFieldKeys.map(k => `Field: ${k}`)
     ];
 
-    const escapeCsv = (str: any) => {
-      if (str === null || str === undefined) return '""';
-      const clean = String(str).replace(/"/g, '""');
-      return `"${clean}"`;
-    };
-
     const rows = boundedList.map(s => {
       return [
-        escapeCsv(s.id),
-        escapeCsv(s.formTitle),
-        escapeCsv(s.formType || 'custom'),
-        escapeCsv(s.responderEmail || ''),
-        escapeCsv(s.responderName || ''),
-        escapeCsv(new Date(s.timestamp).toISOString()),
-        escapeCsv(s.consentGiven ? 'YES' : 'NO'),
-        escapeCsv(s.consentText || ''),
-        escapeCsv(s.status),
-        ...customFieldKeys.map(k => escapeCsv(s.data[k] || ''))
-      ].join(',');
+        s.id,
+        s.formTitle,
+        s.formType || 'custom',
+        s.responderEmail || '',
+        s.responderName || '',
+        new Date(s.timestamp).toISOString(),
+        s.consentGiven ? 'YES' : 'NO',
+        s.consentText || '',
+        s.status,
+        ...customFieldKeys.map(k => s.data[k] ?? '')
+      ];
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
+    const csvContent = serializeCsv(headers, rows);
 
     // Audit the export action
     this.logAudit(
@@ -528,23 +523,18 @@ class FormSubmissionService {
       'Consent Given'
     ];
 
-    const escapeCsv = (str: any) => {
-      if (!str) return '""';
-      return `"${String(str).replace(/"/g, '""')}"`;
-    };
-
     const rows = subscribers.map(s => [
-      escapeCsv(s.id),
-      escapeCsv(s.email),
-      escapeCsv(s.name || ''),
-      escapeCsv(s.status),
-      escapeCsv(s.subscribedAt),
-      escapeCsv(s.lastEngagementAt || s.subscribedAt),
-      escapeCsv(s.sourceFormTitle),
-      escapeCsv(s.consentGiven ? 'YES' : 'NO')
-    ].join(','));
+      s.id,
+      s.email,
+      s.name || '',
+      s.status,
+      s.subscribedAt,
+      s.lastEngagementAt || s.subscribedAt,
+      s.sourceFormTitle,
+      s.consentGiven ? 'YES' : 'NO'
+    ]);
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
+    const csvContent = serializeCsv(headers, rows);
 
     this.logAudit(
       operatorEmail,

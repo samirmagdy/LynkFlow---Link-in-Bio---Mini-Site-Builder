@@ -11,7 +11,6 @@ import {
   Mail, 
   KeyRound, 
   AlertCircle,
-  Clock,
   RefreshCw
 } from 'lucide-react';
 import { triggerAnimeRipple } from '../../utils/animeAnimations';
@@ -43,8 +42,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [name, setName] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [activeDebugToken, setActiveDebugToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -61,13 +58,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(false);
 
     if (res.success) {
-      if (res.debugToken) {
-        setActiveDebugToken(res.debugToken);
-        setVerificationCode(res.debugToken);
-        setMode('verify');
-      } else {
-        setMode('login');
-      }
+      setMode('login');
       setFormSuccess('Account created! Please verify your email to unlock all publishing features.');
     } else {
       setFormError(res.error || 'Failed to create account.');
@@ -101,18 +92,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     const res = await requestPasswordReset(email);
     setIsLoading(false);
 
-    if (res.debugToken) {
-      setActiveDebugToken(res.debugToken);
-    }
     setFormSuccess(res.message);
   };
 
-  const handleVerifySubmit = (e: React.FormEvent) => {
+  const handleVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setIsLoading(true);
 
-    const res = verifyEmail(verificationCode);
+    const res = await verifyEmail();
     setIsLoading(false);
 
     if (res.success) {
@@ -143,11 +131,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleResend = async () => {
     const res = await resendVerificationEmail();
-    if (res.success && res.debugToken) {
-      setActiveDebugToken(res.debugToken);
-      setVerificationCode(res.debugToken);
-      setFormSuccess('New token generated and dispatched.');
-    }
+    if (res.success) setFormSuccess('Verification email sent.');
   };
 
   return (
@@ -362,10 +346,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               />
             </div>
 
-            <div className="p-2.5 rounded-xl bg-canvas border border-line text-[11px] text-muted">
-              Demo Quick Fill: <code className="text-accent-soft">SamirMagdy80@gmail.com</code> / <code className="text-accent-soft">Password123!</code>
-            </div>
-
             <div className="pt-2">
               <button
                 type="submit"
@@ -401,18 +381,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 className="w-full px-3 py-2 text-xs rounded-xl bg-canvas border border-line text-ink focus:outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
-
-            {activeDebugToken && (
-              <div className="p-3 rounded-xl bg-warning-surface border border-warning/40 text-xs text-warning space-y-1">
-                <div className="font-semibold flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-warning" />
-                  <span>Dev Simulation: Reset Token Dispatched</span>
-                </div>
-                <div className="font-mono text-[10px] break-all bg-canvas p-1.5 rounded">
-                  {activeDebugToken}
-                </div>
-              </div>
-            )}
 
             <div className="pt-2 flex items-center justify-between">
               <button
@@ -450,35 +418,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {mode === 'verify' && (
           <form onSubmit={handleVerifySubmit} className="space-y-4">
             <p className="text-xs text-muted">
-              We have generated a 24-hour verification token. Enter your verification token below to unlock live public publishing.
+              Open the confirmation link in your inbox, then return here and check your verification status.
             </p>
-
-            <div>
-              <label className="block text-xs font-medium text-body mb-1">
-                Verification Token / Code
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="vtok-..."
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-canvas border border-line text-ink focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
-
-            {activeDebugToken && (
-              <div className="p-2.5 rounded-xl bg-info-surface border border-info/40 text-[11px] text-info flex items-center justify-between">
-                <span>Simulation Token: <code className="font-mono">{activeDebugToken.substring(0, 16)}...</code></span>
-                <button
-                  type="button"
-                  onClick={() => setVerificationCode(activeDebugToken)}
-                  className="px-2 py-0.5 rounded bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] font-semibold cursor-pointer"
-                >
-                  Auto-fill
-                </button>
-              </div>
-            )}
 
             <div className="pt-2 flex items-center justify-between">
               <button
@@ -487,7 +428,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 className="text-xs text-accent hover:text-accent-soft flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Resend Code</span>
+                <span>Resend Email</span>
               </button>
               <button
                 type="submit"

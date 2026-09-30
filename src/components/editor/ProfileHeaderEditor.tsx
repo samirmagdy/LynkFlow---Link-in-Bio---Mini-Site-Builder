@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
-import { SocialLink } from '../../types';
+import { Profile, SocialLink } from '../../types';
 import { Plus, Trash2, Check, Globe, ShieldCheck, Search, Share2, Sparkles, ExternalLink } from 'lucide-react';
 
 interface ProfileHeaderEditorProps {
@@ -16,7 +16,7 @@ export const ProfileHeaderEditor: React.FC<ProfileHeaderEditorProps> = ({ onOpen
     'instagram', 'youtube', 'twitter', 'tiktok', 'spotify', 'github', 'linkedin', 'email', 'whatsapp'
   ];
 
-  const handleFieldChange = (field: string, value: any) => {
+  const handleFieldChange = (field: keyof Profile, value: Profile[keyof Profile]) => {
     updateDraftProfile(prev => ({
       ...prev,
       [field]: value

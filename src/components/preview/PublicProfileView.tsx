@@ -59,10 +59,15 @@ const safePublicHref = (value: unknown, allowRelative = false): string | null =>
 
 interface AnimatedBlockItemProps {
   block: Block;
-  theme: any;
+  theme: AnimationTheme;
   className?: string;
   'data-variant-id'?: string;
   children: React.ReactNode;
+}
+
+interface AnimationTheme extends StandardTheme {
+  accentColor?: string;
+  animeMicroInteractions?: boolean;
 }
 
 const AnimatedBlockItem: React.FC<AnimatedBlockItemProps> = ({
@@ -75,13 +80,14 @@ const AnimatedBlockItem: React.FC<AnimatedBlockItemProps> = ({
   const blockElRef = useRef<HTMLDivElement>(null);
   const { animationTrigger } = useApp();
 
+  const legacyAnimation = (block.payload as Partial<LinkBlockPayload>).animation;
   const effect: AnimeBlockEffect = 
     block.animationConfig?.effect || 
     block.animation || 
-    ((block.payload as any)?.animation === 'pulse' ? 'pulseGlow' :
-     (block.payload as any)?.animation === 'shimmer' ? 'shimmerGleam' :
-     (block.payload as any)?.animation === 'bounce' ? 'springBounce' :
-     (block.payload as any)?.animation ? (block.payload as any).animation : 'none');
+    (legacyAnimation === 'pulse' ? 'pulseGlow' :
+     legacyAnimation === 'shimmer' ? 'shimmerGleam' :
+     legacyAnimation === 'bounce' ? 'springBounce' :
+     legacyAnimation || 'none');
 
   const hoverEffect = block.animationConfig?.hoverEffect || (theme.animeMicroInteractions !== false ? 'magneticLift' : 'none');
   const clickEffect = block.animationConfig?.clickEffect || 'rippleWave';
@@ -263,6 +269,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   // object at all). The renderer still supports the legacy animation preset,
   // but it must never dereference a missing legacy payload.
   const legacyTheme: Partial<ThemeConfig> = profile.theme || {};
+  const animationTheme: AnimationTheme = {
+    ...standardTheme,
+    accentColor: legacyTheme.accentColor || colors.accent,
+    animeMicroInteractions: legacyTheme.animeMicroInteractions
+  };
   const currentTab = renderModel.currentTab as typeof profile.tabs[number] | undefined;
 
   // Background styling behavior per Section 8
@@ -1444,7 +1455,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             <AnimatedBlockItem
               key={block.id || `block-${blockIdx}`}
               block={block}
-              theme={legacyTheme}
+              theme={animationTheme}
               className="w-full"
               data-variant-id={registeredVariant?.id || 'default'}
             >

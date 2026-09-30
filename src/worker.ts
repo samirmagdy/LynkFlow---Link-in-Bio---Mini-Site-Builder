@@ -41,6 +41,57 @@ function json(body: Record<string, unknown>, status = 200): Response {
 }
 
 type PexelsMediaType = 'photos' | 'videos';
+type PexelsVideoFile = { file_type?: string; link?: string; width?: number; height?: number };
+type PexelsItem = {
+  id?: string | number;
+  video_files?: PexelsVideoFile[];
+  image?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  user?: { name?: string; url?: string };
+  url?: string;
+  src?: { original?: string; large2x?: string; large?: string; medium?: string };
+  photographer?: string;
+  photographer_url?: string;
+};
+type PexelsPayload = { photos?: PexelsItem[]; videos?: PexelsItem[]; total_results?: number };
+
+type PublicJson = Record<string, unknown>;
+interface PublicSeo extends PublicJson {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+  noIndex?: boolean;
+}
+interface PublicSocialLink extends PublicJson {
+  active?: boolean;
+  url?: string;
+}
+interface PublicBlock extends PublicJson {
+  type?: string;
+  payload?: PublicJson;
+}
+interface PublicTab extends PublicJson {
+  blocks?: PublicBlock[];
+}
+interface PublicSnapshot extends PublicJson {
+  profileId?: string | number;
+  id?: string | number;
+  username?: string;
+  handle?: string;
+  displayName?: string;
+  bio?: string;
+  version?: number;
+  publishedVersion?: number;
+  publishedAt?: string;
+  avatarUrl?: string;
+  socialLinks?: PublicSocialLink[];
+  tabs?: PublicTab[];
+  standardTheme?: PublicJson;
+  theme?: PublicJson;
+  seo?: PublicSeo;
+}
 
 async function pexelsMediaResponse(request: Request, env: Env): Promise<Response> {
   if (!env.PEXELS_API_KEY) return json({ error: 'Pexels is not configured.' }, 503);
@@ -71,13 +122,14 @@ async function pexelsMediaResponse(request: Request, env: Env): Promise<Response
     return json({ error: 'Pexels search failed.' }, 502);
   }
 
-  const payload = await upstream.json() as Record<string, any>;
-  const results = (Array.isArray(payload.photos) ? payload.photos : Array.isArray(payload.videos) ? payload.videos : []).map((item: any) => {
+  const payload = await upstream.json() as PexelsPayload;
+  const items = type === 'videos' ? payload.videos || [] : payload.photos || [];
+  const results = items.map(item => {
     if (type === 'videos') {
-      const files = Array.isArray(item.video_files) ? item.video_files.filter((file: any) => file?.file_type === 'video/mp4' && file?.link) : [];
-      const selected = files.sort((a: any, b: any) => (Number(a.width || 9999) - Number(b.width || 9999)) || (Number(b.height || 0) - Number(a.height || 0)))[0];
+      const files = (item.video_files || []).filter(file => file.file_type === 'video/mp4' && file.link);
+      const selected = files.sort((a, b) => (Number(a.width || 9999) - Number(b.width || 9999)) || (Number(b.height || 0) - Number(a.height || 0)))[0];
       return {
-        id: item.id,
+        id: String(item.id || ''),
         kind: 'video',
         assetUrl: selected?.link || null,
         thumbnail: item.image || null,
@@ -90,7 +142,7 @@ async function pexelsMediaResponse(request: Request, env: Env): Promise<Response
       };
     }
     return {
-      id: item.id,
+      id: String(item.id || ''),
       kind: 'image',
       assetUrl: item.src?.original || item.src?.large2x || item.src?.large || null,
       thumbnail: item.src?.medium || item.src?.large || null,
@@ -100,7 +152,7 @@ async function pexelsMediaResponse(request: Request, env: Env): Promise<Response
       photographerUrl: item.photographer_url || 'https://www.pexels.com',
       sourceUrl: item.url || 'https://www.pexels.com'
     };
-  }).filter((item: any) => item.assetUrl);
+  }).filter((item): item is typeof item & { assetUrl: string } => Boolean(item.assetUrl));
   const response = new Response(JSON.stringify({ page, perPage, totalResults: payload.total_results || results.length, results }), {
     headers: { ...JSON_HEADERS, 'cache-control': 'public, max-age=86400, s-maxage=86400' }
   });
@@ -169,7 +221,9 @@ function safePublicMediaUrl(value: unknown): string | null {
     const host = url.hostname.toLowerCase();
     if (host === 'images.unsplash.com' || host === 'plus.unsplash.com' || host === 'images.pexels.com' || host === 'videos.pexels.com' || host === 'assets.production.linktr.ee' || host === 'd1ym67wyom4bkd.cloudfront.net' || host === 'd3rq6m369s8u39.cloudfront.net') return href;
     if (host.endsWith('.supabase.co') && url.pathname.includes('/storage/v1/object/public/')) return href;
-  } catch {}
+  } catch (error) {
+    console.warn('[LynkFlow] public media URL validation failed', error instanceof Error ? error.message : String(error));
+  }
   return null;
 }
 
@@ -188,8 +242,8 @@ function publicProfileUrl(origin: string, username: string): string {
  * browser. This keeps markup, block variants, locale handling and fallbacks
  * on one renderer instead of maintaining a second SSR switch statement.
  */
-export function renderPublicProfileBody(snapshot: Record<string, any>, _canonicalUrl: string): string {
-  const normalizeStaticBlock = (block: any) => {
+export function renderPublicProfileBody(snapshot: PublicSnapshot, _canonicalUrl: string): string {
+  const normalizeStaticBlock = (block: PublicBlock): PublicBlock => {
     const payload = block?.payload && typeof block.payload === 'object' ? block.payload : {};
     const arrayDefaults: Record<string, unknown> = {
       folder: { items: [] },
@@ -199,7 +253,8 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, _canonica
       form: { fields: [], successMessage: 'Thanks — your message was received.' },
       emailSignup: { fields: [], successMessage: 'Thanks — you are subscribed.' },
     };
-    return { ...block, payload: { ...(arrayDefaults[block?.type] as Record<string, unknown> || {}), ...payload } };
+    const defaults = block.type ? arrayDefaults[block.type] : undefined;
+    return { ...block, payload: { ...(defaults as Record<string, unknown> || {}), ...payload } };
   };
   const profile = {
     ...snapshot,
@@ -210,7 +265,7 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, _canonica
     status: 'published',
     publishedVersion: Number(snapshot.version || snapshot.publishedVersion || 1),
     socialLinks: Array.isArray(snapshot.socialLinks) ? snapshot.socialLinks : [],
-    tabs: Array.isArray(snapshot.tabs) ? snapshot.tabs.map((tab: any) => ({
+    tabs: Array.isArray(snapshot.tabs) ? snapshot.tabs.map((tab: PublicTab) => ({
       ...tab,
       blocks: Array.isArray(tab?.blocks) ? tab.blocks.map(normalizeStaticBlock) : []
     })) : [],
@@ -220,7 +275,7 @@ export function renderPublicProfileBody(snapshot: Record<string, any>, _canonica
   return renderToStaticMarkup(React.createElement(PublicProfileView, { profile, isStandalone: false }));
 }
 
-export function publicProfileStyles(snapshot: Record<string, any> = {}): string {
+export function publicProfileStyles(snapshot: PublicSnapshot = {}): string {
   // SSR must use the same normalized theme boundary as the hydrated React
   // renderer. Reading the raw snapshot here caused contrast, responsive, and
   // CSS-safety differences until hydration completed.
@@ -313,7 +368,7 @@ async function publicProfileResponse(request: Request, env: Env, username: strin
     ? `published_profiles?snapshot->customDomain->>domain=eq.${encodeURIComponent(cleanDomain)}&select=username,snapshot,updated_at`
     : `published_profiles?username=eq.${encodeURIComponent(cleanUsername)}&select=username,snapshot,updated_at`;
   const profileResponse = await supabaseRequest(profileQuery, env);
-  const rows = await profileResponse.json() as Array<{ username: string; snapshot: Record<string, any>; updated_at?: string }>;
+  const rows = await profileResponse.json() as Array<{ username: string; snapshot: PublicSnapshot; updated_at?: string }>;
   const snapshot = rows[0]?.snapshot;
   const resolvedUsername = rows[0]?.username || String(snapshot?.handle || snapshot?.username || cleanUsername);
   const canonicalUrl = cleanDomain ? origin : publicProfileUrl(origin, resolvedUsername);
@@ -329,7 +384,7 @@ async function publicProfileResponse(request: Request, env: Env, username: strin
   const title = String(snapshot.seo?.title || `${snapshot.displayName || resolvedUsername} | LynkFlow`);
   const description = String(snapshot.seo?.description || snapshot.bio || `Explore ${snapshot.displayName || resolvedUsername} on LynkFlow.`).slice(0, 160);
   const image = safePublicHref(snapshot.seo?.ogImage || snapshot.avatarUrl);
-  const schema = { '@context': 'https://schema.org', '@type': 'ProfilePage', 'mainEntity': { '@type': 'Person', name: snapshot.displayName || cleanUsername, identifier: cleanUsername, description: snapshot.bio || undefined, image: image || undefined, url: canonicalUrl, sameAs: Array.isArray(snapshot.socialLinks) ? snapshot.socialLinks.filter((link: any) => link?.active && safePublicHref(link.url)).map((link: any) => safePublicHref(link.url)) : [] }, url: canonicalUrl, dateModified: snapshot.publishedAt || undefined };
+  const schema = { '@context': 'https://schema.org', '@type': 'ProfilePage', 'mainEntity': { '@type': 'Person', name: snapshot.displayName || cleanUsername, identifier: cleanUsername, description: snapshot.bio || undefined, image: image || undefined, url: canonicalUrl, sameAs: Array.isArray(snapshot.socialLinks) ? snapshot.socialLinks.filter(link => link.active && safePublicHref(link.url)).map(link => safePublicHref(link.url)) : [] }, url: canonicalUrl, dateModified: snapshot.publishedAt || undefined };
   const metadata = `<title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="index, follow"><link rel="canonical" href="${escapeHtml(canonicalUrl)}"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(canonicalUrl)}"><meta property="og:type" content="profile"><meta property="og:site_name" content="LynkFlow">${image ? `<meta property="og:image" content="${escapeHtml(image)}"><meta name="twitter:image" content="${escapeHtml(image)}">` : ''}<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escapeHtml(title)}"><meta name="twitter:description" content="${escapeHtml(description)}"><script type="application/ld+json">${JSON.stringify(schema)}</script>`;
   const html = replaceDocumentMetadata(baseDocument, `${metadata}${publicProfileStyles(snapshot)}${publicProfileSupplementalStyles()}`, renderPublicProfileBody(snapshot, canonicalUrl));
   return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'public, max-age=60, s-maxage=300' } });

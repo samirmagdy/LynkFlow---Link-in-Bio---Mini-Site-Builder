@@ -46,6 +46,23 @@ export interface RemoteBackgroundAssetInput {
   durationSeconds?: number | null;
 }
 
+interface BackgroundAssetRow {
+  id: string;
+  profile_id?: string | null;
+  storage_path: string;
+  asset_url: string;
+  kind: 'image' | 'video';
+  mime_type: string;
+  byte_size?: number | null;
+  width?: number | null;
+  height?: number | null;
+  duration_seconds?: number | null;
+  source: 'upload' | 'pexels';
+  source_url?: string | null;
+  photographer?: string | null;
+  created_at: string;
+}
+
 const inspectMediaFile = (file: File): Promise<{ width: number; height: number; durationSeconds?: number }> => new Promise((resolve, reject) => {
   const url = URL.createObjectURL(file);
   const isVideo = file.type.startsWith('video/');
@@ -161,7 +178,7 @@ export async function listBackgroundAssets(_profileId?: string): Promise<Backgro
     .order('created_at', { ascending: false });
   const { data, error } = await query;
   if (error) throw new Error(error.message || 'Background asset library could not be loaded.');
-  return (data || []).map((row: any) => ({
+  return (data as BackgroundAssetRow[] || []).map(row => ({
     id: row.id,
     profileId: row.profile_id,
     storagePath: row.storage_path,

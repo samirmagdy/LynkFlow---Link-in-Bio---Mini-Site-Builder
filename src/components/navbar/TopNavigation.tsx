@@ -39,7 +39,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
     }, 150);
   };
 
-  const handleNavClick = (view: any, e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleNavClick = (view: 'editor', e: React.MouseEvent<HTMLButtonElement>) => {
     triggerAnimeRipple(e, e.currentTarget, 'rgba(99, 102, 241, 0.25)');
     setCurrentView(view);
     setMobileMenuOpen(false);

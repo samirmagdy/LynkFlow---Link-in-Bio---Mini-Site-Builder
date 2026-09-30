@@ -3,6 +3,7 @@ import { createPublishedSnapshot as createSnapshot } from '../utils/publishedSna
 import { analyticsEngineService } from './analyticsEngineService';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { INITIAL_PROFILES } from '../data/mockData';
+import { reportRecoverableError } from '../utils/reportError';
 
 type PublicProfileStatus = 'success' | 'not_found' | 'unpublished' | 'suspended' | 'deleted';
 
@@ -139,13 +140,15 @@ class PublicProfileService {
       try {
         const rawTokens = localStorage.getItem('lynkflow_preview_tokens_v1');
         if (rawTokens) {
-          const tokens = JSON.parse(rawTokens);
-          const match = tokens.find((t: any) => t.token === previewToken && t.profileId === matchedProfile.id);
-          if (match && new Date(match.expiresAt).getTime() > Date.now()) {
+          const tokens = JSON.parse(rawTokens) as Array<{ token?: string; profileId?: string; expiresAt?: string }>;
+          const match = tokens.find(t => t.token === previewToken && t.profileId === matchedProfile.id);
+          if (match?.expiresAt && new Date(match.expiresAt).getTime() > Date.now()) {
             isTokenValid = true;
           }
         }
-      } catch {}
+      } catch (error) {
+        reportRecoverableError('preview token lookup failed', error);
+      }
 
       if (!isTokenValid) {
         return {
@@ -167,7 +170,9 @@ class PublicProfileService {
             draftToRender = drafts[matchedProfile.id].draft;
           }
         }
-      } catch {}
+      } catch (error) {
+        reportRecoverableError('draft preview lookup failed', error);
+      }
 
       const draftSnapshot = createPublishedSnapshot(draftToRender, 'preview-session@lynkflow.me');
       return {

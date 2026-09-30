@@ -5,6 +5,7 @@
 
 import { Profile } from '../types';
 import { contentLifecycleService } from './contentLifecycleService';
+import { reportRecoverableError } from '../utils/reportError';
 
 interface SyncMessage {
   type: 'PROFILE_UPDATED' | 'PROFILE_PUBLISHED' | 'HEARTBEAT';
@@ -30,20 +31,30 @@ class WorkspaceSyncService {
   private channel: BroadcastChannel | null = null;
   private conflictListeners: Array<(conflict: ConflictState) => void> = [];
   private remoteUpdateListeners: Array<(profileId: string, version: number) => void> = [];
+  private readonly boundBroadcastMessage = (event: MessageEvent<SyncMessage>) => this.handleBroadcastMessage(event);
+  private readonly boundStorageEvent = (event: StorageEvent) => this.handleStorageEvent(event);
 
   constructor() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.channel = new BroadcastChannel('lynkflow_workspace_sync');
-        this.channel.onmessage = this.handleBroadcastMessage.bind(this);
+        this.channel.onmessage = this.boundBroadcastMessage;
       } catch (err) {
         console.warn('BroadcastChannel unavailable, falling back to storage listener', err);
       }
     }
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('storage', this.handleStorageEvent.bind(this));
+      window.addEventListener('storage', this.boundStorageEvent);
     }
+  }
+
+  public dispose(): void {
+    this.channel?.close();
+    this.channel = null;
+    if (typeof window !== 'undefined') window.removeEventListener('storage', this.boundStorageEvent);
+    this.conflictListeners = [];
+    this.remoteUpdateListeners = [];
   }
 
   public getTabId(): string {
@@ -66,7 +77,9 @@ class WorkspaceSyncService {
         if (ping.senderTabId !== this.tabId) {
           this.remoteUpdateListeners.forEach(listener => listener(ping.profileId, ping.version));
         }
-      } catch {}
+      } catch (error) {
+        reportRecoverableError('workspace sync message parsing failed', error);
+      }
     }
   }
 
@@ -88,7 +101,9 @@ class WorkspaceSyncService {
 
     try {
       localStorage.setItem('lynkflow_sync_ping', JSON.stringify(message));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('workspace sync broadcast failed', error);
+    }
   }
 
   /**
@@ -144,10 +159,10 @@ class WorkspaceSyncService {
         updatedProfile: updated,
         etag: saveResult.etag
       };
-    } catch (e: any) {
+    } catch (e: unknown) {
       return {
         success: false,
-        error: e?.message || 'Storage error'
+        error: e instanceof Error ? e.message : 'Storage error'
       };
     }
   }

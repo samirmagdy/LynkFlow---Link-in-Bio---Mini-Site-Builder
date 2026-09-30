@@ -65,7 +65,7 @@ export const AbuseReportModal: React.FC<AbuseReportModalProps> = ({ isOpen, onCl
               <label className="block text-xs font-medium text-body mb-1">Reason for Report</label>
               <select
                 value={reason}
-                onChange={(e) => setReason(e.target.value as any)}
+                onChange={(e) => setReason(e.target.value as typeof reason)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-canvas border border-line text-ink focus:outline-none"
               >
                 <option value="spam">Spam or Misleading Content</option>

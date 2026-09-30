@@ -106,64 +106,81 @@ export function sanitizeMediaEmbed(rawUrl: string): { embedUrl: string; provider
 /**
  * Validates block payload against its expected schema
  */
-export function validateBlockPayload(type: BlockType, payload: any): { isValid: boolean; errors: string[] } {
+type PayloadRecord = Record<string, unknown>;
+
+const isPayloadRecord = (value: unknown): value is PayloadRecord => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const getString = (payload: PayloadRecord, key: string): string => typeof payload[key] === 'string' ? payload[key] as string : '';
+
+export function validateBlockPayload(type: BlockType, payloadInput: unknown): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (!payload || typeof payload !== 'object') {
+  if (!isPayloadRecord(payloadInput)) {
     return { isValid: false, errors: ['Block payload must be an object.'] };
   }
+  const payload = payloadInput;
 
   switch (type) {
     case 'link': {
-      if (!payload.url) {
+      const url = getString(payload, 'url');
+      if (!url) {
         errors.push('Link block requires a destination URL.');
       } else {
-        const check = validateUrl(payload.url);
+        const check = validateUrl(url);
         if (!check.isValid) errors.push(`Link URL error: ${check.error}`);
       }
       break;
     }
 
     case 'media': {
-      if (!payload.url) {
+      const url = getString(payload, 'url');
+      if (!url) {
         errors.push('Media block requires an embed or image URL.');
       } else {
-        const check = validateUrl(payload.url);
+        const check = validateUrl(url);
         if (!check.isValid) errors.push(`Media URL error: ${check.error}`);
       }
-      if (payload.poster && !validateUrl(payload.poster).isValid) errors.push('Media poster URL is invalid.');
-      if (payload.captionsUrl && !validateUrl(payload.captionsUrl).isValid) errors.push('Media captions URL is invalid.');
+      const poster = getString(payload, 'poster');
+      const captionsUrl = getString(payload, 'captionsUrl');
+      if (poster && !validateUrl(poster).isValid) errors.push('Media poster URL is invalid.');
+      if (captionsUrl && !validateUrl(captionsUrl).isValid) errors.push('Media captions URL is invalid.');
       break;
     }
 
     case 'gallery':
     case 'carousel': {
-      if (!Array.isArray(payload.items) || payload.items.length === 0) {
+      const items = payload.items;
+      if (!Array.isArray(items) || items.length === 0) {
         errors.push(`${type} block requires at least one image item.`);
       } else {
-        payload.items.forEach((item: any, idx: number) => {
-          if (!item || typeof item !== 'object') {
+        items.forEach((item, idx) => {
+          if (!isPayloadRecord(item)) {
             errors.push(`Image item #${idx + 1} is invalid.`);
             return;
           }
-          if (!item.image) errors.push(`Image item #${idx + 1} requires an image URL.`);
-          else if (!validateUrl(item.image).isValid) errors.push(`Image item #${idx + 1} has an invalid image URL.`);
-          if (item.url && !validateUrl(item.url).isValid) errors.push(`Image item #${idx + 1} has an invalid link URL.`);
+          const image = getString(item, 'image');
+          const url = getString(item, 'url');
+          if (!image) errors.push(`Image item #${idx + 1} requires an image URL.`);
+          else if (!validateUrl(image).isValid) errors.push(`Image item #${idx + 1} has an invalid image URL.`);
+          if (url && !validateUrl(url).isValid) errors.push(`Image item #${idx + 1} has an invalid link URL.`);
         });
       }
       break;
     }
 
     case 'product': {
-      if (!payload.url) errors.push('Product block requires a destination URL.');
-      else if (!validateUrl(payload.url).isValid) errors.push('Product destination URL is invalid.');
-      if (payload.image && !validateUrl(payload.image).isValid) errors.push('Product image URL is invalid.');
+      const url = getString(payload, 'url');
+      const image = getString(payload, 'image');
+      if (!url) errors.push('Product block requires a destination URL.');
+      else if (!validateUrl(url).isValid) errors.push('Product destination URL is invalid.');
+      if (image && !validateUrl(image).isValid) errors.push('Product image URL is invalid.');
       break;
     }
 
     case 'text': {
-      if (payload.textType === 'p' || payload.textType === 'quote') {
-        if (!payload.content || !payload.content.trim()) {
+      const textType = getString(payload, 'textType');
+      const content = getString(payload, 'content');
+      if (textType === 'p' || textType === 'quote') {
+        if (!content.trim()) {
           errors.push('Paragraph or quote block requires content.');
         }
       }
@@ -171,33 +188,37 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
     }
 
     case 'folder': {
-      if (!Array.isArray(payload.items)) {
+      const items = payload.items;
+      if (!Array.isArray(items)) {
         errors.push('Folder block items must be an array.');
       } else {
-        payload.items.forEach((item: any, idx: number) => {
-          if (!item || typeof item !== 'object') {
+        items.forEach((item, idx) => {
+          if (!isPayloadRecord(item)) {
             errors.push(`Folder item #${idx + 1} is invalid.`);
             return;
           }
-          if (!item.title) errors.push(`Folder item #${idx + 1} requires a title.`);
-          if (!item.url) errors.push(`Folder item #${idx + 1} requires a destination URL.`);
-          else if (!validateUrl(item.url).isValid) errors.push(`Folder item #${idx + 1} has an invalid destination URL.`);
+          const title = getString(item, 'title');
+          const url = getString(item, 'url');
+          if (!title) errors.push(`Folder item #${idx + 1} requires a title.`);
+          if (!url) errors.push(`Folder item #${idx + 1} requires a destination URL.`);
+          else if (!validateUrl(url).isValid) errors.push(`Folder item #${idx + 1} has an invalid destination URL.`);
         });
       }
       break;
     }
 
     case 'faq': {
-      if (!Array.isArray(payload.items)) {
+      const items = payload.items;
+      if (!Array.isArray(items)) {
         errors.push('FAQ block items must be an array.');
       } else {
-        payload.items.forEach((item: any, idx: number) => {
-          if (!item || typeof item !== 'object') {
+        items.forEach((item, idx) => {
+          if (!isPayloadRecord(item)) {
             errors.push(`FAQ item #${idx + 1} is invalid.`);
             return;
           }
-          if (!item.question) errors.push(`FAQ item #${idx + 1} requires a question.`);
-          if (!item.answer) errors.push(`FAQ item #${idx + 1} requires an answer.`);
+          if (!getString(item, 'question')) errors.push(`FAQ item #${idx + 1} requires a question.`);
+          if (!getString(item, 'answer')) errors.push(`FAQ item #${idx + 1} requires an answer.`);
         });
       }
       break;
@@ -212,26 +233,29 @@ export function validateBlockPayload(type: BlockType, payload: any): { isValid: 
     }
 
     case 'contact': {
-      if (typeof payload.value !== 'string' || !payload.value.trim()) {
+      const value = getString(payload, 'value');
+      if (!value.trim()) {
         errors.push('Contact block requires an email or phone number.');
       } else {
-        const prefix = payload.contactType === 'email' ? 'mailto:' : payload.contactType === 'phone' ? 'tel:' : 'https://wa.me/';
-        if (!validateUrl(`${prefix}${payload.value}`).isValid) errors.push('Contact destination is invalid.');
+        const contactType = getString(payload, 'contactType');
+        const prefix = contactType === 'email' ? 'mailto:' : contactType === 'phone' ? 'tel:' : 'https://wa.me/';
+        if (!validateUrl(`${prefix}${value}`).isValid) errors.push('Contact destination is invalid.');
       }
       break;
     }
 
     case 'file': {
-      if (!payload.fileUrl) {
+      const fileUrl = getString(payload, 'fileUrl');
+      if (!fileUrl) {
         errors.push('File block requires a download URL.');
-      } else if (!validateUrl(payload.fileUrl).isValid) {
+      } else if (!validateUrl(fileUrl).isValid) {
         errors.push('File download URL is invalid.');
       }
       break;
     }
 
     case 'testimonial': {
-      if (!payload.quote || !payload.authorName) {
+      if (!getString(payload, 'quote') || !getString(payload, 'authorName')) {
         errors.push('Testimonial requires both quote text and author name.');
       }
       break;

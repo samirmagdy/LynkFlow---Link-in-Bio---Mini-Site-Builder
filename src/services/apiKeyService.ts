@@ -20,6 +20,7 @@ import {
   ApiRateLimitBucket, ApiAuditEntry, Workspace, Profile, ALL_API_SCOPES
 } from '../types';
 import { billingService } from './billingService';
+import { reportRecoverableError } from '../utils/reportError';
 
 // ─── Error Codes ──────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ class IdempotencyStore {
     try { return JSON.parse(localStorage.getItem(IDEMPOTENCY_STORE_KEY) || '{}'); } catch { return {}; }
   }
   private save(store: Record<string, ApiGatewayResult>) {
-    try { localStorage.setItem(IDEMPOTENCY_STORE_KEY, JSON.stringify(store)); } catch {}
+    try { localStorage.setItem(IDEMPOTENCY_STORE_KEY, JSON.stringify(store)); } catch (error) { reportRecoverableError('API idempotency persistence failed', error); }
   }
 
   get(idempotencyKey: string): ApiGatewayResult | undefined {
@@ -126,7 +127,9 @@ class ApiAuditStore {
       existing.unshift(entry);
       // Keep last 500 entries
       localStorage.setItem(AUDIT_STORE_KEY, JSON.stringify(existing.slice(0, 500)));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('API audit persistence failed', error);
+    }
   }
 
   getAll(): ApiAuditEntry[] {
@@ -156,7 +159,9 @@ function saveKeys(workspaceId: string, keys: ApiKey[]): void {
     const all: ApiKey[] = JSON.parse(localStorage.getItem(KEYS_STORE_KEY) || '[]');
     const others = all.filter(k => k.workspaceId !== workspaceId);
     localStorage.setItem(KEYS_STORE_KEY, JSON.stringify([...others, ...keys]));
-  } catch {}
+  } catch (error) {
+    reportRecoverableError('API key persistence failed', error);
+  }
 }
 
 function loadWebhooks(workspaceId: string): WebhookSubscription[] {
@@ -171,7 +176,9 @@ function saveWebhooks(workspaceId: string, hooks: WebhookSubscription[]): void {
     const all: WebhookSubscription[] = JSON.parse(localStorage.getItem(WEBHOOKS_STORE_KEY) || '[]');
     const others = all.filter(w => w.workspaceId !== workspaceId);
     localStorage.setItem(WEBHOOKS_STORE_KEY, JSON.stringify([...others, ...hooks]));
-  } catch {}
+  } catch (error) {
+    reportRecoverableError('Webhook persistence failed', error);
+  }
 }
 
 // ─── Crypto Helpers ───────────────────────────────────────────────────────────

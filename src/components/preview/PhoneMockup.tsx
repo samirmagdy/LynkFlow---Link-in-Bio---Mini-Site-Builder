@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Profile } from '../../types';
+import { Profile, LinkBlockPayload, ProductBlockPayload } from '../../types';
 import { PublicProfileView } from './PublicProfileView';
 import { Smartphone, Tablet, Monitor, ExternalLink, RotateCcw, Wifi, Battery, Sparkles, Link2 } from 'lucide-react';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
@@ -62,9 +62,9 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, pro
         title: containsArabic(block.title) ? block.title : `رابط · ${block.title}`,
         payload: {
           ...block.payload,
-          ...(typeof (block.payload as any)?.subtitle === 'string' && !containsArabic((block.payload as any).subtitle) ? { subtitle: `معلومات إضافية — ${(block.payload as any).subtitle}` } : {}),
-          ...(typeof (block.payload as any)?.description === 'string' && !containsArabic((block.payload as any).description) ? { description: `وصف الخدمة والمعلومات المهمة — ${(block.payload as any).description}` } : {}),
-          ...(block.type === 'link' && !containsArabic((block.payload as any)?.buttonLabel) ? { buttonLabel: 'تواصل معي' } : {})
+          ...(typeof (block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).subtitle === 'string' && !containsArabic((block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).subtitle) ? { subtitle: `معلومات إضافية — ${(block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).subtitle}` } : {}),
+          ...(typeof (block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).description === 'string' && !containsArabic((block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).description) ? { description: `وصف الخدمة والمعلومات المهمة — ${(block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).description}` } : {}),
+          ...(block.type === 'link' && !containsArabic((block.payload as Partial<LinkBlockPayload & ProductBlockPayload>).buttonLabel) ? { buttonLabel: 'تواصل معي' } : {})
         }
       }))
     }));

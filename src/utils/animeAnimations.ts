@@ -1,4 +1,5 @@
 import { animate, stagger, createTimeline, eases } from 'animejs';
+import type { AnimationParams, JSAnimation } from 'animejs';
 import { 
   AnimeBlockEffect, 
   AnimeHoverEffect, 
@@ -693,7 +694,7 @@ export function applyBlockContinuousAnimation(
   const sm = speedMultipliers[speed] || 1;
   const im = intensityMultipliers[intensity] || 1;
 
-  let animInstance: any = null;
+  let animInstance: JSAnimation | null = null;
 
   switch (effect) {
     case 'pulseGlow': {
@@ -994,8 +995,8 @@ export function triggerBlockEntranceAnimation(
   const delay = options?.delay ?? 0;
   const onComplete = options?.onComplete;
 
-  const createEntrance = (params: Record<string, any>) => {
-    const finalParams: Record<string, any> = {
+  const createEntrance = (params: Record<string, unknown>) => {
+    const finalParams: Record<string, unknown> = {
       ...params,
       duration: duration || params.duration,
       delay,
@@ -1003,7 +1004,7 @@ export function triggerBlockEntranceAnimation(
     if (onComplete) {
       finalParams.onComplete = onComplete;
     }
-    return animate(element, finalParams as any);
+    return animate(element, finalParams as AnimationParams);
   };
 
   switch (effect) {
@@ -1605,7 +1606,7 @@ export function runStaggeredEntrance(
   const config = ANIME_ENTRANCE_PRESETS[preset] || ANIME_ENTRANCE_PRESETS.springPop;
   const targetArray = Array.from(elements);
 
-  const animParams: any = {
+  const animParams: AnimationParams = {
     opacity: [0, 1],
     delay: stagger(config.staggerDelay, { start: 50 }),
     duration: config.duration,

@@ -36,7 +36,7 @@ export const ProfileSeoSettingsModal: React.FC<ProfileSeoSettingsModalProps> = (
   const [description, setDescription] = useState(activeProfile?.seo?.description || '');
   const [ogImage, setOgImage] = useState(activeProfile?.seo?.ogImage || '');
   const [noIndex, setNoIndex] = useState(activeProfile?.seo?.noIndex ?? false);
-  const [keywords, setKeywords] = useState((activeProfile?.seo as any)?.keywords || '');
+  const [keywords, setKeywords] = useState(activeProfile?.seo?.keywords || '');
   
   const [activePreviewTab, setActivePreviewTab] = useState<'google' | 'twitter' | 'facebook' | 'discord'>('google');
   const [showCodeInspector, setShowCodeInspector] = useState(false);
@@ -49,7 +49,7 @@ export const ProfileSeoSettingsModal: React.FC<ProfileSeoSettingsModalProps> = (
       setDescription(activeProfile.seo?.description || activeProfile.bio || `Explore links, projects, and exclusive content from @${activeProfile.username}.`);
       setOgImage(activeProfile.seo?.ogImage || activeProfile.avatarUrl || '');
       setNoIndex(activeProfile.seo?.noIndex ?? false);
-      setKeywords((activeProfile.seo as any)?.keywords || `${activeProfile.username}, link in bio, ${activeProfile.category || 'creator'}`);
+      setKeywords(activeProfile.seo?.keywords || `${activeProfile.username}, link in bio, ${activeProfile.category || 'creator'}`);
     }
   }, [activeProfile, isOpen]);
 
@@ -150,7 +150,7 @@ export const ProfileSeoSettingsModal: React.FC<ProfileSeoSettingsModalProps> = (
         ogImage: ogImage.trim(),
         noIndex,
         keywords: keywords.trim(),
-      } as any
+      }
     }));
     showToast('SEO & Social Open Graph settings saved to draft!');
     onClose();

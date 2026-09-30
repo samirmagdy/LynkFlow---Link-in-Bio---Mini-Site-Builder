@@ -73,6 +73,68 @@ interface BlockEditModalProps {
   onSave: (updates: Partial<Block>) => void;
 }
 
+interface EditableItem {
+  id?: string;
+  title?: string;
+  url?: string;
+  image?: string;
+  alt?: string;
+  subtitle?: string;
+  question?: string;
+  answer?: string;
+}
+
+interface EditableField {
+  id?: string;
+  type?: string;
+  label?: string;
+  placeholder?: string;
+  required?: boolean;
+  options?: string[];
+  [key: string]: string | boolean | string[] | undefined;
+}
+
+interface EditablePayload {
+  url?: string;
+  subtitle?: string;
+  highlightBadge?: string;
+  mediaType?: string;
+  caption?: string;
+  items?: EditableItem[];
+  columns?: number;
+  autoplay?: boolean;
+  image?: string;
+  description?: string;
+  price?: string;
+  currency?: string;
+  buttonLabel?: string;
+  textType?: string;
+  alignment?: string;
+  content?: string;
+  style?: string;
+  height?: string;
+  formType?: string;
+  submitButtonText?: string;
+  successMessage?: string;
+  subscriberMode?: boolean;
+  requireConsent?: boolean;
+  consentText?: string;
+  fields?: EditableField[];
+  quote?: string;
+  authorName?: string;
+  rating?: number;
+  authorRole?: string;
+  company?: string;
+  fileName?: string;
+  fileSize?: string;
+  fileUrl?: string;
+  contactType?: string;
+  value?: string;
+  presetSubject?: string;
+  animation?: LinkBlockPayload['animation'];
+  [key: string]: string | number | boolean | EditableItem[] | EditableField[] | undefined;
+}
+
 export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, onClose, onSave }) => {
   if (!isOpen || !block) return null;
 
@@ -81,17 +143,18 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
   const [scheduleEnabled, setScheduleEnabled] = useState(block.schedule?.enabled ?? false);
   const [scheduleStart, setScheduleStart] = useState(block.schedule?.start ?? '');
   const [scheduleEnd, setScheduleEnd] = useState(block.schedule?.end ?? '');
-  const [payload, setPayload] = useState<any>(JSON.parse(JSON.stringify(block.payload)));
+  const [payload, setPayload] = useState<EditablePayload>(JSON.parse(JSON.stringify(block.payload)) as EditablePayload);
   const [blockStyle, setBlockStyle] = useState(block.style || {});
 
   // Anime.js Animation Configuration State
+  const legacyAnimation = (block.payload as Partial<LinkBlockPayload>).animation;
   const initialEffect: AnimeBlockEffect = 
     block.animationConfig?.effect || 
     block.animation || 
-    ((block.payload as any)?.animation === 'pulse' ? 'pulseGlow' :
-     (block.payload as any)?.animation === 'shimmer' ? 'shimmerGleam' :
-     (block.payload as any)?.animation === 'bounce' ? 'springBounce' :
-     (block.payload as any)?.animation ? (block.payload as any).animation : 'none');
+    (legacyAnimation === 'pulse' ? 'pulseGlow' :
+     legacyAnimation === 'shimmer' ? 'shimmerGleam' :
+     legacyAnimation === 'bounce' ? 'springBounce' :
+     (legacyAnimation as AnimeBlockEffect | undefined) || 'none');
 
   const [animationEffect, setAnimationEffect] = useState<AnimeBlockEffect>(initialEffect);
   const [hoverEffect, setHoverEffect] = useState<AnimeHoverEffect>(block.animationConfig?.hoverEffect || 'magneticLift');
@@ -166,15 +229,15 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                      animationEffect === 'shimmerGleam' ? 'shimmer' :
                      animationEffect === 'springBounce' ? 'bounce' : animationEffect
         } : {})
-      },
+      } as Block['payload'],
       style: blockStyle
     });
     onClose();
   };
 
-  const updatePayloadField = (key: string, value: any) => {
+  const updatePayloadField = (key: string, value: EditablePayload[keyof EditablePayload]) => {
     setValidationError(null);
-    setPayload((prev: any) => ({ ...prev, [key]: value }));
+    setPayload(prev => ({ ...prev, [key]: value }));
   };
 
   // Helper icon for animation definition
@@ -466,14 +529,14 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
               <div>
                 <label className="block text-xs font-medium text-body mb-1">Nested Sub-Links ({payload.items?.length || 0})</label>
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {(payload.items || []).map((item: any, idx: number) => (
+                  {(payload.items || []).map((item, idx) => (
                     <div key={item.id} className="p-2.5 rounded-lg bg-surface border border-line space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-mono text-muted">Item #{idx + 1}</span>
                         <button
                           type="button"
                           onClick={() => {
-                            const newItems = payload.items.filter((_: any, i: number) => i !== idx);
+                            const newItems = (payload.items || []).filter((_, i) => i !== idx);
                             updatePayloadField('items', newItems);
                           }}
                           className="text-subtle hover:text-danger text-xs cursor-pointer"
@@ -485,7 +548,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                         type="text"
                         value={item.title}
                         onChange={(e) => {
-                          const newItems = [...payload.items];
+                          const newItems = [...(payload.items || [])];
                           newItems[idx].title = e.target.value;
                           updatePayloadField('items', newItems);
                         }}
@@ -496,7 +559,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                         type="url"
                         value={item.url}
                         onChange={(e) => {
-                          const newItems = [...payload.items];
+                          const newItems = [...(payload.items || [])];
                           newItems[idx].url = e.target.value;
                           updatePayloadField('items', newItems);
                         }}
@@ -530,14 +593,14 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
             <div className="space-y-3 p-3.5 rounded-xl bg-canvas/70 border border-line">
               <label className="block text-xs font-medium text-body mb-1">Q&A Items ({payload.items?.length || 0})</label>
               <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
-                {(payload.items || []).map((item: any, idx: number) => (
+                {(payload.items || []).map((item, idx) => (
                   <div key={item.id} className="p-2.5 rounded-lg bg-surface border border-line space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-mono text-muted">Q#{idx + 1}</span>
                       <button
                         type="button"
                         onClick={() => {
-                          const newItems = payload.items.filter((_: any, i: number) => i !== idx);
+                          const newItems = (payload.items || []).filter((_, i) => i !== idx);
                           updatePayloadField('items', newItems);
                         }}
                         className="text-subtle hover:text-danger text-xs cursor-pointer"
@@ -549,7 +612,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                       type="text"
                       value={item.question}
                       onChange={(e) => {
-                        const newItems = [...payload.items];
+                        const newItems = [...(payload.items || [])];
                         newItems[idx].question = e.target.value;
                         updatePayloadField('items', newItems);
                       }}
@@ -559,7 +622,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                     <textarea
                       value={item.answer}
                       onChange={(e) => {
-                        const newItems = [...payload.items];
+                        const newItems = [...(payload.items || [])];
                         newItems[idx].answer = e.target.value;
                         updatePayloadField('items', newItems);
                       }}
@@ -775,14 +838,14 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
               <div>
                 <label className="block text-xs font-medium text-body mb-1">Form Fields ({payload.fields?.length || 0})</label>
                 <div className="space-y-2">
-                  {(payload.fields || []).map((field: any, fIdx: number) => (
+                  {(payload.fields || []).map((field, fIdx) => (
                     <div key={field.id} className="p-2.5 rounded-lg bg-surface border border-line space-y-2">
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
                           value={field.label}
                           onChange={(e) => {
-                            const newFields = [...payload.fields];
+                            const newFields = [...(payload.fields || [])];
                             newFields[fIdx].label = e.target.value;
                             updatePayloadField('fields', newFields);
                           }}
@@ -792,7 +855,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                         <select
                           value={field.type}
                           onChange={(e) => {
-                            const newFields = [...payload.fields];
+                            const newFields = [...(payload.fields || [])];
                             newFields[fIdx].type = e.target.value;
                             if (e.target.value === 'select' && !newFields[fIdx].options) {
                               newFields[fIdx].options = ['Option 1', 'Option 2'];
@@ -813,7 +876,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                             type="checkbox"
                             checked={field.required}
                             onChange={(e) => {
-                              const newFields = [...payload.fields];
+                              const newFields = [...(payload.fields || [])];
                               newFields[fIdx].required = e.target.checked;
                               updatePayloadField('fields', newFields);
                             }}
@@ -824,7 +887,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                         <button
                           type="button"
                           onClick={() => {
-                            const newFields = payload.fields.filter((_: any, i: number) => i !== fIdx);
+                            const newFields = (payload.fields || []).filter((_, i) => i !== fIdx);
                             updatePayloadField('fields', newFields);
                           }}
                           className="text-subtle hover:text-danger p-1 cursor-pointer"
@@ -842,7 +905,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                             value={(field.options || []).join(', ')}
                             onChange={(e) => {
                               const opts = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                              const newFields = [...payload.fields];
+                              const newFields = [...(payload.fields || [])];
                               newFields[fIdx].options = opts;
                               updatePayloadField('fields', newFields);
                             }}
@@ -1101,7 +1164,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                 <button
                   key={cat.id}
                   type="button"
-                  onClick={() => setActiveCategory(cat.id as any)}
+                  onClick={() => setActiveCategory(cat.id as typeof activeCategory)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                     activeCategory === cat.id
                       ? 'bg-indigo-600 text-white shadow-xs'
@@ -1168,7 +1231,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                     <label className="block text-[11px] font-medium text-muted mb-1">Motion Speed</label>
                     <select
                       value={speed}
-                      onChange={(e) => setSpeed(e.target.value as any)}
+                      onChange={(e) => setSpeed(e.target.value as typeof speed)}
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"
                     >
                       <option value="slow">Slow & Cinematic (1.5x)</option>
@@ -1182,7 +1245,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                     <label className="block text-[11px] font-medium text-muted mb-1">Physics Amplitude</label>
                     <select
                       value={intensity}
-                      onChange={(e) => setIntensity(e.target.value as any)}
+                      onChange={(e) => setIntensity(e.target.value as typeof intensity)}
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"
                     >
                       <option value="subtle">Subtle & Gentle</option>
@@ -1196,7 +1259,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                     <label className="block text-[11px] font-medium text-muted mb-1">Hover Micro-Physics</label>
                     <select
                       value={hoverEffect}
-                      onChange={(e) => setHoverEffect(e.target.value as any)}
+                      onChange={(e) => setHoverEffect(e.target.value as typeof hoverEffect)}
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"
                     >
                       {ANIME_HOVER_OPTIONS.map(opt => (
@@ -1210,7 +1273,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
                     <label className="block text-[11px] font-medium text-muted mb-1">Click / Tap Physics</label>
                     <select
                       value={clickEffect}
-                      onChange={(e) => setClickEffect(e.target.value as any)}
+                      onChange={(e) => setClickEffect(e.target.value as typeof clickEffect)}
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"
                     >
                       {ANIME_CLICK_OPTIONS.map(opt => (

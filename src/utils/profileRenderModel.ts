@@ -1,4 +1,5 @@
 import { migrateTheme } from './themeEngine';
+import type { StandardTheme } from '../types/themeSchema';
 
 export interface RenderableBlockLike {
   id?: string;
@@ -40,16 +41,16 @@ export interface ProfileRenderSource {
   displayName?: string;
   bio?: string;
   avatarUrl?: string | null;
-  standardTheme?: any;
-  theme?: any;
+  standardTheme?: unknown;
+  theme?: unknown;
   socialLinks?: Array<{ id?: string; platform?: string; url?: string; active?: boolean }>;
   tabs?: Array<RenderableTabLike>;
 }
 
 export interface ProfileRenderModel<TProfile extends ProfileRenderSource = ProfileRenderSource> {
   profile: TProfile;
-  theme: any;
-  layout: Record<string, any>;
+  theme: StandardTheme;
+  layout: StandardTheme['layout'];
   language: 'en' | 'ar';
   direction: 'ltr' | 'rtl';
   socialLinks: NonNullable<TProfile['socialLinks']>;
@@ -75,7 +76,7 @@ export function resolveProfileRenderModel<TProfile extends ProfileRenderSource>(
   const theme = migrateTheme(profile.standardTheme || profile.theme || {});
   const tabs = (Array.isArray(profile.tabs) ? profile.tabs : []) as NonNullable<TProfile['tabs']>;
   const currentTab = selectInitialProfileTab(tabs, options.tabIdOrHash);
-  const layout = theme.layout || {};
+  const layout = theme.layout;
   const socialLinks = (Array.isArray(profile.socialLinks) ? profile.socialLinks : []).filter(link => link?.active !== false && Boolean(link?.url)) as NonNullable<TProfile['socialLinks']>;
   return {
     profile,

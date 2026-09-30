@@ -8,11 +8,15 @@ import {
   PublishedProfileSnapshot, 
   PreviewToken, 
   ScheduledPublishConfig, 
-  AuditLog 
+  AuditLog,
+  LinkBlockPayload,
+  MediaBlockPayload,
+  FolderBlockPayload
 } from '../types';
 import { PublishedThemeSnapshot } from '../types/themeSchema';
 import { normalizeTheme, validateThemeAccessibility, validateThemeSchema, validateProfileAccessibility } from '../utils/themeEngine';
 import { publicProfileService } from './publicProfileService';
+import { reportRecoverableError } from '../utils/reportError';
 
 export interface ValidationIssue {
   severity: 'critical' | 'warning';
@@ -137,7 +141,7 @@ class ContentLifecycleService {
 
         // Link block URL validation
         if (block.type === 'link') {
-          const payload: any = block.payload;
+          const payload = block.payload as LinkBlockPayload;
           if (!payload?.url || !payload.url.trim()) {
             criticalIssues.push({
               severity: 'critical',
@@ -151,7 +155,7 @@ class ContentLifecycleService {
 
         // Media block URL validation
         if (block.type === 'media') {
-          const payload: any = block.payload;
+          const payload = block.payload as MediaBlockPayload;
           if (!payload?.url || !payload.url.trim()) {
             criticalIssues.push({
               severity: 'critical',
@@ -165,9 +169,9 @@ class ContentLifecycleService {
 
         // Folder block items validation
         if (block.type === 'folder') {
-          const payload: any = block.payload;
+          const payload = block.payload as FolderBlockPayload;
           if (payload?.items && payload.items.length > 0) {
-            payload.items.forEach((item: any, itemIdx: number) => {
+            payload.items.forEach((item, itemIdx) => {
               if (!item.url || !item.url.trim()) {
                 warnings.push({
                   severity: 'warning',
@@ -247,12 +251,13 @@ class ContentLifecycleService {
           recommendation: 'Review this content or theme setting for a more accessible result.'
         });
       });
-    } catch (e: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Invalid theme format';
       criticalIssues.push({
         severity: 'critical',
         code: 'THEME_CORRUPT',
         field: 'theme',
-        message: `Theme structure could not be parsed: ${e?.message || 'Invalid theme format'}`
+        message: `Theme structure could not be parsed: ${message}`
       });
     }
 
@@ -336,12 +341,12 @@ class ContentLifecycleService {
         draftVersion: nextDraftVersion,
         etag: newEtag
       };
-    } catch (e: any) {
+    } catch (error: unknown) {
       return {
         success: false,
         draftVersion: 0,
         etag: '',
-        error: e?.message || 'Failed to persist draft to server storage.'
+        error: error instanceof Error ? error.message : 'Failed to persist draft to server storage.'
       };
     }
   }
@@ -358,7 +363,9 @@ class ContentLifecycleService {
           return drafts[profileId];
         }
       }
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('draft persistence read failed', error);
+    }
     return {};
   }
 
@@ -385,7 +392,9 @@ class ContentLifecycleService {
       const active = tokens.filter(t => new Date(t.expiresAt).getTime() > Date.now());
       active.push(previewToken);
       localStorage.setItem(STORAGE_KEYS.PREVIEW_TOKENS, JSON.stringify(active));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('preview token persistence failed', error);
+    }
 
     return previewToken;
   }
@@ -438,7 +447,9 @@ class ContentLifecycleService {
             };
           }
         }
-      } catch {}
+      } catch (error) {
+        reportRecoverableError('publish idempotency read failed', error);
+      }
     }
 
     // 2. Strict validation check (PUBL-003)
@@ -540,7 +551,9 @@ class ContentLifecycleService {
       const rawAudits = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
       const audits: AuditLog[] = rawAudits ? JSON.parse(rawAudits) : [];
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify([auditLog, ...audits.slice(0, 200)]));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('publish audit persistence failed', error);
+    }
 
     const result: PublishResult = {
       success: true,
@@ -557,7 +570,9 @@ class ContentLifecycleService {
         const map = rawIdemp ? JSON.parse(rawIdemp) : {};
         map[idempotencyKey] = result;
         localStorage.setItem(STORAGE_KEYS.IDEMPOTENCY_KEYS, JSON.stringify(map));
-      } catch {}
+      } catch (error) {
+        reportRecoverableError('publish idempotency persistence failed', error);
+      }
     }
 
     return result;
@@ -587,7 +602,9 @@ class ContentLifecycleService {
         const rawAudits = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
         const audits: AuditLog[] = rawAudits ? JSON.parse(rawAudits) : [];
         localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify([deniedAudit, ...audits.slice(0, 200)]));
-      } catch {}
+      } catch (error) {
+        reportRecoverableError('rollback denial audit persistence failed', error);
+      }
 
       return {
         success: false,
@@ -664,7 +681,9 @@ class ContentLifecycleService {
       const rawAudits = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
       const audits: AuditLog[] = rawAudits ? JSON.parse(rawAudits) : [];
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify([auditLog, ...audits.slice(0, 200)]));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('rollback audit persistence failed', error);
+    }
 
     return {
       success: true,
@@ -714,7 +733,9 @@ class ContentLifecycleService {
       const updated = list.filter(item => item.profileId !== profile.id);
       updated.push(scheduledConfig);
       localStorage.setItem(STORAGE_KEYS.SCHEDULED_PUBLISH, JSON.stringify(updated));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('scheduled publish persistence failed', error);
+    }
 
     return scheduledConfig;
   }
@@ -787,8 +808,8 @@ class ContentLifecycleService {
       }
 
       localStorage.setItem(STORAGE_KEYS.SCHEDULED_PUBLISH, JSON.stringify(list));
-    } catch (e: any) {
-      console.error('Error executing scheduled publishes:', e);
+    } catch (error: unknown) {
+      console.error('Error executing scheduled publishes:', error);
     }
     return results;
   }

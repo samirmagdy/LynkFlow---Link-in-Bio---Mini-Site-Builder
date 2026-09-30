@@ -544,7 +544,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     });
   };
 
-  const handleUpdateTypography = (key: keyof typeof standardTheme.tokens.typography, value: any) => {
+  const handleUpdateTypography = (key: keyof typeof standardTheme.tokens.typography, value: unknown) => {
     updateStandardTheme(prev => ({
       ...prev,
       tokens: {
@@ -583,7 +583,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }));
   };
 
-  const handleUpdateBackground = (key: keyof typeof standardTheme.background, value: any) => {
+  const handleUpdateBackground = (key: keyof typeof standardTheme.background, value: unknown) => {
     updateStandardTheme(prev => ({
       ...prev,
       background: {
@@ -900,14 +900,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     }));
   };
 
-  const handleUpdateThemeSection = (section: 'profile' | 'socialIcons' | 'effects' | 'buttons' | 'cards', key: string, value: any) => {
+  const handleUpdateThemeSection = (section: 'profile' | 'socialIcons' | 'effects' | 'buttons' | 'cards', key: string, value: unknown) => {
     updateStandardTheme(prev => ({
       ...prev,
       [section]: { ...(prev[section] || {}), [key]: value }
     }));
   };
 
-  const handleUpdateBlockDefaults = (blockType: 'link' | 'text' | 'media' | 'folder', key: string, value: any) => {
+  const handleUpdateBlockDefaults = (blockType: 'link' | 'text' | 'media' | 'folder', key: string, value: unknown) => {
     updateStandardTheme(prev => ({
       ...prev,
       blockDefaults: {
@@ -920,7 +920,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
       ...(blockType === 'link' && key === 'variant' ? {
         componentVariants: {
           ...(prev.componentVariants || { link: 'solid', image: 'rounded', socialIcons: 'line', form: 'card' }),
-          link: value === 'soft' ? 'soft-card' : value === 'filled' ? 'solid' : value
+          link: (value === 'soft' ? 'soft-card' : value === 'filled' ? 'solid' : value) as NonNullable<StandardTheme['componentVariants']>['link']
         }
       } : {})
     }));
@@ -2607,7 +2607,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                       ...prev.tokens,
                       motion: {
                         ...prev.tokens.motion,
-                        hoverEffect: e.target.value as any
+                        hoverEffect: e.target.value as StandardTheme['tokens']['motion']['hoverEffect']
                       }
                     }
                   }))}

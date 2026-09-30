@@ -414,6 +414,7 @@ export interface PublishedProfileSnapshot {
     description: string;
     noIndex: boolean;
     ogImage?: string;
+    keywords?: string;
   };
   publishedAt: string;
   publishedBy: string;
@@ -477,6 +478,7 @@ export interface Profile {
     description: string;
     noIndex: boolean;
     ogImage?: string;
+    keywords?: string;
   };
   trackingIntegrations?: TrackingIntegrations;
   createdAt: string;

@@ -136,6 +136,33 @@ const addSchemaIssue = (issues: ThemeAccessibilityIssue[], tokenKey: string, mes
   issues.push({ type: 'error', tokenKey, message });
 };
 
+type ThemeJsonRecord = Record<string, unknown>;
+const isThemeJsonRecord = (value: unknown): value is ThemeJsonRecord => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+interface ThemeSchemaInput extends ThemeJsonRecord {
+  schemaVersion?: unknown;
+  mode?: unknown;
+  category?: unknown;
+  supportedGoals?: unknown;
+  tokens?: ThemeJsonRecord;
+  background?: ThemeJsonRecord;
+  previewImage?: unknown;
+  presetComposition?: ThemeJsonRecord;
+  layout?: ThemeJsonRecord;
+  header?: ThemeJsonRecord;
+  componentVariants?: ThemeJsonRecord;
+  profile?: ThemeJsonRecord;
+  buttons?: ThemeJsonRecord;
+  cards?: ThemeJsonRecord;
+  socialIcons?: ThemeJsonRecord;
+  effects?: ThemeJsonRecord;
+  blockDefaults?: ThemeJsonRecord;
+  accessibility?: ThemeJsonRecord;
+  conversion?: ThemeJsonRecord;
+}
+
+
+
 /** Strict boundary validation used before persistence/import/publish. */
 export function validateThemeSchema(raw: unknown): ThemeValidationResult {
   const errors: ThemeAccessibilityIssue[] = [];
@@ -144,22 +171,23 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
     addSchemaIssue(errors, 'schema', 'Theme must be a JSON object.');
     return { isValid: false, canPublish: false, errors, warnings };
   }
-  const theme = raw as Record<string, any>;
+  const theme = raw as ThemeSchemaInput;
+  const record = (value: unknown): ThemeJsonRecord | undefined => isThemeJsonRecord(value) ? value : undefined;
   Object.keys(theme).filter(key => !THEME_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `schema.${key}`, 'Unknown theme property is not allowed.'));
   if (theme.schemaVersion !== undefined && theme.schemaVersion !== 1) addSchemaIssue(errors, 'schemaVersion', 'Unsupported theme schema version.');
-  if (theme.mode !== undefined && !['light', 'dark', 'system'].includes(theme.mode)) addSchemaIssue(errors, 'mode', 'Theme mode must be light, dark, or system.');
+  if (theme.mode !== undefined && !['light', 'dark', 'system'].includes(String(theme.mode))) addSchemaIssue(errors, 'mode', 'Theme mode must be light, dark, or system.');
   if (theme.category !== undefined && (typeof theme.category !== 'string' || theme.category.length > 80)) addSchemaIssue(errors, 'category', 'Theme category must be a short label.');
   if (theme.supportedGoals !== undefined && (!Array.isArray(theme.supportedGoals) || theme.supportedGoals.some((goal: unknown) => !['contact', 'book', 'buy', 'portfolio', 'newsletter', 'whatsapp', 'download', 'social'].includes(String(goal))))) addSchemaIssue(errors, 'supportedGoals', 'Theme goals must use supported conversion goal identifiers.');
-  const tokens = theme.tokens;
+  const tokens = record(theme.tokens);
   if (tokens && typeof tokens === 'object') Object.keys(tokens).filter(key => !TOKEN_GROUP_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `tokens.${key}`, 'Unknown token group is not allowed.'));
-  const colors = theme.tokens?.colors;
+  const colors = record(tokens?.colors);
   if (colors && typeof colors === 'object') {
     Object.keys(colors).filter(key => !THEME_COLOR_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `tokens.colors.${key}`, 'Unknown color token is not allowed.'));
     Object.entries(colors).forEach(([key, value]) => {
       if (value !== undefined && value !== null && !isSafeHexColor(value)) addSchemaIssue(errors, `tokens.colors.${key}`, 'Color tokens must be valid hexadecimal colors.');
     });
   }
-  const typography = theme.tokens?.typography;
+  const typography = record(tokens?.typography);
   if (typography) {
     Object.keys(typography).filter(key => !THEME_TYPOGRAPHY_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `tokens.typography.${key}`, 'Unknown typography token is not allowed.'));
     if (typography.bodyFamily !== undefined && safeFontStack(typography.bodyFamily, '') === '') addSchemaIssue(errors, 'tokens.typography.bodyFamily', 'Body font must use an approved font family.');
@@ -174,9 +202,9 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
     for (const key of ['bodyLineHeight', 'headingLineHeight', 'headingScale', 'bodyScale']) {
       if (typography[key] !== undefined && (!Number.isFinite(Number(typography[key])) || Number(typography[key]) < 0.75 || Number(typography[key]) > 2.5)) addSchemaIssue(errors, `tokens.typography.${key}`, 'Typography scale and line height must stay within safe bounds.');
     }
-    if (typography.textTransform !== undefined && !['none', 'uppercase', 'capitalize'].includes(typography.textTransform)) addSchemaIssue(errors, 'tokens.typography.textTransform', 'Unsupported text transform.');
+    if (typography.textTransform !== undefined && !['none', 'uppercase', 'capitalize'].includes(String(typography.textTransform))) addSchemaIssue(errors, 'tokens.typography.textTransform', 'Unsupported text transform.');
   }
-  const background = theme.background;
+  const background = record(theme.background);
   if (background && typeof background === 'object') {
     Object.keys(background).filter(key => !THEME_BACKGROUND_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `background.${key}`, 'Unknown background property is not allowed.'));
     if (background.focalPoint && typeof background.focalPoint === 'object') Object.keys(background.focalPoint).filter(key => !FOCAL_POINT_KEYS.has(key)).forEach(key => addSchemaIssue(errors, `background.focalPoint.${key}`, 'Unknown focal-point property is not allowed.'));
@@ -198,63 +226,65 @@ export function validateThemeSchema(raw: unknown): ThemeValidationResult {
   for (const [path, value, allowedKeys] of nestedGroups) {
     if (value && typeof value === 'object' && !Array.isArray(value)) Object.keys(value).filter(key => !allowedKeys.has(key)).forEach(key => addSchemaIssue(errors, `${path}.${key}`, 'Unknown theme property is not allowed.'));
   }
-  const validateNumbers = (object: any, path: string, keys: string[]) => {
+  const validateNumbers = (object: Record<string, unknown> | undefined, path: string, keys: string[]) => {
     if (!object || typeof object !== 'object' || Array.isArray(object)) return;
     keys.forEach(key => {
       if (object[key] !== undefined && !Number.isFinite(Number(object[key]))) addSchemaIssue(errors, `${path}.${key}`, 'Numeric theme values must be finite numbers.');
     });
   };
-  const validateBooleans = (object: any, path: string, keys: string[]) => {
+  const validateBooleans = (object: Record<string, unknown> | undefined, path: string, keys: string[]) => {
     if (!object || typeof object !== 'object' || Array.isArray(object)) return;
     keys.forEach(key => {
       if (object[key] !== undefined && typeof object[key] !== 'boolean') addSchemaIssue(errors, `${path}.${key}`, 'Theme flags must be boolean values.');
     });
   };
-  const validateNestedColors = (object: any, path: string, keys: string[]) => {
+  const validateNestedColors = (object: Record<string, unknown> | undefined, path: string, keys: string[]) => {
     if (!object || typeof object !== 'object' || Array.isArray(object)) return;
     keys.forEach(key => {
       if (object[key] !== undefined && !isSafeHexColor(object[key])) addSchemaIssue(errors, `${path}.${key}`, 'Nested theme colors must be valid hexadecimal colors.');
     });
   };
-  const validateEnums = (object: any, path: string, values: Record<string, string[]>) => {
+  const validateEnums = (object: Record<string, unknown> | undefined, path: string, values: Record<string, string[]>) => {
     if (!object || typeof object !== 'object' || Array.isArray(object)) return;
     Object.entries(values).forEach(([key, allowed]) => {
       if (object[key] !== undefined && !allowed.includes(String(object[key]))) addSchemaIssue(errors, `${path}.${key}`, `Unsupported value for ${key}.`);
     });
   };
-  validateNumbers(tokens?.shape, 'tokens.shape', ['pageRadius', 'cardRadius', 'buttonRadius', 'avatarRadius']);
-  validateNumbers(tokens?.spacing, 'tokens.spacing', ['pageX', 'pageY', 'blockGap', 'sectionGap']);
-  validateNumbers(tokens?.motion, 'tokens.motion', ['durationMs']);
-  validateBooleans(tokens?.motion, 'tokens.motion', ['enabled']);
+  validateNumbers(record(tokens?.shape), 'tokens.shape', ['pageRadius', 'cardRadius', 'buttonRadius', 'avatarRadius']);
+  validateNumbers(record(tokens?.spacing), 'tokens.spacing', ['pageX', 'pageY', 'blockGap', 'sectionGap']);
+  validateNumbers(record(tokens?.motion), 'tokens.motion', ['durationMs']);
+  validateBooleans(record(tokens?.motion), 'tokens.motion', ['enabled']);
   validateNumbers(background, 'background', ['scale', 'blur', 'overlay']);
   validateBooleans(background, 'background', ['autoplay', 'loop', 'muted']);
-  validateNumbers(theme.header, 'header', ['avatarSize']);
-  validateBooleans(theme.header, 'header', ['showShare', 'showSocials']);
-  validateNestedColors(theme.buttons, 'buttons', ['background', 'text', 'border']);
-  validateNestedColors(theme.cards, 'cards', ['background', 'text', 'border']);
-  validateNestedColors(theme.socialIcons, 'socialIcons', ['color']);
-  validateNumbers(theme.buttons, 'buttons', ['height', 'blur']);
-  validateNumbers(theme.cards, 'cards', ['radius', 'blur']);
-  validateNumbers(theme.socialIcons, 'socialIcons', ['size']);
-  validateNumbers(theme.effects, 'effects', ['blur']);
-  validateBooleans(theme.effects, 'effects', ['grain', 'glow']);
-  validateBooleans(theme.profile, 'profile', ['showAvatar']);
-  validateBooleans(theme.layout, 'layout', ['showFooter']);
-  validateBooleans(theme.presetComposition, 'presetComposition', ['includesStarterContent', 'changesContent', 'changesLayout']);
-  validateEnums(tokens?.motion, 'tokens.motion', { hoverEffect: ['none', 'scale', 'lift', 'glow'] });
-  validateEnums(theme.header, 'header', { alignment: ['left', 'center', 'right'] });
-  validateEnums(theme.componentVariants, 'componentVariants', { link: ['solid', 'outline', 'soft-card', 'image-card', 'glass'], image: ['rounded', 'full-bleed', 'polaroid'], socialIcons: ['line', 'filled', 'minimal'], form: ['card', 'bordered', 'glass'] });
-  validateEnums(theme.profile, 'profile', { avatarShape: ['circle', 'rounded', 'square'] });
-  validateEnums(theme.accessibility, 'accessibility', { reducedMotion: ['respectUserPreference', 'alwaysDisable', 'alwaysEnable'], minimumContrast: ['AA', 'AAA'] });
+  validateNumbers(record(theme.header), 'header', ['avatarSize']);
+  validateBooleans(record(theme.header), 'header', ['showShare', 'showSocials']);
+  validateNestedColors(record(theme.buttons), 'buttons', ['background', 'text', 'border']);
+  validateNestedColors(record(theme.cards), 'cards', ['background', 'text', 'border']);
+  validateNestedColors(record(theme.socialIcons), 'socialIcons', ['color']);
+  validateNumbers(record(theme.buttons), 'buttons', ['height', 'blur']);
+  validateNumbers(record(theme.cards), 'cards', ['radius', 'blur']);
+  validateNumbers(record(theme.socialIcons), 'socialIcons', ['size']);
+  validateNumbers(record(theme.effects), 'effects', ['blur']);
+  validateBooleans(record(theme.effects), 'effects', ['grain', 'glow']);
+  validateBooleans(record(theme.profile), 'profile', ['showAvatar']);
+  validateBooleans(record(theme.layout), 'layout', ['showFooter']);
+  validateBooleans(record(theme.presetComposition), 'presetComposition', ['includesStarterContent', 'changesContent', 'changesLayout']);
+  validateEnums(record(tokens?.motion), 'tokens.motion', { hoverEffect: ['none', 'scale', 'lift', 'glow'] });
+  validateEnums(record(theme.header), 'header', { alignment: ['left', 'center', 'right'] });
+  validateEnums(record(theme.componentVariants), 'componentVariants', { link: ['solid', 'outline', 'soft-card', 'image-card', 'glass'], image: ['rounded', 'full-bleed', 'polaroid'], socialIcons: ['line', 'filled', 'minimal'], form: ['card', 'bordered', 'glass'] });
+  validateEnums(record(theme.profile), 'profile', { avatarShape: ['circle', 'rounded', 'square'] });
+  validateEnums(record(theme.accessibility), 'accessibility', { reducedMotion: ['respectUserPreference', 'alwaysDisable', 'alwaysEnable'], minimumContrast: ['AA', 'AAA'] });
   validateEnums(background, 'background', { type: ['solid', 'gradient', 'image', 'video', 'pattern'], fit: ['cover', 'contain', 'natural'], reducedMotionFallback: ['poster', 'image', 'solid'] });
-  validateEnums(theme.blockDefaults?.link, 'blockDefaults.link', { variant: ['filled', 'outline', 'soft', 'glass'], thumbnail: ['none', 'left', 'avatar'], shadow: ['none', 'sm', 'md', 'lg', 'colored'] });
-  validateEnums(theme.blockDefaults?.text, 'blockDefaults.text', { alignment: ['left', 'center', 'right'] });
-  validateEnums(theme.blockDefaults?.media, 'blockDefaults.media', { radius: ['none', 'sm', 'md', 'lg', 'full'] });
-  validateEnums(theme.blockDefaults?.folder, 'blockDefaults.folder', { variant: ['filled', 'outline', 'glass'] });
-  if (background?.position !== undefined && !['center', 'top', 'bottom'].includes(background.position)) addSchemaIssue(errors, 'background.position', 'Background position must be center, top, or bottom.');
-  if (theme.direction !== undefined && !['ltr', 'rtl', 'auto'].includes(theme.direction)) addSchemaIssue(errors, 'direction', 'Theme direction must be ltr, rtl, or auto.');
-  if (theme.language !== undefined && !['en', 'ar', 'auto'].includes(theme.language)) addSchemaIssue(errors, 'language', 'Theme language must be en, ar, or auto.');
-  if (theme.layout?.maxWidth !== undefined && safeLength(theme.layout.maxWidth, '') === '') addSchemaIssue(errors, 'layout.maxWidth', 'Layout width must be a bounded CSS length.');
+  const blockDefaults = record(theme.blockDefaults);
+  validateEnums(record(blockDefaults?.link), 'blockDefaults.link', { variant: ['filled', 'outline', 'soft', 'glass'], thumbnail: ['none', 'left', 'avatar'], shadow: ['none', 'sm', 'md', 'lg', 'colored'] });
+  validateEnums(record(blockDefaults?.text), 'blockDefaults.text', { alignment: ['left', 'center', 'right'] });
+  validateEnums(record(blockDefaults?.media), 'blockDefaults.media', { radius: ['none', 'sm', 'md', 'lg', 'full'] });
+  validateEnums(record(blockDefaults?.folder), 'blockDefaults.folder', { variant: ['filled', 'outline', 'glass'] });
+  if (background?.position !== undefined && !['center', 'top', 'bottom'].includes(String(background.position))) addSchemaIssue(errors, 'background.position', 'Background position must be center, top, or bottom.');
+  if (theme.direction !== undefined && !['ltr', 'rtl', 'auto'].includes(String(theme.direction))) addSchemaIssue(errors, 'direction', 'Theme direction must be ltr, rtl, or auto.');
+  if (theme.language !== undefined && !['en', 'ar', 'auto'].includes(String(theme.language))) addSchemaIssue(errors, 'language', 'Theme language must be en, ar, or auto.');
+  const layout = record(theme.layout);
+  if (layout?.maxWidth !== undefined && safeLength(String(layout.maxWidth), '') === '') addSchemaIssue(errors, 'layout.maxWidth', 'Layout width must be a bounded CSS length.');
   if (theme.responsive && typeof theme.responsive === 'object') {
     Object.entries(theme.responsive).forEach(([viewport, rule]) => {
       if (!['smallMobile', 'mobile', 'tablet', 'desktop'].includes(viewport) || !rule || typeof rule !== 'object') {
@@ -419,10 +449,11 @@ export function validateThemeAccessibility(theme: StandardTheme): ThemeValidatio
  * Theme contrast alone cannot catch invalid forms, missing media alternatives,
  * broken heading order, or unsafe autoplay behavior.
  */
-export function validateProfileAccessibility(profile: any, theme: StandardTheme): ThemeValidationResult {
+export function validateProfileAccessibility(profile: unknown, theme: StandardTheme): ThemeValidationResult {
   const errors: ThemeAccessibilityIssue[] = [];
   const warnings: ThemeAccessibilityIssue[] = [];
-  const tabs = Array.isArray(profile?.tabs) ? profile.tabs : [];
+  const profileRecord = isThemeJsonRecord(profile) ? profile : {};
+  const tabs = Array.isArray(profileRecord.tabs) ? profileRecord.tabs.filter(isThemeJsonRecord) : [];
   const headings: Array<{ level: number; tokenKey: string }> = [];
   let longestWord = '';
 
@@ -434,11 +465,12 @@ export function validateProfileAccessibility(profile: any, theme: StandardTheme)
     if (value.length > 0 && !/[\p{L}\p{N}]/u.test(value)) addWarning(tokenKey, 'Text contains no readable letters or numbers.');
   };
 
-  tabs.forEach((tab: any, tabIndex: number) => {
-    (Array.isArray(tab?.blocks) ? tab.blocks : []).forEach((block: any, blockIndex: number) => {
+  tabs.forEach((tab, tabIndex) => {
+    const blocks = Array.isArray(tab.blocks) ? tab.blocks.filter(isThemeJsonRecord) : [];
+    blocks.forEach((block, blockIndex) => {
       if (block?.isHidden) return;
       const key = `tabs[${tabIndex}].blocks[${blockIndex}]`;
-      const payload = block?.payload && typeof block.payload === 'object' ? block.payload : {};
+      const payload = isThemeJsonRecord(block.payload) ? block.payload : {};
       if (block?.type === 'text') {
         inspectText(payload.content, `${key}.content`);
         const level = Number(String(payload.textType || '').replace('h', ''));
@@ -449,13 +481,13 @@ export function validateProfileAccessibility(profile: any, theme: StandardTheme)
         if (payload.mediaType === 'video' && !String(payload.captionsUrl || payload.caption || '').trim()) addWarning(`${key}.captions`, 'Video media should provide captions or a transcript.');
       }
       if (block?.type === 'gallery' || block?.type === 'carousel') {
-        (Array.isArray(payload.items) ? payload.items : []).forEach((item: any, itemIndex: number) => {
+        (Array.isArray(payload.items) ? payload.items.filter(isThemeJsonRecord) : []).forEach((item, itemIndex) => {
           if (!String(item?.alt || '').trim()) addWarning(`${key}.items[${itemIndex}].alt`, 'Gallery images should include alternative text.');
           inspectText(item?.title, `${key}.items[${itemIndex}].title`);
         });
       }
       if (block?.type === 'form' || block?.type === 'emailSignup') {
-        (Array.isArray(payload.fields) ? payload.fields : []).forEach((field: any, fieldIndex: number) => {
+        (Array.isArray(payload.fields) ? payload.fields.filter(isThemeJsonRecord) : []).forEach((field, fieldIndex) => {
           if (!String(field?.label || '').trim()) addError(`${key}.fields[${fieldIndex}].label`, 'Every form field must have a visible label.');
         });
         if (!String(payload.submitButtonText || '').trim()) addError(`${key}.submitButtonText`, 'Forms must have an accessible submit button label.');
@@ -504,18 +536,21 @@ export function normalizeTheme(raw: any): StandardTheme {
   const blockDefaults = raw?.blockDefaults || {};
   const responsive = raw?.responsive || {};
   const accessibility = raw?.accessibility || {};
-  const normalizeResponsiveRule = (value: any, fallback: ViewportResponsiveRule): ViewportResponsiveRule => ({
-    maxWidth: finiteNumber(value?.maxWidth, fallback.maxWidth, 280, 1600),
-    pageX: finiteNumber(value?.pageX, fallback.pageX, 8, 48),
-    pageY: finiteNumber(value?.pageY, fallback.pageY, 8, 64),
-    blockGap: finiteNumber(value?.blockGap, fallback.blockGap, 6, 36),
-    avatarSize: finiteNumber(value?.avatarSize, fallback.avatarSize ?? 88, 48, 140),
-    headingScale: finiteNumber(value?.headingScale, fallback.headingScale ?? 1, 0.75, 1.6),
-    imageHeight: finiteNumber(value?.imageHeight, fallback.imageHeight ?? 320, 120, 720),
-    textAlign: ['left', 'center', 'right'].includes(value?.textAlign) ? value.textAlign : (fallback.textAlign || 'center'),
-    navigationPosition: ['top', 'below-header', 'bottom'].includes(value?.navigationPosition) ? value.navigationPosition : (fallback.navigationPosition || 'below-header'),
-    blockVisibility: ['all', 'hide-media', 'hide-socials'].includes(value?.blockVisibility) ? value.blockVisibility : (fallback.blockVisibility || 'all')
-  });
+  const normalizeResponsiveRule = (value: unknown, fallback: ViewportResponsiveRule): ViewportResponsiveRule => {
+    const rule = isThemeJsonRecord(value) ? value : {};
+    return {
+      maxWidth: finiteNumber(rule.maxWidth, fallback.maxWidth, 280, 1600),
+      pageX: finiteNumber(rule.pageX, fallback.pageX, 8, 48),
+      pageY: finiteNumber(rule.pageY, fallback.pageY, 8, 64),
+      blockGap: finiteNumber(rule.blockGap, fallback.blockGap, 6, 36),
+      avatarSize: finiteNumber(rule.avatarSize, fallback.avatarSize ?? 88, 48, 140),
+      headingScale: finiteNumber(rule.headingScale, fallback.headingScale ?? 1, 0.75, 1.6),
+      imageHeight: finiteNumber(rule.imageHeight, fallback.imageHeight ?? 320, 120, 720),
+      textAlign: ['left', 'center', 'right'].includes(String(rule.textAlign)) ? rule.textAlign as ViewportResponsiveRule['textAlign'] : (fallback.textAlign || 'center'),
+      navigationPosition: ['top', 'below-header', 'bottom'].includes(String(rule.navigationPosition)) ? rule.navigationPosition as ViewportResponsiveRule['navigationPosition'] : (fallback.navigationPosition || 'below-header'),
+      blockVisibility: ['all', 'hide-media', 'hide-socials'].includes(String(rule.blockVisibility)) ? rule.blockVisibility as ViewportResponsiveRule['blockVisibility'] : (fallback.blockVisibility || 'all')
+    };
+  };
 
   // Normalize colors
   const pageBg = safeColor(colors.pageBackground || colors.surfaceBase || raw.bgColor, '#0B0F19');
@@ -801,10 +836,11 @@ export function normalizeTheme(raw: any): StandardTheme {
 /**
  * Migration pipeline: converts older schemas or legacy objects into StandardTheme v1
  */
-export function migrateTheme(oldTheme: any): StandardTheme {
-  if (!oldTheme) return normalizeTheme({});
-  const fromVersion = Number.isFinite(Number(oldTheme.schemaVersion)) ? Number(oldTheme.schemaVersion) : 0;
-  return upgradeTheme(oldTheme, fromVersion, 1);
+export function migrateTheme(oldTheme: unknown): StandardTheme {
+  if (!oldTheme || typeof oldTheme !== 'object' || Array.isArray(oldTheme)) return normalizeTheme({});
+  const source = oldTheme as Record<string, unknown>;
+  const fromVersion = Number.isFinite(Number(source.schemaVersion)) ? Number(source.schemaVersion) : 0;
+  return upgradeTheme(source, fromVersion, 1);
 }
 
 /**
@@ -866,10 +902,10 @@ export function toLegacyCompatTheme(theme: StandardTheme): ThemeConfig {
     cardStyle: norm.blockDefaults?.link?.variant === 'glass' ? 'glass' : norm.blockDefaults?.link?.variant === 'outline' ? 'outline' : 'solid',
     fontDisplay: norm.tokens.typography.displayFamily,
     fontBody: norm.tokens.typography.bodyFamily,
-    buttonHoverAnimation: (norm.tokens.motion.hoverEffect as any) || 'lift',
+    buttonHoverAnimation: norm.tokens.motion.hoverEffect || 'lift',
     accentColor: norm.tokens.colors.accent,
-    animeEntrancePreset: (norm as any).animeEntrancePreset,
-    animeMicroInteractions: (norm as any).animeMicroInteractions
+    animeEntrancePreset: (norm as StandardTheme & { animeEntrancePreset?: ThemeConfig['animeEntrancePreset'] }).animeEntrancePreset,
+    animeMicroInteractions: (norm as StandardTheme & { animeMicroInteractions?: ThemeConfig['animeMicroInteractions'] }).animeMicroInteractions
   };
 }
 

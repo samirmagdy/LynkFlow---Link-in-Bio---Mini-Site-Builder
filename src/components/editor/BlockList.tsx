@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Block, BlockType, AnimeBlockEffect } from '../../types';
+import { Block, BlockType, AnimeBlockEffect, LinkBlockPayload } from '../../types';
 import { animate, stagger } from 'animejs';
 import { 
   ANIME_BLOCK_EFFECTS,
@@ -71,7 +71,7 @@ export const BlockList: React.FC<BlockListProps> = ({
     if (b.animation && b.animation !== 'none') {
       return b.animation;
     }
-    const payloadAnim = (b.payload as any)?.animation;
+    const payloadAnim = (b.payload as Partial<LinkBlockPayload>).animation;
     if (payloadAnim && payloadAnim !== 'none') {
       if (payloadAnim === 'pulse') return 'pulseGlow';
       if (payloadAnim === 'shimmer') return 'shimmerGleam';

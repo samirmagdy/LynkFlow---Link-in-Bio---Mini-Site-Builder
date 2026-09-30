@@ -38,7 +38,6 @@ import { SPEC_THEME_PRESETS } from '../data/themePresets';
 import { StandardTheme, PublishedThemeSnapshot } from '../types/themeSchema';
 import { calculateContrastRatio, normalizeTheme, validateThemeAccessibility, toLegacyCompatTheme } from '../utils/themeEngine';
 import { enforceBrandKitThemePolicy } from '../utils/brandKitPermissions';
-import { authService, AuthResponse, PasswordResetResponse } from '../services/authService';
 import { workspaceSyncService, SaveStatus, ConflictState } from '../services/workspaceSyncService';
 import { contentLifecycleService, ValidationIssue } from '../services/contentLifecycleService';
 import { formSubmissionService } from '../services/formSubmissionService';
@@ -50,45 +49,64 @@ import { ProfileMember, ProfileRole, ApiKey, ApiKeyScope, WebhookSubscription, W
 import { isSupabaseConfigured } from '../lib/supabaseConfig';
 import { supabase as configuredSupabase } from '../lib/supabase';
 import { createPublishedSnapshot } from '../utils/publishedSnapshot';
+import { reportRecoverableError } from '../utils/reportError';
 
 const supabase = configuredSupabase;
+
+interface AuthResponse {
+  success: boolean;
+  user?: UserAccount;
+  error?: string;
+  actionRequired?: 'verify_email' | 'complete_onboarding';
+}
+
+interface PasswordResetResponse {
+  success: boolean;
+  message: string;
+  error?: string;
+}
+
+const AUTH_UNAVAILABLE_MESSAGE = 'Authentication is temporarily unavailable. Please try again later.';
+
 type CloudSyncModule = typeof import('../services/supabaseSyncService');
 let cloudSyncPromise: Promise<CloudSyncModule> | null = null;
 const getCloudSync = () => cloudSyncPromise || (cloudSyncPromise = import('../services/supabaseSyncService'));
-const cloudSync = (name: keyof CloudSyncModule) => (...args: any[]) => getCloudSync().then(module => (module[name] as any)(...args));
-const loadCloudState = cloudSync('loadCloudState');
-const saveCloudAnalytics = cloudSync('saveCloudAnalytics');
-const saveCloudAuditLogs = cloudSync('saveCloudAuditLogs');
-const saveCloudProfile = cloudSync('saveCloudProfile');
-const saveCloudReports = cloudSync('saveCloudReports');
-const saveCloudSubmissions = cloudSync('saveCloudSubmissions');
-const saveCloudThemes = cloudSync('saveCloudThemes');
-const deleteCloudTheme = cloudSync('deleteCloudTheme');
-const saveCloudWebhooks = cloudSync('saveCloudWebhooks');
-const saveCloudApiKeys = cloudSync('saveCloudApiKeys');
-const saveCloudSubscribers = cloudSync('saveCloudSubscribers');
-const saveCloudWorkspace = cloudSync('saveCloudWorkspace');
-const deleteCloudRecord = cloudSync('deleteCloudRecord');
-const publishCloudProfile = cloudSync('publishCloudProfile');
-const rollbackCloudProfile = cloudSync('rollbackCloudProfile');
-const createCloudPreviewToken = cloudSync('createCloudPreviewToken');
+const lazyCall = <T extends (...args: never[]) => unknown>(loader: () => Promise<unknown>, name: string) => (...args: Parameters<T>): Promise<Awaited<ReturnType<T>>> => loader().then(module => {
+  const fn = (module as Record<string, unknown>)[name] as T;
+  return fn(...args) as ReturnType<T>;
+}) as Promise<Awaited<ReturnType<T>>>;
+const loadCloudState = lazyCall<CloudSyncModule['loadCloudState']>(getCloudSync, 'loadCloudState');
+const saveCloudAnalytics = lazyCall<CloudSyncModule['saveCloudAnalytics']>(getCloudSync, 'saveCloudAnalytics');
+const saveCloudAuditLogs = lazyCall<CloudSyncModule['saveCloudAuditLogs']>(getCloudSync, 'saveCloudAuditLogs');
+const saveCloudProfile = lazyCall<CloudSyncModule['saveCloudProfile']>(getCloudSync, 'saveCloudProfile');
+const saveCloudReports = lazyCall<CloudSyncModule['saveCloudReports']>(getCloudSync, 'saveCloudReports');
+const saveCloudSubmissions = lazyCall<CloudSyncModule['saveCloudSubmissions']>(getCloudSync, 'saveCloudSubmissions');
+const saveCloudThemes = lazyCall<CloudSyncModule['saveCloudThemes']>(getCloudSync, 'saveCloudThemes');
+const deleteCloudTheme = lazyCall<CloudSyncModule['deleteCloudTheme']>(getCloudSync, 'deleteCloudTheme');
+const saveCloudWebhooks = lazyCall<CloudSyncModule['saveCloudWebhooks']>(getCloudSync, 'saveCloudWebhooks');
+const saveCloudApiKeys = lazyCall<CloudSyncModule['saveCloudApiKeys']>(getCloudSync, 'saveCloudApiKeys');
+const saveCloudSubscribers = lazyCall<CloudSyncModule['saveCloudSubscribers']>(getCloudSync, 'saveCloudSubscribers');
+const saveCloudWorkspace = lazyCall<CloudSyncModule['saveCloudWorkspace']>(getCloudSync, 'saveCloudWorkspace');
+const deleteCloudRecord = lazyCall<CloudSyncModule['deleteCloudRecord']>(getCloudSync, 'deleteCloudRecord');
+const publishCloudProfile = lazyCall<CloudSyncModule['publishCloudProfile']>(getCloudSync, 'publishCloudProfile');
+const rollbackCloudProfile = lazyCall<CloudSyncModule['rollbackCloudProfile']>(getCloudSync, 'rollbackCloudProfile');
+const createCloudPreviewToken = lazyCall<CloudSyncModule['createCloudPreviewToken']>(getCloudSync, 'createCloudPreviewToken');
 
-const dynamicService = <T extends Record<string, (...args: any[]) => any>>(loader: () => Promise<T>, name: keyof T) => (...args: any[]) => loader().then(module => module[name](...args));
 const stripeService = () => import('../services/stripeService');
-const createStripeCheckoutSession = dynamicService(stripeService, 'createStripeCheckoutSession');
-const cancelStripeSubscription = dynamicService(stripeService, 'cancelStripeSubscription');
-const submitPublicForm = dynamicService(() => import('../services/publicFormService'), 'submitPublicForm');
-const submitPublicAbuseReport = dynamicService(() => import('../services/publicAbuseReportService'), 'submitPublicAbuseReport');
-const createManagedApiKey = dynamicService(() => import('../services/apiManagementService'), 'createManagedApiKey');
-const revokeManagedApiKey = dynamicService(() => import('../services/apiManagementService'), 'revokeManagedApiKey');
-const rotateManagedApiKey = dynamicService(() => import('../services/apiManagementService'), 'rotateManagedApiKey');
-const createManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'createManagedWebhook');
-const deleteManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'deleteManagedWebhook');
-const testManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'testManagedWebhook');
-const updateManagedWebhook = dynamicService(() => import('../services/webhookManagementService'), 'updateManagedWebhook');
-const removeManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'removeManagedDomain');
-const recheckManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'recheckManagedDomain');
-const verifyManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'verifyManagedDomain');
+const createStripeCheckoutSession = lazyCall<Awaited<ReturnType<typeof stripeService>>['createStripeCheckoutSession']>(stripeService, 'createStripeCheckoutSession');
+const cancelStripeSubscription = lazyCall<Awaited<ReturnType<typeof stripeService>>['cancelStripeSubscription']>(stripeService, 'cancelStripeSubscription');
+const submitPublicForm = lazyCall<typeof import('../services/publicFormService')['submitPublicForm']>(() => import('../services/publicFormService'), 'submitPublicForm');
+const submitPublicAbuseReport = lazyCall<typeof import('../services/publicAbuseReportService')['submitPublicAbuseReport']>(() => import('../services/publicAbuseReportService'), 'submitPublicAbuseReport');
+const createManagedApiKey = lazyCall<typeof import('../services/apiManagementService')['createManagedApiKey']>(() => import('../services/apiManagementService'), 'createManagedApiKey');
+const revokeManagedApiKey = lazyCall<typeof import('../services/apiManagementService')['revokeManagedApiKey']>(() => import('../services/apiManagementService'), 'revokeManagedApiKey');
+const rotateManagedApiKey = lazyCall<typeof import('../services/apiManagementService')['rotateManagedApiKey']>(() => import('../services/apiManagementService'), 'rotateManagedApiKey');
+const createManagedWebhook = lazyCall<typeof import('../services/webhookManagementService')['createManagedWebhook']>(() => import('../services/webhookManagementService'), 'createManagedWebhook');
+const deleteManagedWebhook = lazyCall<typeof import('../services/webhookManagementService')['deleteManagedWebhook']>(() => import('../services/webhookManagementService'), 'deleteManagedWebhook');
+const testManagedWebhook = lazyCall<typeof import('../services/webhookManagementService')['testManagedWebhook']>(() => import('../services/webhookManagementService'), 'testManagedWebhook');
+const updateManagedWebhook = lazyCall<typeof import('../services/webhookManagementService')['updateManagedWebhook']>(() => import('../services/webhookManagementService'), 'updateManagedWebhook');
+const removeManagedDomain = lazyCall<typeof import('../services/domainManagementService')['removeManagedDomain']>(() => import('../services/domainManagementService'), 'removeManagedDomain');
+const recheckManagedDomain = lazyCall<typeof import('../services/domainManagementService')['recheckManagedDomain']>(() => import('../services/domainManagementService'), 'recheckManagedDomain');
+const verifyManagedDomain = lazyCall<typeof import('../services/domainManagementService')['verifyManagedDomain']>(() => import('../services/domainManagementService'), 'verifyManagedDomain');
 
 type AppView =
   | 'marketing' 
@@ -151,8 +169,8 @@ interface AppContextType {
   signUp: (email: string, password: string, name?: string) => Promise<AuthResponse>;
   logIn: (email: string, password: string) => Promise<AuthResponse>;
   logOut: () => void;
-  verifyEmail: (token: string) => AuthResponse;
-  resendVerificationEmail: () => Promise<{ success: boolean; error?: string; debugToken?: string }>;
+  verifyEmail: () => Promise<AuthResponse>;
+  resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
   requestPasswordReset: (email: string) => Promise<PasswordResetResponse>;
   resetPassword: (token: string, newPass: string) => Promise<AuthResponse>;
   completeOnboarding: (starter?: StarterProfileBlueprint) => Promise<void>;
@@ -310,25 +328,35 @@ const EMPTY_CLOUD_PROFILE: Profile = {
 export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: boolean }> = ({ children, lightweight = false }) => {
   const cloudReady = React.useRef(false);
   const cloudApiState = React.useRef<{ apiKeys: ApiKey[]; webhookSubscriptions: WebhookSubscription[] } | null>(null);
+  const cloudWriteQueue = React.useRef(Promise.resolve());
   const [cloudHydrated, setCloudHydrated] = React.useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [isConflictOpen, setIsConflictOpen] = useState(false);
+  const [forceSimulateNetworkError, setForceSimulateNetworkError] = useState(false);
+
+  const enqueueCloudWrite = React.useCallback((write: () => Promise<void>, errorMessage: string) => {
+    const nextWrite = cloudWriteQueue.current.catch(() => undefined).then(write);
+    cloudWriteQueue.current = nextWrite;
+    return nextWrite.catch(error => {
+      setSaveStatus('error');
+      setSaveErrorMessage(error instanceof Error ? error.message : errorMessage);
+      throw error;
+    });
+  }, []);
+
   const [user, setUser] = useState<UserAccount>(() => {
-    if (isSupabaseConfigured) {
-      return {
-        id: 'usr-guest', email: '', name: 'Guest', isVerified: false,
-        createdAt: new Date().toISOString(), lastLoginAt: new Date().toISOString(),
-        onboardingCompleted: false, onboardingStep: 'category', workspaceId: ''
-      };
-    }
-    return authService.getActiveSession() || {
+    return {
       id: 'usr-guest',
-      email: 'creator@example.com',
-      name: 'New Creator',
+      email: '',
+      name: 'Guest',
       isVerified: false,
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
       onboardingCompleted: false,
       onboardingStep: 'category',
-      workspaceId: 'ws-main'
+      workspaceId: ''
     };
   });
 
@@ -398,14 +426,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   // Keep a separate draft profile per active profile
   const [draftProfile, setDraftProfile] = useState<Profile>(() => {
     const found = profiles.find(p => p.id === activeProfileId) || profiles[0] || (isSupabaseConfigured ? EMPTY_CLOUD_PROFILE : INITIAL_PROFILES[0]);
+    if (typeof localStorage === 'undefined') return JSON.parse(JSON.stringify(found));
     try {
       const pendingDraft = localStorage.getItem(`${STORAGE_KEYS.OFFLINE_DRAFT_PREFIX}${found.id}`);
       if (pendingDraft) return JSON.parse(pendingDraft);
       const savedDraft = localStorage.getItem(`${STORAGE_KEYS.DRAFT_PROFILE_PREFIX}${found.id}`);
       if (savedDraft) return JSON.parse(savedDraft);
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('draft state hydration failed', error);
+    }
     return JSON.parse(JSON.stringify(found));
   });
+
+  React.useEffect(() => {
+    if (!lastSavedAt && draftProfile.updatedAt) setLastSavedAt(draftProfile.updatedAt);
+  }, [draftProfile.updatedAt, lastSavedAt]);
 
   const [workspace, setWorkspace] = useState<Workspace>(() => {
     if (lightweight) return INITIAL_WORKSPACE;
@@ -565,8 +600,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   useEffect(() => {
     if (lightweight) return;
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    Promise.all(profiles.map(profile => saveCloudProfile(profile, user.id)))
-      .catch(error => console.error('Supabase profile save failed', error));
+    void enqueueCloudWrite(
+      () => Promise.all(profiles.map(profile => saveCloudProfile(profile, user.id))).then(() => undefined),
+      'Supabase profile save failed'
+    ).catch(() => undefined);
   }, [profiles, user.id]);
 
   useEffect(() => {
@@ -590,29 +627,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   useEffect(() => {
     if (lightweight) return;
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudWorkspace(workspace).catch(error => console.error('Supabase workspace save failed', error));
+    void enqueueCloudWrite(() => saveCloudWorkspace(workspace), 'Supabase workspace save failed').catch(() => undefined);
   }, [workspace, user.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudAnalytics(analytics, user.id).catch(error => console.error('Supabase analytics save failed', error));
+    void enqueueCloudWrite(() => saveCloudAnalytics(analytics, user.id), 'Supabase analytics save failed').catch(() => undefined);
   }, [analytics, user.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudSubmissions(submissions, user.id).catch(error => console.error('Supabase submissions save failed', error));
+    void enqueueCloudWrite(() => saveCloudSubmissions(submissions, user.id), 'Supabase submissions save failed').catch(() => undefined);
     const subscribers = profiles.flatMap(profile => formSubmissionService.getSubscribers(profile.id));
-    saveCloudSubscribers(subscribers, user.id).catch(error => console.error('Supabase subscribers save failed', error));
+    void enqueueCloudWrite(() => saveCloudSubscribers(subscribers, user.id), 'Supabase subscribers save failed').catch(() => undefined);
   }, [submissions, profiles, user.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudAuditLogs(auditLogs, user.id).catch(error => console.error('Supabase audit save failed', error));
+    void enqueueCloudWrite(() => saveCloudAuditLogs(auditLogs, user.id), 'Supabase audit save failed').catch(() => undefined);
   }, [auditLogs, user.id]);
 
   useEffect(() => {
     if (!cloudReady.current || !isSupabaseConfigured || !user.id || user.id === 'usr-guest') return;
-    saveCloudReports(abuseReports, user.id).catch(error => console.error('Supabase reports save failed', error));
+    void enqueueCloudWrite(() => saveCloudReports(abuseReports, user.id), 'Supabase reports save failed').catch(() => undefined);
   }, [abuseReports, user.id]);
 
   useEffect(() => {
@@ -695,22 +732,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   }, []);
 
   // Autosave and Concurrency States (EDT-003, EDT-004)
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(() => draftProfile.updatedAt || null);
-  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
-  const [isConflictOpen, setIsConflictOpen] = useState(false);
-  const [forceSimulateNetworkError, setForceSimulateNetworkError] = useState(false);
-
   const queueOfflineDraft = (profile: Profile) => {
     try {
       localStorage.setItem(`${STORAGE_KEYS.OFFLINE_DRAFT_PREFIX}${profile.id}`, JSON.stringify(profile));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('offline draft persistence failed', error);
+    }
   };
 
   const clearOfflineDraft = (profileId: string) => {
     try {
       localStorage.removeItem(`${STORAGE_KEYS.OFFLINE_DRAFT_PREFIX}${profileId}`);
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('offline draft cleanup failed', error);
+    }
   };
 
   // Concurrency listener from other tabs
@@ -727,7 +762,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
               setIsConflictOpen(true);
             }
           }
-        } catch {}
+        } catch (error) {
+          reportRecoverableError('workspace conflict lookup failed', error);
+        }
       }
     });
     return () => unsubscribe();
@@ -750,7 +787,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       const res = await workspaceSyncService.saveDraftAuthoritative(draftProfile, forceSimulateNetworkError);
       if (res.success) {
         try {
-          if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(res.updatedProfile || draftProfile, user.id);
+          if (isSupabaseConfigured && user.id !== 'usr-guest') {
+            await enqueueCloudWrite(() => saveCloudProfile(res.updatedProfile || draftProfile, user.id), 'Cloud draft save failed');
+          }
         } catch (error) {
           setSaveStatus('error');
           setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud save failed');
@@ -796,7 +835,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     const res = await workspaceSyncService.saveDraftAuthoritative(draftProfile, false);
     if (res.success) {
       try {
-        if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(res.updatedProfile || draftProfile, user.id);
+        if (isSupabaseConfigured && user.id !== 'usr-guest') {
+          await enqueueCloudWrite(() => saveCloudProfile(res.updatedProfile || draftProfile, user.id), 'Cloud draft save failed');
+        }
       } catch (error) {
         setSaveStatus('error');
         setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud save failed');
@@ -835,7 +876,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
           return;
         }
       }
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('conflict reload failed', error);
+    }
     setIsConflictOpen(false);
   };
 
@@ -857,7 +900,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       }
       const savedDraft = result.updatedProfile;
       if (isSupabaseConfigured && user.id !== 'usr-guest') {
-        await saveCloudProfile(savedDraft, user.id);
+        await enqueueCloudWrite(() => saveCloudProfile(savedDraft, user.id), 'Cloud conflict overwrite failed');
       }
       setDraftProfile(savedDraft);
       setProfiles(prev => prev.map(p => (p.id === savedDraft.id ? savedDraft : p)));
@@ -895,7 +938,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     const res = await workspaceSyncService.saveDraftAuthoritative(draftProfile, forceSimulateNetworkError, draftProfile.etag);
     if (res.success) {
       try {
-        if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudProfile(res.updatedProfile || draftProfile, user.id);
+        if (isSupabaseConfigured && user.id !== 'usr-guest') {
+          await enqueueCloudWrite(() => saveCloudProfile(res.updatedProfile || draftProfile, user.id), 'Cloud draft save failed');
+        }
       } catch (error) {
         setSaveStatus('error');
         setSaveErrorMessage(error instanceof Error ? error.message : 'Cloud save failed');
@@ -932,7 +977,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       try {
         // Persist the draft first; the Worker performs validation and is the
         // only writer allowed to create/update the public snapshot.
-        await saveCloudProfile(draftProfile, user.id);
+        await enqueueCloudWrite(() => saveCloudProfile(draftProfile, user.id), 'Cloud draft save failed');
         const published = await publishCloudProfile(draftProfile.id, changeNote, idempKey, versionName, versionNotes);
         setProfiles(prev => prev.map(profile => profile.id === published.id ? published : profile));
         setDraftProfile(published);
@@ -975,7 +1020,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
           setDraftProfile(updated);
         }
       }
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('published profile refresh failed', error);
+    }
 
     if (result.auditLog) {
       setAuditLogs(prev => [result.auditLog!, ...prev]);
@@ -1053,8 +1100,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       }));
       showToast(`Release scheduled for ${new Date(config.scheduledTimeUtc).toLocaleString()} (${config.timezone})`);
       return true;
-    } catch (e: any) {
-      showToast(e?.message || 'Failed to schedule release');
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Failed to schedule release');
       return false;
     }
   };
@@ -1313,7 +1360,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       const targetTab = tabs.find(t => t.id === tabId) || tabs[0];
       if (!targetTab) return prev;
 
-      let defaultPayload: any;
+      let defaultPayload: Block['payload'];
       let title = customTitle || 'New Block';
 
       switch (blockType) {
@@ -2357,15 +2404,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       showToast(`Account created for ${remoteUser.email}! Check your inbox to verify it.`);
       return { success: true, user: remoteUser, actionRequired: 'verify_email' };
     }
-    const res = authService.signUp(email, pass, name);
-    if (res.success && res.user) {
-      setUser(res.user);
-      setIsOnboardingOpen(true);
-      showToast(`Account created for ${res.user.email}!`);
-    } else if (res.error) {
-      showToast(res.error);
-    }
-    return res;
+    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
+    showToast(result.error);
+    return result;
   };
 
   const logIn = async (email: string, pass: string): Promise<AuthResponse> => {
@@ -2392,22 +2433,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       showToast(`Welcome back, ${remoteUser.name}!`);
       return { success: true, user: remoteUser };
     }
-    const res = authService.logIn(email, pass);
-    if (res.success && res.user) {
-      setUser(res.user);
-      if (!res.user.onboardingCompleted) {
-        setIsOnboardingOpen(true);
-      }
-      showToast(`Welcome back, ${res.user.name}!`);
-    } else if (res.error) {
-      showToast(res.error);
-    }
-    return res;
+    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
+    showToast(result.error);
+    return result;
   };
 
   const logOut = () => {
     if (isSupabaseConfigured && supabase) void supabase.auth.signOut();
-    authService.logOut();
     if (isSupabaseConfigured) {
       setProfiles([]);
       setActiveProfileId('');
@@ -2435,15 +2467,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     showToast('Logged out of workspace.');
   };
 
-  const verifyEmail = (token: string): AuthResponse => {
-    const res = authService.verifyEmail(token);
-    if (res.success && res.user) {
-      setUser(res.user);
-      showToast('Email verified successfully! Full publishing privileges enabled.');
-    } else if (res.error) {
-      showToast(res.error);
+  const verifyEmail = async (): Promise<AuthResponse> => {
+    if (!supabase) {
+      const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
+      showToast(result.error);
+      return result;
     }
-    return res;
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      const result = { success: false, error: 'Open the confirmation link sent to your email before continuing.' };
+      showToast(result.error);
+      return result;
+    }
+    if (!data.user.email_confirmed_at) {
+      const result = { success: false, error: 'Your email is not verified yet. Check your inbox and try again.' };
+      showToast(result.error);
+      return result;
+    }
+    setUser(prev => ({ ...prev, isVerified: true }));
+    showToast('Email verified successfully! Full publishing privileges enabled.');
+    return { success: true };
   };
 
   const resendVerificationEmail = async () => {
@@ -2453,13 +2496,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       showToast(result.success ? 'Verification email sent.' : result.error || 'Unable to send verification email.');
       return result;
     }
-    const res = authService.resendVerificationEmail(user.id);
-    if (res.success) {
-      showToast('Verification token sent to your email.');
-    } else if (res.error) {
-      showToast(res.error);
-    }
-    return res;
+    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
+    showToast(result.error);
+    return result;
   };
 
   const requestPasswordReset = async (email: string): Promise<PasswordResetResponse> => {
@@ -2474,9 +2513,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       showToast(result.message);
       return result;
     }
-    const res = authService.requestPasswordReset(email);
-    showToast(res.message);
-    return res;
+    const result = { success: false, message: AUTH_UNAVAILABLE_MESSAGE, error: AUTH_UNAVAILABLE_MESSAGE };
+    showToast(result.message);
+    return result;
   };
 
   const resetPassword = async (token: string, newPass: string): Promise<AuthResponse> => {
@@ -2487,14 +2526,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       showToast('Password reset successfully.');
       return { success: true };
     }
-    const res = authService.resetPassword(token, newPass);
-    if (res.success && res.user) {
-      setUser(res.user);
-      showToast('Password reset successfully. You are now logged in.');
-    } else if (res.error) {
-      showToast(res.error);
-    }
-    return res;
+    void token;
+    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
+    showToast(result.error);
+    return result;
   };
 
   const completeOnboarding = async (starter?: StarterProfileBlueprint) => {
@@ -2512,8 +2547,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       await supabase.auth.updateUser({ data: { onboardingCompleted: true, onboardingStep: 'completed' } });
       setUser(prev => ({ ...prev, onboardingCompleted: true, onboardingStep: 'completed' }));
     } else {
-      const updatedUser = authService.updateOnboarding(user.id, 'completed', true);
-      if (updatedUser) setUser(updatedUser);
+      showToast(AUTH_UNAVAILABLE_MESSAGE);
+      return;
     }
     setIsOnboardingOpen(false);
     setCurrentView('editor');
@@ -2525,8 +2560,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       void supabase.auth.updateUser({ data: { onboardingCompleted: true, onboardingStep: 'completed' } });
       setUser(prev => ({ ...prev, onboardingCompleted: true, onboardingStep: 'completed' }));
     } else {
-      const updatedUser = authService.updateOnboarding(user.id, 'completed', true);
-      if (updatedUser) setUser(updatedUser);
+      showToast(AUTH_UNAVAILABLE_MESSAGE);
+      return;
     }
     setIsOnboardingOpen(false);
     setCurrentView('editor');

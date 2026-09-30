@@ -5,6 +5,8 @@
  */
 
 import { AnalyticsEvent, AnalyticsExportRequest, TrackingIntegrations } from '../types';
+import { serializeCsv } from '../utils/csv';
+import { reportRecoverableError } from '../utils/reportError';
 
 interface DateRangeFilter {
   key: 'today' | '7d' | '30d' | '90d' | 'custom';
@@ -143,7 +145,9 @@ class AnalyticsEngineService {
       // Keep up to 2000 events in persistent client storage
       const updated = [event, ...existing.slice(0, 1999)];
       localStorage.setItem(STORAGE_KEYS.ANALYTICS, JSON.stringify(updated));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('analytics event persistence failed', error);
+    }
 
     return event;
   }
@@ -436,7 +440,9 @@ class AnalyticsEngineService {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.ANALYTICS);
       if (stored) raw = JSON.parse(stored);
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('analytics export audit persistence failed', error);
+    }
 
     // Bounded to 5,000 rows max per AN-004
     const MAX_EXPORT_ROWS = 5000;
@@ -449,15 +455,15 @@ class AnalyticsEngineService {
       e.id,
       e.type,
       e.blockId || '',
-      `"${(e.blockTitle || '').replace(/"/g, '""')}"`,
-      `"${(e.referrer || 'Direct').replace(/"/g, '""')}"`,
+      e.blockTitle || '',
+      e.referrer || 'Direct',
       e.device,
       e.country,
       new Date(e.timestamp).toISOString(),
       e.consentGranted ? 'TRUE' : 'FALSE'
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const csvContent = serializeCsv(headers, rows);
 
     // Record audit log for export access control (AN-004, Section 7)
     try {
@@ -472,7 +478,9 @@ class AnalyticsEngineService {
         details: `Exported ${profileEvents.length} analytics events (Range: ${range}, Export ID: ${exportId})`
       };
       localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify([newAudit, ...audits.slice(0, 200)]));
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('analytics audit persistence failed', error);
+    }
 
     return {
       csvContent,
@@ -490,7 +498,9 @@ class AnalyticsEngineService {
       if (stored !== null) {
         return stored === 'true';
       }
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('analytics consent read failed', error);
+    }
     // Default: not consented until user approves
     return false;
   }
@@ -498,7 +508,9 @@ class AnalyticsEngineService {
   public setUserConsent(consented: boolean): void {
     try {
       localStorage.setItem(STORAGE_KEYS.TRACKING_CONSENT, consented ? 'true' : 'false');
-    } catch {}
+    } catch (error) {
+      reportRecoverableError('analytics consent persistence failed', error);
+    }
   }
 }
 

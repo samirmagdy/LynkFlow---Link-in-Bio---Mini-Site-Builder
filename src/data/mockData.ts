@@ -509,7 +509,7 @@ export const INITIAL_PROFILES: Profile[] = [
               url: 'https://studionova.design/typefaces/nova-grotesk',
               subtitle: '16 weights with optical italics and variable font masters',
               highlightBadge: 'Commercial License',
-              animation: 'lift' as any
+              animation: 'pulse'
             }
           }
         ]
