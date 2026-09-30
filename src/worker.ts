@@ -676,9 +676,9 @@ async function submitPublicForm(request: Request, env: Env): Promise<Response> {
     if (existingRows.length) return json({ success: true, submissionId });
   }
   const submittedAt = new Date().toISOString();
-  await supabaseRequest('form_submissions', env, {
+  const submissionResponse = await supabaseRequest('form_submissions?on_conflict=id', env, {
     method: 'POST',
-    headers: { prefer: 'return=minimal' },
+    headers: { prefer: 'resolution=ignore-duplicates,return=representation' },
     body: JSON.stringify({
       id: submissionId, workspace_id: profile.workspace_id, profile_id: input.profileId,
       block_id: input.blockId, form_title: input.formTitle || String(publishedBlock.title || 'Form'),
@@ -687,6 +687,10 @@ async function submitPublicForm(request: Request, env: Env): Promise<Response> {
       consent_text: payload.consentText, ip_hash: rateKey, status: 'verified', subscriber_created: false
     })
   });
+  const insertedSubmissions = await submissionResponse.json() as Array<{ id: string }>;
+  // The deterministic id is the database-level idempotency claim. If another
+  // request won the race, do not repeat subscriber or webhook side effects.
+  if (idempotencyKey && !insertedSubmissions.length) return json({ success: true, submissionId });
   if (email && (payload.subscriberMode === true || payload.formType === 'newsletter')) {
     await supabaseRequest('subscribers?on_conflict=workspace_id,profile_id,email', env, {
       method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },

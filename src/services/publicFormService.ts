@@ -1,10 +1,7 @@
-import { FormBlockPayload } from '../types';
-
 export async function submitPublicForm(input: {
   profileId: string;
   blockId: string;
   formTitle: string;
-  formPayload: FormBlockPayload;
   data: Record<string, string>;
   consentGiven: boolean;
   honeypotTrap?: string;

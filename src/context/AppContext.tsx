@@ -1394,7 +1394,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   ): Promise<{ success: boolean; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }> => {
     // 1. Authoritative server-side validation, spam & rate-limit check, audience sync
     if (isSupabaseConfigured && user.id === 'usr-guest') {
-      return submitPublicForm({ profileId, blockId, formTitle, formPayload, data, consentGiven: consent, honeypotTrap, idempotencyKey });
+      return submitPublicForm({ profileId, blockId, formTitle, data, consentGiven: consent, honeypotTrap, idempotencyKey });
     }
 
     const result = formSubmissionService.submitFormAuthoritative({
