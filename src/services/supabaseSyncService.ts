@@ -405,6 +405,30 @@ export async function inviteCloudWorkspaceMember(input: { email: string; name: s
   return body.data.member;
 }
 
+async function mutateCloudWorkspaceMember(memberId: string, method: 'PATCH' | 'DELETE', input?: { role?: ProfileRole; assignedProfileIds?: string[] }): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is required for team member changes.');
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in before changing team members.');
+  const response = await fetch(`/api/workspace/members/${encodeURIComponent(memberId)}`, {
+    method,
+    headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+    body: method === 'PATCH' ? JSON.stringify(input) : undefined,
+  });
+  const body = await response.json().catch(() => ({})) as { error?: string | { message?: string } };
+  if (!response.ok) {
+    const message = typeof body.error === 'string' ? body.error : body.error?.message;
+    throw new Error(message || 'Workspace member change failed.');
+  }
+}
+
+export function removeCloudWorkspaceMember(memberId: string): Promise<void> {
+  return mutateCloudWorkspaceMember(memberId, 'DELETE');
+}
+
+export function updateCloudWorkspaceMember(memberId: string, role: ProfileRole, assignedProfileIds: string[]): Promise<void> {
+  return mutateCloudWorkspaceMember(memberId, 'PATCH', { role, assignedProfileIds });
+}
+
 export async function saveCloudAnalytics(events: AnalyticsEvent[], workspaceId: string): Promise<void> {
   if (!supabase) return;
   if (!events.length) return;

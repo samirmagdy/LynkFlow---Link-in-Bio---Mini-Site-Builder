@@ -9,6 +9,7 @@ const checks = [
   ['publish', '/api/v1/profiles/example/publish', 'POST'],
   ['webhook create', '/api/webhooks', 'POST'],
   ['workspace invite', '/api/workspace/invite', 'POST'],
+  ['workspace member revoke', '/api/workspace/members/example', 'DELETE'],
   ['domain verify', '/api/domains/verify', 'POST'],
   ['domain remove', '/api/domains/remove', 'POST'],
   ['checkout', '/api/stripe/checkout', 'POST'],

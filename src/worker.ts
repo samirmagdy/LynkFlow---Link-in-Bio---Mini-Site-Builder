@@ -1688,6 +1688,43 @@ async function inviteWorkspaceMember(request: Request, env: Env): Promise<Respon
   return json({ data: { member }, requestId: crypto.randomUUID() });
 }
 
+async function mutateWorkspaceMember(request: Request, env: Env, memberId: string): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before managing team members.', 403);
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can manage team members.', 403);
+  const memberResponse = await supabaseRequest(`workspace_members?id=eq.${encodeURIComponent(memberId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=*`, env);
+  const members = await memberResponse.json() as Array<Record<string, unknown>>;
+  const member = members[0];
+  if (!member) return apiError('NOT_FOUND', 'Workspace member not found.', 404);
+
+  let patch: Record<string, unknown>;
+  if (request.method === 'DELETE') {
+    patch = { status: 'revoked', updated_at: new Date().toISOString() };
+  } else {
+    let input: { role?: string; assignedProfileIds?: unknown[] };
+    try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+    const role = input.role === 'viewer' ? 'viewer' : input.role === 'manager' ? 'manager' : '';
+    const assignedProfileIds = Array.isArray(input.assignedProfileIds) ? input.assignedProfileIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim())).map(id => id.trim()) : [];
+    if (!role || !assignedProfileIds.length) return apiError('VALIDATION_ERROR', 'A valid role and at least one assigned profile are required.', 422);
+    const profileResponse = await supabaseRequest(`profiles?workspace_id=eq.${encodeURIComponent(user.id)}&id=in.(${assignedProfileIds.map(encodeURIComponent).join(',')})&select=id`, env);
+    const profileRows = await profileResponse.json() as Array<{ id: string }>;
+    if (profileRows.length !== new Set(assignedProfileIds).size) return apiError('NOT_FOUND', 'One or more assigned profiles were not found.', 404);
+    patch = { role, assigned_profile_ids: assignedProfileIds, updated_at: new Date().toISOString() };
+  }
+  await supabaseRequest(`workspace_members?id=eq.${encodeURIComponent(memberId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=settings`, env);
+  const workspaceRows = await workspaceResponse.json() as Array<{ settings?: Record<string, unknown> }>;
+  const settings = workspaceRows[0]?.settings || {};
+  const settingsMembers = Array.isArray(settings.members) ? settings.members as Array<Record<string, unknown>> : [];
+  const nextMembers = request.method === 'DELETE'
+    ? settingsMembers.filter(item => String(item.id) !== memberId)
+    : settingsMembers.map(item => item.id === memberId ? { ...item, role: patch.role, assignedProfileIds: patch.assigned_profile_ids } : item);
+  await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ settings: { ...settings, members: nextMembers }, updated_at: new Date().toISOString() }) });
+  return json({ data: { memberId, status: request.method === 'DELETE' ? 'revoked' : 'updated' }, requestId: crypto.randomUUID() });
+}
+
 async function createWebhookSubscription(request: Request, env: Env): Promise<Response> {
   if (!env.WEBHOOK_ENCRYPTION_KEY) return apiError('SERVICE_UNAVAILABLE', 'Webhook delivery is not configured.', 503);
   const access = await requirePaidWorkspace(request, env);
@@ -2180,6 +2217,11 @@ export default {
     if (url.pathname === '/api/workspace/invite') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await inviteWorkspaceMember(request, env); } catch (error) { return internalApiError('Invite workspace member failed', error, 'Unable to send team invitation.'); }
+    }
+    if (url.pathname.startsWith('/api/workspace/members/')) {
+      const memberId = url.pathname.split('/').pop() || '';
+      if (!['PATCH', 'DELETE'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await mutateWorkspaceMember(request, env, memberId); } catch (error) { return internalApiError('Workspace member mutation failed', error, 'Unable to update workspace member.'); }
     }
     if (url.pathname.startsWith('/api/webhooks/') && url.pathname.endsWith('/test')) {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

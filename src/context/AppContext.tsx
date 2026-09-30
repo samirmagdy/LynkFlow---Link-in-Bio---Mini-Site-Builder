@@ -83,6 +83,8 @@ const saveCloudApiKeys = lazyCall<CloudSyncModule['saveCloudApiKeys']>(getCloudS
 const saveCloudSubscribers = lazyCall<CloudSyncModule['saveCloudSubscribers']>(getCloudSync, 'saveCloudSubscribers');
 const saveCloudWorkspace = lazyCall<CloudSyncModule['saveCloudWorkspace']>(getCloudSync, 'saveCloudWorkspace');
 const inviteCloudWorkspaceMember = lazyCall<CloudSyncModule['inviteCloudWorkspaceMember']>(getCloudSync, 'inviteCloudWorkspaceMember');
+const removeCloudWorkspaceMember = lazyCall<CloudSyncModule['removeCloudWorkspaceMember']>(getCloudSync, 'removeCloudWorkspaceMember');
+const updateCloudWorkspaceMember = lazyCall<CloudSyncModule['updateCloudWorkspaceMember']>(getCloudSync, 'updateCloudWorkspaceMember');
 const deleteCloudRecord = lazyCall<CloudSyncModule['deleteCloudRecord']>(getCloudSync, 'deleteCloudRecord');
 const publishCloudProfile = lazyCall<CloudSyncModule['publishCloudProfile']>(getCloudSync, 'publishCloudProfile');
 const rollbackCloudProfile = lazyCall<CloudSyncModule['rollbackCloudProfile']>(getCloudSync, 'rollbackCloudProfile');
@@ -1636,7 +1638,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   const removeMember = async (memberId: string): Promise<boolean> => {
     const nextWorkspace = { ...workspace, members: (workspace.members || []).filter(m => m.id !== memberId) };
     try {
-      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudWorkspace(nextWorkspace);
+      if (isSupabaseConfigured && user.id !== 'usr-guest') await removeCloudWorkspaceMember(memberId);
+      else await saveCloudWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Member removal was not saved.');
@@ -1652,7 +1655,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       members: (workspace.members || []).map(m => m.id === memberId ? { ...m, role, assignedProfileIds } : m)
     };
     try {
-      if (isSupabaseConfigured && user.id !== 'usr-guest') await saveCloudWorkspace(nextWorkspace);
+      if (isSupabaseConfigured && user.id !== 'usr-guest') await updateCloudWorkspaceMember(memberId, role, assignedProfileIds);
+      else await saveCloudWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Member permissions were not saved.');
