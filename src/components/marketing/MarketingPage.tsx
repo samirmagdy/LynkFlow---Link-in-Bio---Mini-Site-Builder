@@ -56,8 +56,9 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [demoPreset, setDemoPreset] = useState<AnimeEntrancePreset>('springPop');
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
-  const [selectedThemeId, setSelectedThemeId] = useState(SPEC_THEME_PRESETS[0]?.id || 'preset-ayre-coat');
   const [showAllPresets, setShowAllPresets] = useState(false);
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterMessage, setNewsletterMessage] = useState<string | null>(null);
 
   // Component refs for Anime.js animations
   const heroContainerRef = useRef<HTMLDivElement>(null);
@@ -257,7 +258,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
     }
   ];
 
-  const selectedTheme = SPEC_THEME_PRESETS.find(theme => theme.id === selectedThemeId) || SPEC_THEME_PRESETS[0]!;
 
   return (
     <div className="relative isolate w-full bg-canvas text-ink overflow-x-hidden">
@@ -604,8 +604,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             </p>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] lg:items-stretch">
-            <div className="rounded-3xl border border-line bg-surface/90 p-4 sm:p-5 shadow-xl">
+          <div>
+            <div className="rounded-3xl border border-line bg-surface/90 p-4 shadow-xl sm:p-5">
               <div className="mb-4 flex items-end justify-between gap-3">
                 <div>
                   <div className="text-xs font-bold text-ink">Theme samples</div>
@@ -613,16 +613,13 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
                 </div>
                 <span className="text-[10px] font-mono text-muted">{SPEC_THEME_PRESETS.length} systems</span>
               </div>
-              <div className="grid max-h-[34rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-2">
+              <div className="grid max-h-[34rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
                 {SPEC_THEME_PRESETS.map((theme) => {
-                  const isSelected = theme.id === selectedTheme.id;
                   return (
                     <button
                       key={theme.id}
                       type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => setSelectedThemeId(theme.id)}
-                      className={`group rounded-2xl border p-2 text-left transition-all cursor-pointer ${isSelected ? 'border-accent ring-2 ring-indigo-500/20' : 'border-line hover:border-line-strong'}`}
+                      className="group rounded-2xl border border-line p-2 text-left transition-all hover:border-line-strong cursor-pointer"
                     >
                       <div className="h-20 rounded-xl p-2" style={{ background: theme.background.type === 'gradient' && theme.background.gradientStops ? theme.background.gradientStops : theme.tokens.colors.pageBackground }}>
                         <div className="flex items-center gap-1.5">
@@ -641,31 +638,6 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               </div>
             </div>
 
-            <div className="relative overflow-hidden rounded-3xl border border-line p-5 sm:p-7 shadow-xl" style={{ background: selectedTheme.background.type === 'gradient' && selectedTheme.background.gradientStops ? selectedTheme.background.gradientStops : selectedTheme.tokens.colors.pageBackground, color: selectedTheme.tokens.colors.primaryText }}>
-              <div className="absolute inset-0 bg-white/5 pointer-events-none" />
-              <div className="relative mx-auto max-w-md">
-                <div className="mb-6 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] opacity-70">
-                  <span>Live theme preview</span>
-                  <span>{selectedTheme.name}</span>
-                </div>
-                <div className="text-center">
-                  <div className="mx-auto mb-3 h-16 w-16 rounded-full ring-4 ring-black/10" style={{ backgroundColor: selectedTheme.tokens.colors.accent }} />
-                  <div className="text-lg font-bold" style={{ fontFamily: selectedTheme.tokens.typography.displayFamily }}>Alex Vance</div>
-                  <p className="mx-auto mt-1 max-w-xs text-xs opacity-70">Visual director, photographer and storyteller.</p>
-                </div>
-                <div className="mt-6 space-y-3">
-                  {['Watch the cinema reel', 'Download the media kit', 'Start a collaboration'].map((label, index) => (
-                    <div key={label} className="flex items-center justify-between rounded-xl px-4 py-3 text-xs font-semibold" style={{ backgroundColor: index === 0 ? selectedTheme.tokens.colors.accent : selectedTheme.tokens.colors.panelBackground, color: index === 0 ? selectedTheme.tokens.colors.accentText : selectedTheme.tokens.colors.primaryText, border: `1px solid ${selectedTheme.tokens.colors.border}` }}>
-                      <span>{label}</span><ArrowRight className="h-3.5 w-3.5 opacity-70" />
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-5 flex items-center justify-between text-[10px] opacity-65">
-                  <span>{selectedTheme.tokens.typography.displayFamily.split(',')[0]}</span>
-                  <span>Radius {selectedTheme.tokens.shape.cardRadius}px</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -1172,6 +1144,71 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       {/* Clean Brand Footer with Legal & Help Entry Points */}
       <footer className="py-12 px-4 sm:px-6 border-t border-line text-muted text-xs">
         <div className="max-w-7xl mx-auto space-y-8">
+          <div className="relative isolate overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-surface to-emerald-400/5 p-6 shadow-xl shadow-black/5 sm:p-10">
+            <div className="pointer-events-none absolute -right-16 -top-20 -z-10 h-56 w-56 rounded-full bg-indigo-500/15 blur-3xl" aria-hidden="true" />
+            <div className="pointer-events-none absolute -bottom-24 left-1/3 -z-10 h-48 w-48 rounded-full bg-emerald-400/10 blur-3xl" aria-hidden="true" />
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.9fr)] lg:items-end">
+              <div className="max-w-2xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.16em] text-accent">
+                  <Sparkles className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
+                  Product notes for creators
+                </div>
+                <h2 className="mt-4 max-w-xl font-['Syne'] text-3xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl">
+                  Build less busywork into your next page.
+                </h2>
+                <p className="mt-4 max-w-lg text-sm leading-relaxed text-muted">
+                  Get practical ideas for better link-in-bio pages, new themes, and product updates. No noise, just useful notes.
+                </p>
+              </div>
+
+              <form
+                className="w-full"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setNewsletterMessage(
+                    newsletterEmail.trim()
+                      ? 'Newsletter delivery is not connected yet. Add the subscriber endpoint before collecting addresses.'
+                      : 'Enter your email address to continue.'
+                  );
+                }}
+              >
+                <label htmlFor="marketing-newsletter-email" className="mb-2 block text-[11px] font-semibold text-ink">
+                  Email address
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="marketing-newsletter-email"
+                    type="email"
+                    required
+                    value={newsletterEmail}
+                    onChange={(event) => {
+                      setNewsletterEmail(event.target.value);
+                      setNewsletterMessage(null);
+                    }}
+                    placeholder="you@example.com"
+                    aria-describedby={newsletterMessage ? 'newsletter-status' : undefined}
+                    className="min-h-12 min-w-0 flex-1 rounded-xl border border-line-strong bg-canvas/80 px-4 text-sm text-ink placeholder:text-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-inverse px-5 text-sm font-bold text-inverse-text shadow-lg transition-colors hover:bg-inverse-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    Join the list
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-subtle">
+                  By subscribing, you agree to receive occasional product updates. Unsubscribe anytime.
+                </p>
+                {newsletterMessage && (
+                  <p id="newsletter-status" role="status" className="mt-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-[11px] leading-relaxed text-warning">
+                    {newsletterMessage}
+                  </p>
+                )}
+              </form>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="space-y-3">
               <div className="font-['Syne'] font-bold text-ink text-base">
