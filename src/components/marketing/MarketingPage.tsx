@@ -780,7 +780,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       </section>
 
       {/* Clean Brand Footer with Legal & Help Entry Points */}
-      <footer className="py-12 px-4 sm:px-6 border-t border-line text-muted text-xs">
+      <footer className="relative z-10 py-12 px-4 sm:px-6 border-t border-line text-muted text-xs">
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="relative isolate overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-surface to-emerald-400/5 p-6 shadow-xl shadow-black/5 sm:p-10">
             <div className="pointer-events-none absolute -right-16 -top-20 -z-10 h-56 w-56 rounded-full bg-indigo-500/15 blur-3xl" aria-hidden="true" />
