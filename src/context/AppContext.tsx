@@ -50,23 +50,18 @@ import { isSupabaseConfigured } from '../lib/supabaseConfig';
 import { supabase as configuredSupabase } from '../lib/supabase';
 import { createPublishedSnapshot } from '../utils/publishedSnapshot';
 import { reportRecoverableError } from '../utils/reportError';
+import {
+  signUp as signUpWithSupabase,
+  logIn as logInWithSupabase,
+  verifyEmail as verifySupabaseEmail,
+  resendVerificationEmail as resendSupabaseVerificationEmail,
+  requestPasswordReset as requestSupabasePasswordReset,
+  resetPassword as resetSupabasePassword,
+  authUnavailableMessage
+} from '../services/supabaseAuthService';
+import type { AuthResponse, PasswordResetResponse } from '../services/supabaseAuthService';
 
 const supabase = configuredSupabase;
-
-interface AuthResponse {
-  success: boolean;
-  user?: UserAccount;
-  error?: string;
-  actionRequired?: 'verify_email' | 'complete_onboarding';
-}
-
-interface PasswordResetResponse {
-  success: boolean;
-  message: string;
-  error?: string;
-}
-
-const AUTH_UNAVAILABLE_MESSAGE = 'Authentication is temporarily unavailable. Please try again later.';
 
 type CloudSyncModule = typeof import('../services/supabaseSyncService');
 let cloudSyncPromise: Promise<CloudSyncModule> | null = null;
@@ -2377,64 +2372,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Auth & Onboarding Handlers (ACC-001 through ACC-005)
   const signUp = async (email: string, pass: string, name?: string): Promise<AuthResponse> => {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { name } } });
-      if (error || !data.user) {
-        const providerMessage = error?.message?.toLowerCase() || '';
-        const message = providerMessage.includes('error sending confirmation email')
-          ? 'We could not send the confirmation email right now. Please try again later or contact support.'
-          : error?.message || 'Failed to create account.';
-        const result = { success: false, error: message };
-        showToast(result.error);
-        return result;
-      }
-      const remoteUser: UserAccount = {
-        id: data.user.id,
-        email: data.user.email || email,
-        name: name?.trim() || email.split('@')[0],
-        isVerified: Boolean(data.user.email_confirmed_at),
-        createdAt: data.user.created_at,
-        lastLoginAt: new Date().toISOString(),
-        onboardingCompleted: false,
-        onboardingStep: 'category',
-        workspaceId: data.user.id,
-      };
-      setUser(remoteUser);
-      setIsOnboardingOpen(true);
-      showToast(`Account created for ${remoteUser.email}! Check your inbox to verify it.`);
-      return { success: true, user: remoteUser, actionRequired: 'verify_email' };
+    const result = await signUpWithSupabase(email, pass, name);
+    if (!result.success) {
+      showToast(result.error || authUnavailableMessage);
+      return result;
     }
-    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
-    showToast(result.error);
+    if (result.user) {
+      setUser(result.user);
+      setIsOnboardingOpen(true);
+      showToast(`Account created for ${result.user.email}! Check your inbox to verify it.`);
+    }
     return result;
   };
 
   const logIn = async (email: string, pass: string): Promise<AuthResponse> => {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-      if (error || !data.user) {
-        const result = { success: false, error: 'Invalid email or password. Please verify your credentials and try again.' };
-        showToast(result.error);
-        return result;
-      }
-      const remoteUser: UserAccount = {
-        id: data.user.id,
-        email: data.user.email || email,
-        name: String(data.user.user_metadata?.name || email.split('@')[0]),
-        isVerified: Boolean(data.user.email_confirmed_at),
-        createdAt: data.user.created_at,
-        lastLoginAt: new Date().toISOString(),
-        onboardingCompleted: data.user.user_metadata?.onboardingCompleted === true,
-        onboardingStep: data.user.user_metadata?.onboardingCompleted === true ? 'completed' : 'category',
-        workspaceId: data.user.id,
-      };
-      setUser(remoteUser);
-      setIsOnboardingOpen(!remoteUser.onboardingCompleted);
-      showToast(`Welcome back, ${remoteUser.name}!`);
-      return { success: true, user: remoteUser };
+    const result = await logInWithSupabase(email, pass);
+    if (!result.success) {
+      showToast(result.error || authUnavailableMessage);
+      return result;
     }
-    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
-    showToast(result.error);
+    if (result.user) {
+      setUser(result.user);
+      setIsOnboardingOpen(!result.user.onboardingCompleted);
+      showToast(`Welcome back, ${result.user.name}!`);
+    }
     return result;
   };
 
@@ -2468,20 +2429,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   };
 
   const verifyEmail = async (): Promise<AuthResponse> => {
-    if (!supabase) {
-      const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
-      showToast(result.error);
-      return result;
-    }
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) {
-      const result = { success: false, error: 'Open the confirmation link sent to your email before continuing.' };
-      showToast(result.error);
-      return result;
-    }
-    if (!data.user.email_confirmed_at) {
-      const result = { success: false, error: 'Your email is not verified yet. Check your inbox and try again.' };
-      showToast(result.error);
+    const result = await verifySupabaseEmail();
+    if (!result.success) {
+      showToast(result.error || authUnavailableMessage);
       return result;
     }
     setUser(prev => ({ ...prev, isVerified: true }));
@@ -2490,45 +2440,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   };
 
   const resendVerificationEmail = async () => {
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: user.email });
-      const result = error ? { success: false, error: error.message } : { success: true };
-      showToast(result.success ? 'Verification email sent.' : result.error || 'Unable to send verification email.');
-      return result;
-    }
-    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
-    showToast(result.error);
+    const result = await resendSupabaseVerificationEmail(user.email);
+    showToast(result.success ? 'Verification email sent.' : result.error || 'Unable to send verification email.');
     return result;
   };
 
   const requestPasswordReset = async (email: string): Promise<PasswordResetResponse> => {
-    if (isSupabaseConfigured && supabase) {
-      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/?password-recovery=1` : undefined;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
-      const result: PasswordResetResponse = {
-        success: !error,
-        message: 'If an account matches that email address, password reset instructions have been dispatched.',
-        ...(error ? { error: error.message } : {})
-      };
-      showToast(result.message);
-      return result;
-    }
-    const result = { success: false, message: AUTH_UNAVAILABLE_MESSAGE, error: AUTH_UNAVAILABLE_MESSAGE };
+    const result = await requestSupabasePasswordReset(email);
     showToast(result.message);
     return result;
   };
 
   const resetPassword = async (token: string, newPass: string): Promise<AuthResponse> => {
-    if (isSupabaseConfigured && supabase) {
-      if (!newPass || newPass.length < 8) return { success: false, error: 'New password must be at least 8 characters long.' };
-      const { data, error } = await supabase.auth.updateUser({ password: newPass });
-      if (error || !data.user) return { success: false, error: error?.message || 'Unable to reset password.' };
-      showToast('Password reset successfully.');
-      return { success: true };
-    }
     void token;
-    const result = { success: false, error: AUTH_UNAVAILABLE_MESSAGE };
-    showToast(result.error);
+    const result = await resetSupabasePassword(newPass);
+    if (result.success) {
+      showToast('Password reset successfully.');
+    }
+    if (!result.success && result.error) showToast(result.error);
     return result;
   };
 
@@ -2547,7 +2476,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       await supabase.auth.updateUser({ data: { onboardingCompleted: true, onboardingStep: 'completed' } });
       setUser(prev => ({ ...prev, onboardingCompleted: true, onboardingStep: 'completed' }));
     } else {
-      showToast(AUTH_UNAVAILABLE_MESSAGE);
+      showToast(authUnavailableMessage);
       return;
     }
     setIsOnboardingOpen(false);
@@ -2560,7 +2489,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       void supabase.auth.updateUser({ data: { onboardingCompleted: true, onboardingStep: 'completed' } });
       setUser(prev => ({ ...prev, onboardingCompleted: true, onboardingStep: 'completed' }));
     } else {
-      showToast(AUTH_UNAVAILABLE_MESSAGE);
+      showToast(authUnavailableMessage);
       return;
     }
     setIsOnboardingOpen(false);
