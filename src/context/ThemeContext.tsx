@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-export type Appearance = 'dark' | 'light';
+type Appearance = 'dark' | 'light';
 
 const STORAGE_KEY = 'lynkflow:appearance';
 const SYSTEM_QUERY = '(prefers-color-scheme: light)';

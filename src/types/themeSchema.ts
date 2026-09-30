@@ -1,4 +1,4 @@
-export interface ThemeColorTokens {
+interface ThemeColorTokens {
   pageBackground: string;
   panelBackground: string;
   primaryText: string;
@@ -31,7 +31,7 @@ export interface ThemeColorTokens {
   overlay?: string;
 }
 
-export interface ThemeTypographyTokens {
+interface ThemeTypographyTokens {
   bodyFamily: string;
   displayFamily: string;
   /** Approved Arabic-capable family used when the resolved direction is RTL. */
@@ -50,44 +50,44 @@ export interface ThemeTypographyTokens {
   textTransform?: 'none' | 'uppercase' | 'capitalize';
 }
 
-export interface ThemeShapeTokens {
+interface ThemeShapeTokens {
   pageRadius: number; // px
   cardRadius: number; // px
   buttonRadius: number; // px
   avatarRadius: number; // px (e.g. 999 for circle)
 }
 
-export interface ThemeSpacingTokens {
+interface ThemeSpacingTokens {
   pageX: number; // px
   pageY: number; // px
   blockGap: number; // px
   sectionGap: number; // px
 }
 
-export interface ThemeElevationTokens {
+interface ThemeElevationTokens {
   card: string; // box-shadow string
   button?: string;
 }
 
-export interface ThemeMotionTokens {
+interface ThemeMotionTokens {
   durationMs: number;
   easing: string;
   enabled: boolean;
   hoverEffect?: 'none' | 'scale' | 'lift' | 'glow';
 }
 
-export interface ThemeEffects {
+interface ThemeEffects {
   grain: boolean;
   blur: number;
   glow: boolean;
 }
 
-export interface ThemeProfileTokens {
+interface ThemeProfileTokens {
   showAvatar: boolean;
   avatarShape: 'circle' | 'rounded' | 'square';
 }
 
-export interface ThemeButtonTokens {
+interface ThemeButtonTokens {
   background: string;
   text: string;
   border: string;
@@ -96,7 +96,7 @@ export interface ThemeButtonTokens {
   blur: number;
 }
 
-export interface ThemeCardTokens {
+interface ThemeCardTokens {
   background: string;
   text: string;
   border: string;
@@ -105,13 +105,13 @@ export interface ThemeCardTokens {
   blur: number;
 }
 
-export interface ThemeSocialIconTokens {
+interface ThemeSocialIconTokens {
   color: string;
   size: number;
   style: 'line' | 'filled' | 'minimal';
 }
 
-export interface ThemeTokens {
+interface ThemeTokens {
   colors: ThemeColorTokens;
   typography: ThemeTypographyTokens;
   shape: ThemeShapeTokens;
@@ -120,7 +120,7 @@ export interface ThemeTokens {
   motion: ThemeMotionTokens;
 }
 
-export interface ThemeBackground {
+interface ThemeBackground {
   type: 'solid' | 'gradient' | 'image' | 'video' | 'pattern';
   assetId?: string | null;
   mobileAssetId?: string | null;
@@ -144,14 +144,14 @@ export interface ThemeBackground {
   gradientStops?: string; // e.g. 'linear-gradient(135deg, #090e1a 0%, #111a33 100%)'
 }
 
-export interface ThemeHeader {
+interface ThemeHeader {
   alignment: 'left' | 'center' | 'right';
   avatarSize: number; // px
   showShare: boolean;
   showSocials: boolean;
 }
 
-export interface ThemeLayout {
+interface ThemeLayout {
   templateId?: 'centered-creator' | 'left-professional' | 'editorial-portfolio' | 'service-conversion' | 'product-showcase' | 'gallery-portfolio' | 'booking-first' | 'link-collection';
   maxWidth: string;
   alignment: 'left' | 'center';
@@ -168,33 +168,33 @@ export interface ThemeLayout {
   showFooter?: boolean;
 }
 
-export interface ThemeComponentVariants {
+interface ThemeComponentVariants {
   link: 'solid' | 'outline' | 'soft-card' | 'image-card' | 'glass';
   image: 'rounded' | 'full-bleed' | 'polaroid';
   socialIcons: 'line' | 'filled' | 'minimal';
   form: 'card' | 'bordered' | 'glass';
 }
 
-export interface LinkBlockDefaults {
+interface LinkBlockDefaults {
   variant: 'filled' | 'outline' | 'soft' | 'glass';
   height: number;
   thumbnail: 'none' | 'left' | 'avatar';
   shadow: 'none' | 'sm' | 'md' | 'lg' | 'colored';
 }
 
-export interface TextBlockDefaults {
+interface TextBlockDefaults {
   alignment: 'left' | 'center' | 'right';
 }
 
-export interface MediaBlockDefaults {
+interface MediaBlockDefaults {
   radius: 'none' | 'sm' | 'md' | 'lg' | 'full';
 }
 
-export interface FolderBlockDefaults {
+interface FolderBlockDefaults {
   variant: 'filled' | 'outline' | 'glass';
 }
 
-export interface BlockDefaultStyles {
+interface BlockDefaultStyles {
   link?: LinkBlockDefaults;
   text?: TextBlockDefaults;
   media?: MediaBlockDefaults;
@@ -215,21 +215,21 @@ export interface ViewportResponsiveRule {
   blockVisibility?: 'all' | 'hide-media' | 'hide-socials';
 }
 
-export interface ResponsiveThemeRules {
+interface ResponsiveThemeRules {
   smallMobile?: ViewportResponsiveRule;
   mobile: ViewportResponsiveRule;
   tablet: ViewportResponsiveRule;
   desktop: ViewportResponsiveRule;
 }
 
-export interface AccessibilityThemeRules {
+interface AccessibilityThemeRules {
   reducedMotion: 'respectUserPreference' | 'alwaysDisable' | 'alwaysEnable';
   minimumContrast: 'AA' | 'AAA';
 }
 
-export type ThemeConversionGoal = 'contact' | 'book' | 'buy' | 'portfolio' | 'newsletter' | 'whatsapp' | 'download' | 'social';
+type ThemeConversionGoal = 'contact' | 'book' | 'buy' | 'portfolio' | 'newsletter' | 'whatsapp' | 'download' | 'social';
 
-export interface ThemeConversionSettings {
+interface ThemeConversionSettings {
   goal: ThemeConversionGoal;
   primaryBlockId?: string | null;
   secondaryBlockId?: string | null;
@@ -239,7 +239,7 @@ export interface ThemeConversionSettings {
   businessHours?: string;
 }
 
-export interface SavedPresetComposition {
+interface SavedPresetComposition {
   themeId: string;
   layoutId?: string;
   brandKitId?: string;

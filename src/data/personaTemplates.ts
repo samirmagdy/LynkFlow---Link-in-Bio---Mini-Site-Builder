@@ -2,7 +2,7 @@ import { BlockType, SocialLink } from '../types';
 import { StandardTheme } from '../types/themeSchema';
 import { LIINKS_GALLERY_THEMES } from './liinksGalleryThemes';
 
-export type PersonaBlockTemplate = {
+type PersonaBlockTemplate = {
   type: BlockType;
   title: string;
   payload: Record<string, unknown>;

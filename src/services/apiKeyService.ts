@@ -23,7 +23,7 @@ import { billingService } from './billingService';
 
 // ─── Error Codes ──────────────────────────────────────────────────────────────
 
-export type ApiErrorCode =
+type ApiErrorCode =
   | 'UNAUTHORIZED'          // missing or invalid key
   | 'REVOKED'               // key was revoked
   | 'FORBIDDEN'             // key lacks required scope
@@ -35,7 +35,7 @@ export type ApiErrorCode =
   | 'IDEMPOTENCY_REPLAY'    // mutation already processed with this idempotency key
   | 'SANDBOX_DISABLED';      // configured deployments never execute browser simulations
 
-export interface ApiError {
+interface ApiError {
   code: ApiErrorCode;
   message: string;
   retryAfterMs?: number;

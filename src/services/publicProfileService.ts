@@ -4,7 +4,7 @@ import { analyticsEngineService } from './analyticsEngineService';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { INITIAL_PROFILES } from '../data/mockData';
 
-export type PublicProfileStatus = 'success' | 'not_found' | 'unpublished' | 'suspended' | 'deleted';
+type PublicProfileStatus = 'success' | 'not_found' | 'unpublished' | 'suspended' | 'deleted';
 
 export interface PublicProfileResolutionResult {
   status: PublicProfileStatus;
@@ -23,7 +23,7 @@ const STORAGE_KEYS = {
 /**
  * Creates an authoritative PublishedProfileSnapshot from a profile entity
  */
-export function createPublishedSnapshot(profile: Profile, publisherEmail: string): PublishedProfileSnapshot {
+function createPublishedSnapshot(profile: Profile, publisherEmail: string): PublishedProfileSnapshot {
   return createSnapshot(profile, publisherEmail);
 }
 

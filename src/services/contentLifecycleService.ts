@@ -22,14 +22,14 @@ export interface ValidationIssue {
   recommendation?: string;
 }
 
-export interface PublishValidationResult {
+interface PublishValidationResult {
   isValid: boolean;
   canPublish: boolean;
   criticalIssues: ValidationIssue[];
   warnings: ValidationIssue[];
 }
 
-export interface PublishResult {
+interface PublishResult {
   success: boolean;
   snapshot?: PublishedProfileSnapshot;
   publishedVersion?: number;
@@ -40,7 +40,7 @@ export interface PublishResult {
   auditLog?: AuditLog;
 }
 
-export interface DraftSaveResult {
+interface DraftSaveResult {
   success: boolean;
   savedDraft?: Profile;
   draftVersion: number;
@@ -63,7 +63,7 @@ const STORAGE_KEYS = {
 /**
  * Computes an ETag from profile state string
  */
-export function generateEtag(profile: Partial<Profile>, draftVersion: number): string {
+function generateEtag(profile: Partial<Profile>, draftVersion: number): string {
   const content = `${profile.id}-${draftVersion}-${profile.updatedAt || ''}-${(profile.tabs || []).length}`;
   let hash = 0;
   for (let i = 0; i < content.length; i++) {

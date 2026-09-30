@@ -169,7 +169,7 @@ export interface MediaBlockPayload {
   aspectRatio?: '16:9' | '4:3' | '1:1';
 }
 
-export interface GalleryItem {
+interface GalleryItem {
   id: string;
   image: string;
   title?: string;
@@ -207,7 +207,7 @@ export interface DividerBlockPayload {
   height: 'sm' | 'md' | 'lg';
 }
 
-export interface FolderItem {
+interface FolderItem {
   id: string;
   title: string;
   url: string;
@@ -221,7 +221,7 @@ export interface FolderBlockPayload {
   defaultOpen?: boolean;
 }
 
-export interface FaqItem {
+interface FaqItem {
   id: string;
   question: string;
   answer: string;
@@ -271,7 +271,7 @@ export interface FormBlockPayload {
 
 /** Email-signup has the same persisted field contract as a newsletter form,
  * but remains a distinct block type for API/editor clarity. */
-export type EmailSignupBlockPayload = FormBlockPayload;
+type EmailSignupBlockPayload = FormBlockPayload;
 
 export interface ContactBlockPayload {
   contactType: 'email' | 'phone' | 'whatsapp';
@@ -279,7 +279,7 @@ export interface ContactBlockPayload {
   presetSubject?: string;
 }
 
-export type BlockPayload = 
+type BlockPayload =
   | LinkBlockPayload 
   | MediaBlockPayload 
   | GalleryBlockPayload
@@ -314,7 +314,7 @@ export interface Block {
   style?: BlockStyleOverride;
 }
 
-export interface BlockStyleOverride {
+interface BlockStyleOverride {
   backgroundColor?: string;
   textColor?: string;
   borderRadius?: number;
@@ -324,7 +324,7 @@ export interface BlockStyleOverride {
   fontFamily?: string;
 }
 
-export interface Tab {
+interface Tab {
   id: string;
   title: string;
   slug: string;
@@ -380,7 +380,7 @@ export interface CustomDomainConfig {
   nextRenewalAt?: string;
 }
 
-export interface QrConfig {
+interface QrConfig {
   fgColor: string;
   bgColor: string;
   pattern: 'dots' | 'square' | 'rounded';
@@ -439,7 +439,7 @@ export interface ScheduledPublishConfig {
   targetSnapshotDraft: Profile;
 }
 
-export interface PublishedSnapshotHistoryItem extends PublishedProfileSnapshot {
+interface PublishedSnapshotHistoryItem extends PublishedProfileSnapshot {
   changeSummary?: string;
   blockCount: number;
 }
@@ -484,7 +484,7 @@ export interface Profile {
   publishedAt?: string;
 }
 
-export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'grace_period';
+type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'grace_period';
 
 export interface WorkspaceEntitlements {
   maxProfiles: number | 'Unlimited';

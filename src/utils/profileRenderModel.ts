@@ -15,12 +15,12 @@ export interface RenderableTabLike<TBlock extends RenderableBlockLike = Renderab
   blocks?: TBlock[];
 }
 
-export interface RenderConversionLike {
+interface RenderConversionLike {
   primaryBlockId?: string | null;
   secondaryBlockId?: string | null;
 }
 
-export interface RenderLayoutLike {
+interface RenderLayoutLike {
   ctaPosition?: string;
 }
 

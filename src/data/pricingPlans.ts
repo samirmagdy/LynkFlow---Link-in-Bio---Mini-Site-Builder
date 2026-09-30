@@ -1,11 +1,5 @@
 import { PlanType, BillingCycle } from '../types';
 
-export interface PricingPlanFeature {
-  text: string;
-  included: boolean;
-  highlight?: boolean;
-}
-
 export interface PricingPlanConfig {
   id: PlanType;
   name: string;
@@ -250,10 +244,6 @@ export const CAPABILITY_COMPARISON_MATRIX: CapabilityMatrixRow[] = [
     agency: '2h Priority Dedicated'
   }
 ];
-
-export function getPlanConfig(planId: PlanType): PricingPlanConfig {
-  return PRICING_PLANS.find(p => p.id === planId) || PRICING_PLANS[0];
-}
 
 export function formatPlanPrice(plan: PricingPlanConfig, cycle: BillingCycle): string {
   if (plan.monthlyPrice === 0) return '$0';

@@ -30,7 +30,7 @@ export default defineConfig(() => {
               { name: 'react-vendor', test: /node_modules[\\/]react(?:-dom)?[\\/]/, priority: 10, entriesAware: true },
               { name: 'icons-vendor', test: /node_modules[\\/]lucide-react[\\/]/, priority: 9, entriesAware: true },
               { name: 'charts-vendor', test: /node_modules[\\/]recharts[\\/]/, priority: 9, entriesAware: true },
-              { name: 'motion-vendor', test: /node_modules[\\/](?:animejs|motion)[\\/]/, priority: 9, entriesAware: true },
+              { name: 'motion-vendor', test: /node_modules[\\/]animejs[\\/]/, priority: 9, entriesAware: true },
               { name: 'supabase-vendor', test: /node_modules[\\/]@supabase[\\/]supabase-js[\\/]/, priority: 9, entriesAware: true },
             ],
           },

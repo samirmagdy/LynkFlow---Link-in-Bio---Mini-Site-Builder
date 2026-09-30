@@ -6,14 +6,14 @@
 
 import { AnalyticsEvent, AnalyticsExportRequest, TrackingIntegrations } from '../types';
 
-export interface DateRangeFilter {
+interface DateRangeFilter {
   key: 'today' | '7d' | '30d' | '90d' | 'custom';
   label: string;
   startDateUtc: string; // ISO UTC
   endDateUtc: string;   // ISO UTC
 }
 
-export interface BlockAnalyticsMetric {
+interface BlockAnalyticsMetric {
   blockId: string;
   blockTitle: string;
   blockType: string;
@@ -22,27 +22,27 @@ export interface BlockAnalyticsMetric {
   historicalOnly?: boolean; // If block was deleted or reordered
 }
 
-export interface ReferrerMetric {
+interface ReferrerMetric {
   source: string;
   category: 'direct' | 'social' | 'search' | 'campaign' | 'internal';
   views: number;
   percentage: number;
 }
 
-export interface DeviceMetric {
+interface DeviceMetric {
   device: 'mobile' | 'desktop' | 'tablet';
   views: number;
   percentage: number;
 }
 
-export interface CountryMetric {
+interface CountryMetric {
   country: string;
   views: number;
   percentage: number;
   isWithheld?: boolean; // Under threshold for privacy
 }
 
-export interface TimeSeriesBucket {
+interface TimeSeriesBucket {
   timestamp: number;
   dateLabel: string;
   views: number;

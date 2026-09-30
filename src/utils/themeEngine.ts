@@ -1,7 +1,7 @@
 import { StandardTheme, ThemeValidationResult, ThemeAccessibilityIssue, PublishedThemeSnapshot, ViewportResponsiveRule } from '../types/themeSchema';
 import { ThemeConfig } from '../types';
 
-export const APPROVED_FONT_FAMILIES = [
+const APPROVED_FONT_FAMILIES = [
   'Plus Jakarta Sans', 'Inter', 'Syne', 'DM Sans', 'Manrope', 'Space Grotesk',
   'Noto Kufi Arabic', 'Noto Sans Arabic', 'Tajawal', 'Cairo', 'IBM Plex Sans Arabic', 'Tahoma', 'Arial'
 ] as const;
@@ -66,7 +66,7 @@ const isSafePlaceholder = (value: unknown): value is string => typeof value === 
 /**
  * Parses hex color to RGB tuple [r, g, b]
  */
-export function hexToRgb(hex: string): [number, number, number] {
+function hexToRgb(hex: string): [number, number, number] {
   let c = hex.trim().replace(/^#/, '');
   if (c.length === 3) {
     c = c.split('').map(x => x + x).join('');
@@ -82,7 +82,7 @@ export function hexToRgb(hex: string): [number, number, number] {
 /**
  * Relative luminance calculation according to WCAG 2.1 specifications
  */
-export function getRelativeLuminance(r: number, g: number, b: number): number {
+function getRelativeLuminance(r: number, g: number, b: number): number {
   const [rs, gs, bs] = [r, g, b].map(val => {
     const s = val / 255;
     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -962,7 +962,7 @@ export function compileThemeToCssVariables(theme: StandardTheme): Record<string,
  * Implements deterministic precedence:
  * Platform Defaults -> Preset Tokens -> Profile Customizations -> Block-level Overrides
  */
-export function resolveThemeTokens(
+function resolveThemeTokens(
   presetTokens?: Partial<StandardTheme['tokens']>,
   profileCustomizations?: Partial<StandardTheme['tokens']>,
   blockOverrides?: Partial<StandardTheme['tokens']>

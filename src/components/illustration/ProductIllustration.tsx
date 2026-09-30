@@ -1,7 +1,7 @@
 import React from 'react';
 import './illustrations.css';
 
-export type IllustrationVariant = 'assembly' | 'theme' | 'route' | 'onboarding' | 'empty-blocks' | 'inbox' | 'profiles' | 'domain' | 'privacy' | 'qr';
+type IllustrationVariant = 'assembly' | 'theme' | 'route' | 'onboarding' | 'empty-blocks' | 'inbox' | 'profiles' | 'domain' | 'privacy' | 'qr';
 
 interface ProductIllustrationProps {
   variant: IllustrationVariant;

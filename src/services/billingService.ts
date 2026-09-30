@@ -28,7 +28,7 @@ export const BILLING_STORAGE_KEYS = {
   CHECKOUT_SESSIONS: 'lynkflow_checkout_sessions_v1'
 };
 
-export interface CheckoutSessionRequest {
+interface CheckoutSessionRequest {
   workspaceId: string;
   planId: PlanType;
   billingCycle: BillingCycle;
@@ -37,7 +37,7 @@ export interface CheckoutSessionRequest {
   userEmail: string;
 }
 
-export interface CheckoutSessionResponse {
+interface CheckoutSessionResponse {
   sessionId: string;
   checkoutUrl: string;
   planId: PlanType;
@@ -47,7 +47,7 @@ export interface CheckoutSessionResponse {
   expiresAt: number;
 }
 
-export interface FeatureCheckResult {
+interface FeatureCheckResult {
   allowed: boolean;
   currentUsage?: number;
   limit?: number | string;

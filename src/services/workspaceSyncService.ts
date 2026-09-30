@@ -6,7 +6,7 @@
 import { Profile } from '../types';
 import { contentLifecycleService } from './contentLifecycleService';
 
-export interface SyncMessage {
+interface SyncMessage {
   type: 'PROFILE_UPDATED' | 'PROFILE_PUBLISHED' | 'HEARTBEAT';
   profileId: string;
   version: number;

@@ -18,7 +18,7 @@ export const FORM_STORAGE_KEYS = {
   RATE_LIMITS: 'lynkflow_form_ratelimits_v1'
 };
 
-export interface FormSubmissionRequest {
+interface FormSubmissionRequest {
   profileId: string;
   blockId: string;
   formTitle: string;
@@ -30,7 +30,7 @@ export interface FormSubmissionRequest {
   timestamp?: number;
 }
 
-export interface FormSubmissionResult {
+interface FormSubmissionResult {
   success: boolean;
   submissionId?: string;
   error?: string;
@@ -38,7 +38,7 @@ export interface FormSubmissionResult {
   rateLimited?: boolean;
 }
 
-export interface SubmissionsFilter {
+interface SubmissionsFilter {
   formId?: string;
   formType?: string;
   searchQuery?: string;

@@ -16,7 +16,7 @@ import { CustomDomainConfig, Profile } from '../types';
 export const DOMAIN_CNAME_TARGET = 'cname.lynkflow.io';
 export const DOMAIN_A_RECORD = '76.76.21.21';
 
-export interface DomainVerificationResult {
+interface DomainVerificationResult {
   success: boolean;
   domain: string;
   status: CustomDomainConfig['status'];
@@ -26,12 +26,12 @@ export interface DomainVerificationResult {
   config: CustomDomainConfig;
 }
 
-export interface DomainRemoveResult {
+interface DomainRemoveResult {
   success: boolean;
   reason?: string;
 }
 
-export interface DomainRecheckResult {
+interface DomainRecheckResult {
   changed: boolean;
   config: CustomDomainConfig;
   failureReason?: string;

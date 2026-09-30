@@ -3,7 +3,7 @@
  * Ensures consistent canonical handle formatting and enforces reserved routes and policy rules.
  */
 
-export const RESERVED_HANDLES = new Set([
+const RESERVED_HANDLES = new Set([
   'admin',
   'administrator',
   'api',
@@ -68,7 +68,7 @@ export interface HandleValidationResult {
  * - Leading @ trimmed
  * - Converts spaces and dashes to underscores or strips non-alphanumeric characters
  */
-export function normalizeHandle(raw: string): string {
+function normalizeHandle(raw: string): string {
   if (!raw) return '';
   let cleaned = raw.trim().toLowerCase();
   if (cleaned.startsWith('@')) {

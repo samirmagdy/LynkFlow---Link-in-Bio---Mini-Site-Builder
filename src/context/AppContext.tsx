@@ -90,7 +90,7 @@ const removeManagedDomain = dynamicService(() => import('../services/domainManag
 const recheckManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'recheckManagedDomain');
 const verifyManagedDomain = dynamicService(() => import('../services/domainManagementService'), 'verifyManagedDomain');
 
-export type AppView = 
+type AppView =
   | 'marketing' 
   | 'editor' 
   | 'themes' 

@@ -50,7 +50,7 @@ export function mergeSparseOverride<T>(base: T, override: unknown): T {
   return result as T;
 }
 
-export function resolveThemeBase(theme: StandardTheme): StandardTheme {
+function resolveThemeBase(theme: StandardTheme): StandardTheme {
   const match = SPEC_THEME_PRESETS.find(preset => preset.id === theme.id || (theme.presetId && preset.presetId === theme.presetId));
   return normalizeTheme(match || theme);
 }
