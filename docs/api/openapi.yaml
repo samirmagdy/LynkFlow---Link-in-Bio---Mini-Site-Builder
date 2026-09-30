@@ -131,6 +131,11 @@ paths:
       operationId: remove-domain
       security: [{Session: []}]
       responses: {'200': {description: Removed}}
+  /api/stripe/portal:
+    post:
+      operationId: create-billing-portal
+      security: [{Session: []}]
+      responses: {'200': {description: Stripe Billing Portal URL returned}, '401': {description: Authentication required}, '404': {description: Stripe customer not linked}, '503': {description: Stripe is not configured}}
 components:
   securitySchemes:
     ApiKey:

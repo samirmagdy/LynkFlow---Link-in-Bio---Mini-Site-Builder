@@ -1799,6 +1799,23 @@ async function cancelStripeSubscription(request: Request, env: Env): Promise<Res
   return json({ subscriptionId: subscription.id, cancelAtPeriodEnd: subscription.cancel_at_period_end });
 }
 
+async function createStripeBillingPortal(request: Request, env: Env): Promise<Response> {
+  if (!stripeConfigured(env) || !env.SUPABASE_PUBLISHABLE_KEY) return json({ error: 'Stripe is not configured.' }, 503);
+  const authorization = request.headers.get('authorization');
+  if (!authorization?.startsWith('Bearer ')) return json({ error: 'Authentication required.' }, 401);
+  const userResponse = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization } });
+  if (!userResponse.ok) return json({ error: 'Authentication expired. Please sign in again.' }, 401);
+  const user = await userResponse.json() as { id?: string; email_confirmed_at?: string | null; user_metadata?: { email_verified?: boolean } };
+  if (!user.id) return json({ error: 'Authenticated user is missing.' }, 401);
+  if (!user.email_confirmed_at && user.user_metadata?.email_verified !== true) return json({ error: 'Verify your email before managing billing.' }, 403);
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=provider_customer_id`, env);
+  const rows = await workspaceResponse.json() as Array<{ provider_customer_id?: string }>;
+  const customerId = rows[0]?.provider_customer_id;
+  if (!customerId) return json({ error: 'No Stripe customer is linked to this workspace.' }, 404);
+  const session = await stripeRequest('/v1/billing_portal/sessions', env, new URLSearchParams({ customer: customerId, return_url: `${env.APP_URL}/studio/billing` }), `portal-${user.id}-${new Date().toISOString().slice(0, 10)}`);
+  return json({ url: session.url });
+}
+
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) return false;
   let difference = 0;
@@ -1970,6 +1987,10 @@ export default {
     if (url.pathname === '/api/stripe/cancel') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await cancelStripeSubscription(request, env); } catch (error) { return internalApiError('Cancel subscription failed', error, 'Unable to cancel subscription.', 502); }
+    }
+    if (url.pathname === '/api/stripe/portal') {
+      if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+      try { return await createStripeBillingPortal(request, env); } catch (error) { return internalApiError('Create billing portal session failed', error, 'Unable to open billing portal.', 502); }
     }
     if (url.pathname === '/api/stripe/webhook') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);

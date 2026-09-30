@@ -43,7 +43,7 @@ function PastDueBanner({
   onUpdatePayment,
 }: {
   gracePeriodEndsAt?: string;
-  onUpdatePayment: () => void;
+  onUpdatePayment: () => Promise<void>;
 }) {
   const daysLeft = useMemo(() => {
     if (!gracePeriodEndsAt) return null;
@@ -305,7 +305,7 @@ function CheckoutModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const BillingSettings: React.FC = () => {
-  const { workspace, upgradePlan, cancelSubscription, showToast } = useApp();
+  const { workspace, upgradePlan, cancelSubscription, openBillingPortal, showToast } = useApp();
   const [cycle, setCycle] = useState<BillingCycle>(workspace.billingCycle || 'annual');
   const [checkoutPlan, setCheckoutPlan] = useState<PlanType | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -373,7 +373,7 @@ export const BillingSettings: React.FC = () => {
       {isPastDue && (
         <PastDueBanner
           gracePeriodEndsAt={workspace.gracePeriodEndsAt}
-          onUpdatePayment={() => showToast('Redirecting to secure payment portal…')}
+          onUpdatePayment={openBillingPortal}
         />
       )}
       {isCanceled && workspace.cancelAtPeriodEnd && (
@@ -513,13 +513,15 @@ export const BillingSettings: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-2.5 text-right">
-                      <button
-                        onClick={() => showToast(`Receipt ${inv.id} ready for download`)}
-                        className="text-muted hover:text-ink p-1 cursor-pointer"
-                        title="Download PDF receipt"
-                      >
-                        <Download className="w-3.5 h-3.5 inline" />
-                      </button>
+                      {inv.pdfUrl && inv.pdfUrl !== '#' ? (
+                        <a href={inv.pdfUrl} target="_blank" rel="noreferrer" download className="text-muted hover:text-ink p-1 inline-block" title="Download PDF receipt" aria-label={`Download receipt ${inv.id}`}>
+                          <Download className="w-3.5 h-3.5 inline" />
+                        </a>
+                      ) : (
+                        <span className="text-subtle p-1 inline-block" title="Receipt not available yet" aria-label={`Receipt ${inv.id} not available`}>
+                          <Download className="w-3.5 h-3.5 inline" />
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

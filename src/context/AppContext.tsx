@@ -90,6 +90,7 @@ const createCloudPreviewToken = lazyCall<CloudSyncModule['createCloudPreviewToke
 const stripeService = () => import('../services/stripeService');
 const createStripeCheckoutSession = lazyCall<Awaited<ReturnType<typeof stripeService>>['createStripeCheckoutSession']>(stripeService, 'createStripeCheckoutSession');
 const cancelStripeSubscription = lazyCall<Awaited<ReturnType<typeof stripeService>>['cancelStripeSubscription']>(stripeService, 'cancelStripeSubscription');
+const createStripeBillingPortalSession = lazyCall<Awaited<ReturnType<typeof stripeService>>['createStripeBillingPortalSession']>(stripeService, 'createStripeBillingPortalSession');
 const submitPublicForm = lazyCall<typeof import('../services/publicFormService')['submitPublicForm']>(() => import('../services/publicFormService'), 'submitPublicForm');
 const submitPublicAbuseReport = lazyCall<typeof import('../services/publicAbuseReportService')['submitPublicAbuseReport']>(() => import('../services/publicAbuseReportService'), 'submitPublicAbuseReport');
 const createManagedApiKey = lazyCall<typeof import('../services/apiManagementService')['createManagedApiKey']>(() => import('../services/apiManagementService'), 'createManagedApiKey');
@@ -227,7 +228,8 @@ interface AppContextType {
     honeypotTrap?: string,
     idempotencyKey?: string
   ) => Promise<{ success: boolean; error?: string; fieldErrors?: Record<string, string>; rateLimited?: boolean }>;
-  deleteSubmission: (id: string) => Promise<void>;
+  deleteSubmission: (id: string) => Promise<boolean>;
+  unsubscribeSubscriber: (email: string) => Promise<boolean>;
 
   // Growth, Custom Domain & Billing
   verifyDomain: (profileId: string, domain: string) => Promise<{ success: boolean; failureReason?: string }>;
@@ -235,6 +237,7 @@ interface AppContextType {
   recheckDomain: (profileId: string) => Promise<void>;
   upgradePlan: (plan: PlanType, cycle: BillingCycle) => Promise<void>;
   cancelSubscription: () => Promise<void>;
+  openBillingPortal: () => Promise<void>;
   processWebhookEvent: (eventType: string, planId?: PlanType, billingCycle?: BillingCycle) => void;
 
   // PRO-005: Workspace Member Management
@@ -1448,18 +1451,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     return { success: true };
   };
 
-  const deleteSubmission = async (id: string) => {
-    formSubmissionService.deleteSubmission(activeProfileId, id, user.email);
+  const deleteSubmission = async (id: string): Promise<boolean> => {
+    const submission = submissions.find(item => item.id === id && item.profileId === activeProfileId);
+    if (!submission) return false;
     if (isSupabaseConfigured && user.id !== 'usr-guest') {
       try {
         await deleteCloudRecord('form_submissions', id, user.id);
       } catch (error) {
         showToast('Submission deletion was not saved. Please retry.');
-        return;
+        return false;
       }
     }
+    formSubmissionService.deleteSubmission(activeProfileId, id, user.email);
     setSubmissions(prev => prev.filter(s => s.id !== id));
     showToast('Submission deleted');
+    return true;
+  };
+
+  const unsubscribeSubscriber = async (email: string): Promise<boolean> => {
+    const previousSubscribers = profiles.flatMap(profile => formSubmissionService.getSubscribers(profile.id));
+    const changed = formSubmissionService.unsubscribeSubscriber(activeProfileId, email, user.email);
+    if (!changed) return false;
+    if (isSupabaseConfigured && user.id !== 'usr-guest') {
+      try {
+        const subscribers = profiles.flatMap(profile => formSubmissionService.getSubscribers(profile.id));
+        await saveCloudSubscribers(subscribers, user.id);
+      } catch (error) {
+        formSubmissionService.replaceSubscribers(previousSubscribers);
+        reportRecoverableError('Supabase subscriber unsubscribe failed', error);
+        showToast('Unsubscribe was not saved. Please retry.');
+        return false;
+      }
+    }
+    showToast(`Subscriber ${email} marked as unsubscribed.`);
+    return true;
   };
 
   // Domains — all mutations go through domainService for PRO-001/003/004 compliance
@@ -1882,6 +1907,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     showToast('Subscription will remain active until the end of the current billing period.');
   };
 
+  const openBillingPortal = async () => {
+    if (isSupabaseConfigured) {
+      try {
+        const portalUrl = await createStripeBillingPortalSession();
+        window.location.assign(portalUrl);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Unable to open billing portal.');
+      }
+      return;
+    }
+    showToast('Billing portal requires a configured Stripe account.');
+  };
+
   const processWebhookEvent = (eventType: string, planId?: PlanType, cycle?: BillingCycle) => {
     const now = new Date().toISOString();
     const periodEnd = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
@@ -2161,13 +2199,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         trackEvent,
         submissions,
         submitForm,
-        deleteSubmission,
+      deleteSubmission,
+      unsubscribeSubscriber,
 
         verifyDomain,
         removeDomain,
         recheckDomain,
         upgradePlan,
         cancelSubscription,
+        openBillingPortal,
         processWebhookEvent,
 
         addMember,

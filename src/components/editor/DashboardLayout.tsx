@@ -54,6 +54,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   const mobilePrimaryItems = navItems.slice(0, 4);
   const mobileSecondaryItems = navItems.slice(4);
+  const isSecondaryView = mobileSecondaryItems.some(item => item.id === currentView);
 
   const handleMobileNavigation = (view: typeof navItems[number]['id']) => {
     setCurrentView(view);
@@ -192,13 +193,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 type="button"
                 onClick={() => handleMobileNavigation(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent \${
+                className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                   isActive
                     ? 'bg-accent/12 text-accent'
                     : 'text-muted hover:bg-surface-2 hover:text-ink'
                 }`}
               >
-                <span className={`flex h-5 w-5 items-center justify-center \${isActive ? 'text-accent' : 'text-subtle'}`} aria-hidden="true">
+                <span className={`flex h-5 w-5 items-center justify-center ${isActive ? 'text-accent' : 'text-subtle'}`} aria-hidden="true">
                   {item.icon}
                 </span>
                 <span className="truncate">{item.label === 'Page Builder' ? 'Builder' : item.label === 'Form Inbox' ? 'Inbox' : item.label.replace(' & Styles', '')}</span>
@@ -210,13 +211,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             onClick={() => setMobileMoreOpen(prev => !prev)}
             aria-expanded={mobileMoreOpen}
             aria-haspopup="dialog"
-            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent \${
+            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               mobileMoreOpen || isSecondaryView
                 ? 'bg-accent/12 text-accent'
                 : 'text-muted hover:bg-surface-2 hover:text-ink'
             }`}
           >
-            <span className={`flex h-5 w-5 items-center justify-center \${mobileMoreOpen || isSecondaryView ? 'text-accent' : 'text-subtle'}`} aria-hidden="true">
+            <span className={`flex h-5 w-5 items-center justify-center ${mobileMoreOpen || isSecondaryView ? 'text-accent' : 'text-subtle'}`} aria-hidden="true">
               <MoreHorizontal className="h-5 w-5" />
             </span>
             <span>More</span>
@@ -249,7 +250,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                     type="button"
                     onClick={() => handleMobileNavigation(item.id)}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`flex min-h-11 items-center gap-2 rounded-xl px-2.5 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent \${
+                    className={`flex min-h-11 items-center gap-2 rounded-xl px-2.5 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                       isActive
                         ? 'bg-accent/12 text-accent'
                         : 'text-muted hover:bg-surface-2 hover:text-ink'

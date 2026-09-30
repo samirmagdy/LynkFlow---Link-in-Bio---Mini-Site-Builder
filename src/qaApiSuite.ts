@@ -10,6 +10,7 @@ const checks = [
   ['webhook create', '/api/webhooks', 'POST'],
   ['domain verify', '/api/domains/verify', 'POST'],
   ['domain remove', '/api/domains/remove', 'POST'],
+  ['billing portal', '/api/stripe/portal', 'POST'],
 ] as const;
 let failed = 0;
 for (const [name, path, method] of checks) {

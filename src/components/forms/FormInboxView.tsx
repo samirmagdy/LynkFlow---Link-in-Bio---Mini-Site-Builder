@@ -18,7 +18,7 @@ import {
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
 export const FormInboxView: React.FC = () => {
-  const { submissions, deleteSubmission, activeProfile, user, showToast } = useApp();
+  const { submissions, deleteSubmission, unsubscribeSubscriber, activeProfile, user, showToast } = useApp();
   
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers'>('submissions');
@@ -116,35 +116,24 @@ export const FormInboxView: React.FC = () => {
 
   // Handle single delete with audit
   const confirmDeleteSubmission = (id: string) => {
-    formSubmissionService.deleteSubmission(activeProfile.id, id, user?.email || 'operator@lynkflow.internal');
-    deleteSubmission(id);
-    setSelectedSubmissionIds(prev => prev.filter(item => item !== id));
-    setDeleteConfirmId(null);
-    if (selectedSubmission?.id === id) {
-      setSelectedSubmission(null);
-    }
-    if (showToast) {
-      showToast('Submission deleted with compliance audit log.');
-    }
+    void deleteSubmission(id).then(success => {
+      if (!success) return;
+      setSelectedSubmissionIds(prev => prev.filter(item => item !== id));
+      setDeleteConfirmId(null);
+      if (selectedSubmission?.id === id) setSelectedSubmission(null);
+    });
   };
 
   // Handle bulk delete with audit
   const handleBulkDelete = () => {
     if (selectedSubmissionIds.length === 0) return;
     
-    const count = formSubmissionService.bulkDeleteSubmissions(
-      activeProfile.id,
-      selectedSubmissionIds,
-      user?.email || 'operator@lynkflow.internal'
-    );
-
-    selectedSubmissionIds.forEach(id => deleteSubmission(id));
-    setSelectedSubmissionIds([]);
-    setIsBulkDeleting(false);
-
-    if (showToast) {
-      showToast(`Successfully deleted ${count} submissions.`);
-    }
+    void Promise.all(selectedSubmissionIds.map(id => deleteSubmission(id))).then(results => {
+      const deletedIds = selectedSubmissionIds.filter((_, index) => results[index]);
+      setSelectedSubmissionIds(prev => prev.filter(id => !deletedIds.includes(id)));
+      setIsBulkDeleting(false);
+      if (showToast && deletedIds.length) showToast(`Successfully deleted ${deletedIds.length} submissions.`);
+    });
   };
 
   // Toggle selection for bulk actions
@@ -164,13 +153,11 @@ export const FormInboxView: React.FC = () => {
 
   // Handle unsubscribe subscriber
   const handleUnsubscribe = (email: string) => {
-    const ok = formSubmissionService.unsubscribeSubscriber(activeProfile.id, email, user?.email || 'operator@lynkflow.internal');
-    if (ok) {
+    void unsubscribeSubscriber(email).then(ok => {
+      if (ok) {
       setSubscribers(formSubmissionService.getSubscribers(activeProfile.id));
-      if (showToast) {
-        showToast(`Subscriber ${email} marked as unsubscribed.`);
       }
-    }
+    });
   };
 
   return (

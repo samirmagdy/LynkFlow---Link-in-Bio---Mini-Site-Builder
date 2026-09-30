@@ -29,3 +29,16 @@ export async function cancelStripeSubscription(): Promise<void> {
   const body = await response.json() as { error?: string };
   if (!response.ok) throw new Error(body.error || 'Unable to cancel subscription.');
 }
+
+export async function createStripeBillingPortalSession(): Promise<string> {
+  if (!supabase) throw new Error('Supabase authentication is required for billing.');
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in before managing billing.');
+  const response = await fetch('/api/stripe/portal', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.access_token}` }
+  });
+  const body = await response.json() as { url?: string; error?: string };
+  if (!response.ok || !body.url) throw new Error(body.error || 'Unable to open billing portal.');
+  return body.url;
+}
