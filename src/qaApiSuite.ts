@@ -10,6 +10,8 @@ const checks = [
   ['webhook create', '/api/webhooks', 'POST'],
   ['domain verify', '/api/domains/verify', 'POST'],
   ['domain remove', '/api/domains/remove', 'POST'],
+  ['checkout', '/api/stripe/checkout', 'POST'],
+  ['subscription cancel', '/api/stripe/cancel', 'POST'],
   ['billing portal', '/api/stripe/portal', 'POST'],
 ] as const;
 let failed = 0;

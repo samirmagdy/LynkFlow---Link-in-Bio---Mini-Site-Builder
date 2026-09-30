@@ -1723,9 +1723,9 @@ async function supabaseRequest(path: string, env: Env, init: RequestInit = {}): 
 }
 
 async function createCheckout(request: Request, env: Env): Promise<Response> {
-  if (!stripeCheckoutConfigured(env) || !env.SUPABASE_PUBLISHABLE_KEY) return json({ error: 'Stripe is not configured.' }, 503);
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return json({ error: 'Authentication required.' }, 401);
+  if (!stripeCheckoutConfigured(env) || !env.SUPABASE_PUBLISHABLE_KEY) return json({ error: 'Stripe is not configured.' }, 503);
 
   let input: { planId?: BillingPlan; billingCycle?: BillingCycle };
   try { input = await request.json(); } catch { return json({ error: 'Request body must be valid JSON.' }, 400); }
@@ -1783,9 +1783,9 @@ async function createCheckout(request: Request, env: Env): Promise<Response> {
 }
 
 async function cancelStripeSubscription(request: Request, env: Env): Promise<Response> {
-  if (!stripeConfigured(env) || !env.SUPABASE_PUBLISHABLE_KEY) return json({ error: 'Stripe is not configured.' }, 503);
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return json({ error: 'Authentication required.' }, 401);
+  if (!stripeConfigured(env) || !env.SUPABASE_PUBLISHABLE_KEY) return json({ error: 'Stripe is not configured.' }, 503);
   const userResponse = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization } });
   if (!userResponse.ok) return json({ error: 'Authentication expired. Please sign in again.' }, 401);
   const user = await userResponse.json() as { id?: string; email_confirmed_at?: string | null; user_metadata?: { email_verified?: boolean } };
