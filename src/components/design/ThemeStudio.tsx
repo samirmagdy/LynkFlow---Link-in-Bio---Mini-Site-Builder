@@ -2823,6 +2823,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         ) : <PhoneMockup
           onOpenReportModal={onOpenReportModal}
           profileOverride={previewTheme ? { ...activeProfile, standardTheme: previewTheme } : undefined}
+          onBackgroundChange={(patch) => {
+            if (patch.focalPoint) handleUpdateBackground('focalPoint', patch.focalPoint);
+            if (patch.scale !== undefined) handleUpdateBackground('scale', patch.scale);
+          }}
         />}
       </div>
     </div>

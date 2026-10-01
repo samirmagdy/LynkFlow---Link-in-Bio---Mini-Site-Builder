@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Profile, LinkBlockPayload, ProductBlockPayload } from '../../types';
 import { PublicProfileView } from './PublicProfileView';
@@ -13,9 +13,90 @@ interface PhoneMockupProps {
   previewDeviceOverride?: 'mobile-small' | 'mobile' | 'tablet' | 'desktop' | 'wide';
   previewLocaleOverride?: 'theme' | 'en' | 'ar';
   hideControls?: boolean;
+  onBackgroundChange?: (patch: { focalPoint?: { x: number; y: number }; scale?: number }) => void;
 }
 
-export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, profileOverride, previewSourceOverride, previewDeviceOverride, previewLocaleOverride, hideControls = false }) => {
+interface BackgroundEditorOverlayProps {
+  scale: number;
+  focalPoint: { x: number; y: number };
+  onChange: NonNullable<PhoneMockupProps['onBackgroundChange']>;
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const BackgroundEditorOverlay: React.FC<BackgroundEditorOverlayProps> = ({ scale, focalPoint, onChange }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; x: number; y: number } | null>(null);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { startX: event.clientX, startY: event.clientY, x: focalPoint.x, y: focalPoint.y };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const deltaX = ((event.clientX - dragRef.current.startX) / Math.max(bounds.width, 1)) * 100;
+    const deltaY = ((event.clientY - dragRef.current.startY) / Math.max(bounds.height, 1)) * 100;
+    onChange({ focalPoint: { x: clamp(dragRef.current.x - deltaX, 0, 100), y: clamp(dragRef.current.y - deltaY, 0, 100) } });
+  };
+
+  const stopDragging = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    dragRef.current = null;
+    setIsDragging(false);
+  };
+
+  if (!isEditing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setIsEditing(true)}
+        aria-label="Select background to move or resize it"
+        className="absolute right-3 top-3 z-40 rounded-full border border-white/35 bg-black/70 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-md transition hover:bg-black/85 focus:outline-none focus:ring-2 focus:ring-white/80"
+      >
+        Edit background
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 z-40">
+      <div
+        role="application"
+        aria-label="Background editor. Drag to reposition the background."
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={stopDragging}
+        onPointerCancel={stopDragging}
+        className={`absolute inset-0 cursor-grab touch-none border-2 border-dashed border-white/80 bg-black/5 ${isDragging ? 'cursor-grabbing' : ''}`}
+      />
+      <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-center">
+        <span className="rounded-full border border-white/30 bg-black/75 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-md">
+          Drag to move background
+        </span>
+      </div>
+      <div
+        data-background-control
+        onPointerDown={(event) => event.stopPropagation()}
+        className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-2xl border border-white/20 bg-black/80 p-2 text-white shadow-xl backdrop-blur-md"
+      >
+        <button type="button" onClick={() => onChange({ scale: clamp(Number((scale - 0.05).toFixed(2)), 1, 2) })} disabled={scale <= 1} aria-label="Zoom background out" className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/10 text-lg font-semibold hover:bg-white/20 disabled:opacity-40">−</button>
+        <label className="min-w-0 flex-1 text-center text-[11px] font-semibold">
+          Zoom {Math.round(scale * 100)}%
+          <input aria-label="Background zoom" type="range" min="100" max="200" value={Math.round(scale * 100)} onChange={(event) => onChange({ scale: Number(event.target.value) / 100 })} className="mt-1 block w-full accent-white" />
+        </label>
+        <button type="button" onClick={() => onChange({ scale: clamp(Number((scale + 0.05).toFixed(2)), 1, 2) })} disabled={scale >= 2} aria-label="Zoom background in" className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/10 text-lg font-semibold hover:bg-white/20 disabled:opacity-40">+</button>
+        <button type="button" onClick={() => setIsEditing(false)} className="shrink-0 rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-black hover:bg-white/90">Done</button>
+      </div>
+    </div>
+  );
+};
+
+export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, profileOverride, previewSourceOverride, previewDeviceOverride, previewLocaleOverride, hideControls = false, onBackgroundChange }) => {
   const { 
     activeProfile, 
     publishedProfile, 
@@ -76,6 +157,21 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, pro
       standardTheme: localizedTheme
     };
   })();
+
+  const renderedTheme = normalizeTheme(profileToRender.standardTheme || profileToRender.theme);
+  const renderedBackground = renderedTheme.background;
+  const canEditBackground = Boolean(
+    onBackgroundChange &&
+    (renderedBackground.type === 'image' || renderedBackground.type === 'video') &&
+    renderedBackground.assetUrl
+  );
+  const backgroundEditor = canEditBackground ? (
+    <BackgroundEditorOverlay
+      scale={clamp(Number(renderedBackground.scale || 1), 1, 2)}
+      focalPoint={{ x: renderedBackground.focalPoint?.x ?? 50, y: renderedBackground.focalPoint?.y ?? 50 }}
+      onChange={onBackgroundChange!}
+    />
+  ) : null;
 
   const handleOpenLiveTab = () => {
     setPublicViewingUsername(activeProfile.username);
@@ -227,6 +323,7 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, pro
                 isStandalone={false}
                 onOpenReportModal={onOpenReportModal}
               />
+              {backgroundEditor}
             </div>
 
             {/* Home Indicator Bar */}
@@ -247,12 +344,13 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({ onOpenReportModal, pro
                 https://lynkflow.me/{activeProfile.username}
               </div>
             </div>
-            <div className="flex-1 w-full overflow-y-auto">
+            <div className="relative flex-1 w-full overflow-y-auto">
               <PublicProfileView 
                 profile={profileToRender} 
                 isStandalone={false}
                 onOpenReportModal={onOpenReportModal}
               />
+              {backgroundEditor}
             </div>
           </div>
         )}
