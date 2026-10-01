@@ -3394,8 +3394,12 @@ async function processInstagramAutomationEvent(event: InstagramAutomationEvent, 
     if (!event.text.toLocaleLowerCase().includes(String((automation as { keyword?: string }).keyword || '').toLocaleLowerCase())) continue;
     const runId = `social_run_${automation.id}_${event.providerEventId}`;
     const runResponse = await supabaseRequest('social_automation_runs?on_conflict=automation_id,provider_event_id', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=representation' }, body: JSON.stringify({ id: runId, automation_id: automation.id, workspace_id: automation.workspace_id, provider: 'instagram', provider_event_id: event.providerEventId, recipient_id: event.recipientId, status: 'matched' }) });
+    if (!runResponse.ok) throw new Error('Instagram automation run could not be recorded.');
     const runs = await runResponse.json() as unknown[];
-    if (!runs.length) continue;
+    if (!runs.length) {
+      const retryResponse = await supabaseRequest(`social_automation_runs?automation_id=eq.${encodeURIComponent(automation.id)}&provider_event_id=eq.${encodeURIComponent(event.providerEventId)}&status=eq.failed`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: 'matched', error_message: null, completed_at: null }) });
+      if (!retryResponse.ok || !(await retryResponse.json() as unknown[]).length) continue;
+    }
     let status: 'sent' | 'failed' = 'failed';
     let errorMessage: string | null = 'Instagram connection is unavailable.';
     try {
