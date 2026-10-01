@@ -1742,6 +1742,17 @@ async function issueApiKey(request: Request, env: Env): Promise<Response> {
   return json({ data: { id: keyId, workspaceId: user.id, name, keyPrefix: `${secret.slice(0, 14)}…`, scopes, allowedProfileIds: input.allowedProfileIds || null, status: 'active', createdAt, createdBy: user.email, expiresAt: input.expiresAt }, secret });
 }
 
+async function listProductOrders(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot access sales data.', 403);
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  const profileFilter = profileId ? `&profile_id=eq.${encodeURIComponent(profileId)}` : '';
+  if (profileId && !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
+  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,payment_status,amount_total,currency,customer_email,customer_name,created_at,paid_at&order=created_at.desc&limit=500`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
 async function rotateApiKey(request: Request, env: Env, keyId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2137,9 +2148,10 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
   if (!/^[a-z0-9._-]{1,80}$/.test(username) || !/^[a-zA-Z0-9_-]{1,120}$/.test(blockId)) {
     return json({ error: 'A valid profile and product are required.' }, 400);
   }
-  const profileResponse = await supabaseRequest(`published_profiles?username=eq.${encodeURIComponent(username)}&select=username,snapshot`, env);
-  const rows = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
-  const snapshot = rows[0]?.snapshot;
+  const profileResponse = await supabaseRequest(`published_profiles?username=eq.${encodeURIComponent(username)}&select=username,profile_id,workspace_id,snapshot`, env);
+  const rows = await profileResponse.json() as Array<{ username?: string; profile_id?: string; workspace_id?: string; snapshot?: PublicSnapshot }>;
+  const profileRow = rows[0];
+  const snapshot = profileRow?.snapshot;
   if (!snapshot) return json({ error: 'Published profile not found.' }, 404);
   const blocks = (snapshot.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
   const block = blocks.find(candidate => candidate.id === blockId && candidate.type === 'product');
@@ -2160,6 +2172,9 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
     cancel_url: `${env.APP_URL}/@${encodeURIComponent(username)}?purchase=cancelled`,
     'metadata[profile_username]': username,
     'metadata[block_id]': blockId,
+    'metadata[workspace_id]': String(profileRow?.workspace_id || ''),
+    'metadata[profile_id]': String(profileRow?.profile_id || ''),
+    'metadata[product_order]': 'true',
   });
   if (description) params.set('line_items[0][price_data][product_data][description]', description);
   const image = safePublicHref(payload.image);
@@ -2257,6 +2272,30 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 
   const object = event.data.object;
   const metadata = (object.metadata || {}) as Record<string, string>;
+  if (event.type === 'checkout.session.completed' && metadata.product_order === 'true' && metadata.workspace_id && metadata.profile_id && metadata.block_id) {
+    const customerDetails = (object.customer_details || {}) as Record<string, unknown>;
+    const paymentStatus = ['paid', 'unpaid', 'no_payment_required'].includes(String(object.payment_status)) ? String(object.payment_status) : 'unpaid';
+    await supabaseRequest('product_orders?on_conflict=stripe_session_id', env, {
+      method: 'POST',
+      headers: { prefer: 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify({
+        id: `order_${String(object.id || event.id)}`,
+        workspace_id: metadata.workspace_id,
+        profile_id: metadata.profile_id,
+        block_id: metadata.block_id,
+        stripe_session_id: String(object.id || event.id),
+        payment_status: paymentStatus,
+        amount_total: Math.max(0, Number(object.amount_total || 0)),
+        currency: String(object.currency || 'usd').toLowerCase(),
+        customer_email: typeof customerDetails.email === 'string' ? customerDetails.email : null,
+        customer_name: typeof customerDetails.name === 'string' ? customerDetails.name : null,
+        created_at: new Date(Number(object.created || Date.now() / 1000) * 1000).toISOString(),
+        paid_at: paymentStatus === 'paid' ? new Date().toISOString() : null,
+      }),
+    });
+    await supabaseRequest('stripe_events', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify({ id: event.id, event_type: event.type }) });
+    return json({ received: true });
+  }
   const customerId = String(object.customer || metadata.customer_id || '');
   const subscriptionCandidate = String(object.subscription || '');
   const subscriptionId = subscriptionCandidate.startsWith('sub_') ? subscriptionCandidate : undefined;
@@ -2378,6 +2417,10 @@ export default {
     if (url.pathname === '/api/public/product-checkout') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await createPublicProductCheckout(request, env); } catch (error) { return internalApiError('Create product checkout failed', error, 'Unable to start secure checkout.', 502); }
+    }
+    if (url.pathname === '/api/sales/orders') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await listProductOrders(request, env); } catch (error) { return internalApiError('List product orders failed', error, 'Unable to load sales data.'); }
     }
     if (url.pathname === '/api/stripe/cancel') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);

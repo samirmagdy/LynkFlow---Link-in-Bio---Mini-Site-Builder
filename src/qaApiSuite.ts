@@ -15,6 +15,7 @@ const checks = [
   ['checkout', '/api/stripe/checkout', 'POST'],
   ['subscription cancel', '/api/stripe/cancel', 'POST'],
   ['billing portal', '/api/stripe/portal', 'POST'],
+  ['sales orders', '/api/sales/orders', 'GET'],
 ] as const;
 let failed = 0;
 for (const [name, path, method] of checks) {

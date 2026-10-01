@@ -136,6 +136,16 @@ paths:
       operationId: create-billing-portal
       security: [{Session: []}]
       responses: {'200': {description: Stripe Billing Portal URL returned}, '401': {description: Authentication required}, '404': {description: Stripe customer not linked}, '503': {description: Stripe is not configured}}
+  /api/sales/orders:
+    get:
+      operationId: list-product-orders
+      security: [{Session: []}]
+      parameters:
+        - {name: profileId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Product orders returned for the signed-in workspace}
+        '401': {description: Authentication required}
+        '403': {description: Viewer role or profile access denied}
 components:
   securitySchemes:
     ApiKey:
