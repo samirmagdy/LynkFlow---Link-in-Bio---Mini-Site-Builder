@@ -441,7 +441,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           preload="auto"
           playsInline
           aria-hidden="true"
-          style={{ objectFit: standardTheme.background.fit === 'contain' ? 'contain' : 'cover', objectPosition: standardTheme.background.focalPoint ? `${standardTheme.background.focalPoint.x}% ${standardTheme.background.focalPoint.y}%` : (standardTheme.background.position || 'center'), filter: standardTheme.background.blur ? `blur(${standardTheme.background.blur}px)` : undefined }}
+          style={{ objectFit: standardTheme.background.fit === 'contain' ? 'contain' : 'cover', objectPosition: standardTheme.background.focalPoint ? `${standardTheme.background.focalPoint.x}% ${standardTheme.background.focalPoint.y}%` : (standardTheme.background.position || 'center'), filter: standardTheme.background.blur ? `blur(${standardTheme.background.blur}px)` : undefined, transform: backgroundScale > 1 ? `scale(${backgroundScale})` : undefined, transformOrigin: standardTheme.background.focalPoint ? `${standardTheme.background.focalPoint.x}% ${standardTheme.background.focalPoint.y}%` : 'center' }}
         >
           {standardTheme.background.mobileAssetUrl && <source media="(max-width: 639px)" src={standardTheme.background.mobileAssetUrl} />}
         </video>

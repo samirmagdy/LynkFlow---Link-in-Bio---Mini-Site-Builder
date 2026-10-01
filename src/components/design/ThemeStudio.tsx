@@ -277,6 +277,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     latinFont: 'Inter, ui-sans-serif, system-ui, sans-serif', arabicFont: 'Noto Kufi Arabic, Tahoma, sans-serif', buttonStyle: 'filled' as const,
     imageStyle: 'rounded' as const, socialIconStyle: 'minimal' as const, updatedAt: new Date().toISOString()
   };
+  const backgroundControls = previewTheme?.background || standardTheme.background;
 
   const requestConfirmation = (request: ThemeConfirmRequest) => setConfirmRequest(request);
   const closeConfirmation = () => setConfirmRequest(null);
@@ -507,13 +508,19 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   const handleUpdateBackground = (key: keyof typeof standardTheme.background, value: unknown) => {
-    updateStandardTheme(prev => ({
-      ...prev,
-      background: {
-        ...prev.background,
-        [key]: value
-      }
-    }));
+    if (previewTheme) {
+      setPreviewTheme(prev => prev ? normalizeTheme({
+        ...prev,
+        background: { ...prev.background, [key]: value }
+      }) : prev);
+      return;
+    }
+    updateStandardTheme(prev => ({ ...prev, background: { ...prev.background, [key]: value } }));
+  };
+
+  const adjustBackgroundScale = (delta: number) => {
+    const currentScale = Number(backgroundControls.scale || 1);
+    handleUpdateBackground('scale', Math.min(2, Math.max(1, Number((currentScale + delta).toFixed(2)))));
   };
 
   const handleBackgroundUpload = async (file: File, target: 'desktop' | 'mobile' = 'desktop') => {
@@ -1881,7 +1888,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                       type="button"
                       onClick={() => handleUpdateBackground('type', type)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize cursor-pointer border ${
-                        standardTheme.background.type === type
+                        backgroundControls.type === type
                           ? 'bg-indigo-600 border-indigo-500 text-white'
                           : 'bg-canvas border-line text-muted hover:text-ink'
                       }`}
@@ -1892,11 +1899,11 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
               </div>
 
-              {standardTheme.background.type === 'gradient' && (
+              {backgroundControls.type === 'gradient' && (
                 <div>
                   <label className="block text-xs font-medium text-body mb-1.5">Gradient Formula</label>
                   <select
-                    value={standardTheme.background.gradientStops || 'linear-gradient(135deg, #090e1a 0%, #111a33 100%)'}
+                    value={backgroundControls.gradientStops || 'linear-gradient(135deg, #090e1a 0%, #111a33 100%)'}
                     onChange={(e) => handleUpdateBackground('gradientStops', e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
                   >
@@ -1908,10 +1915,10 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
               )}
 
-              {standardTheme.background.type === 'pattern' && (
+              {backgroundControls.type === 'pattern' && (
                 <div>
                   <label className="block text-xs font-medium text-body mb-1.5">Pattern texture</label>
-                  <select value={standardTheme.background.gradientStops || 'radial-gradient(circle at 1px 1px, rgba(99,102,241,.22) 1px, transparent 1px)'} onChange={(e) => handleUpdateBackground('gradientStops', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
+                  <select value={backgroundControls.gradientStops || 'radial-gradient(circle at 1px 1px, rgba(99,102,241,.22) 1px, transparent 1px)'} onChange={(e) => handleUpdateBackground('gradientStops', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none">
                     <option value="radial-gradient(circle at 1px 1px, rgba(99,102,241,.22) 1px, transparent 1px)">Accent dot grid</option>
                     <option value="repeating-linear-gradient(135deg, rgba(99,102,241,.12) 0 1px, transparent 1px 12px)">Diagonal line texture</option>
                     <option value="radial-gradient(circle at 30% 20%, rgba(255,255,255,.16), transparent 28%), radial-gradient(circle at 80% 80%, rgba(99,102,241,.18), transparent 32%)">Soft editorial texture</option>
@@ -1920,14 +1927,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
               )}
 
-              {standardTheme.background.type === 'image' && (
+              {backgroundControls.type === 'image' && (
                 <div>
                   <label className="block text-xs font-medium text-body mb-1.5">Background Image</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       placeholder="https://images.unsplash.com/..."
-                      value={standardTheme.background.assetUrl || ''}
+                      value={backgroundControls.assetUrl || ''}
                       onChange={(e) => handleUpdateBackground('assetUrl', e.target.value)}
                       className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
                     />
@@ -1938,18 +1945,18 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <input ref={backgroundInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleBackgroundUpload(file); }} />
                   {backgroundUploadError && <p role="alert" className="text-[11px] text-danger mt-2">{backgroundUploadError}</p>}
                   <p className="text-[11px] text-subtle mt-1">JPG, PNG, WebP, GIF or AVIF up to 50 MB.</p>
-                  <p className="text-[11px] text-subtle mt-1">The uploaded image is layered with a gradient sampled from its accent colors. Fallback: {standardTheme.background.fallbackColor}.</p>
+                  <p className="text-[11px] text-subtle mt-1">The uploaded image is layered with a gradient sampled from its accent colors. Fallback: {backgroundControls.fallbackColor}.</p>
                 </div>
               )}
 
-              {standardTheme.background.type === 'video' && (
+              {backgroundControls.type === 'video' && (
                 <div>
                   <label className="block text-xs font-medium text-body mb-1.5">Background Video</label>
                   <div className="flex gap-2">
                   <input
                     type="text"
                     placeholder="Paste a video URL or upload a file"
-                    value={standardTheme.background.assetUrl || ''}
+                    value={backgroundControls.assetUrl || ''}
                     onChange={(e) => handleUpdateBackground('assetUrl', e.target.value)}
                     className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none"
                   />
@@ -1963,14 +1970,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
               )}
 
-              {(standardTheme.background.type === 'image' || standardTheme.background.type === 'video') && (
+              {(backgroundControls.type === 'image' || backgroundControls.type === 'video') && (
                 <div className="rounded-xl border border-line bg-canvas/60 p-3 space-y-2">
                   <label className="block text-xs font-medium text-body">Mobile background asset</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder={standardTheme.background.type === 'video' ? 'Paste a mobile video URL or upload a file' : 'Paste a mobile image URL or upload a file'}
-                      value={standardTheme.background.mobileAssetUrl || ''}
+                      placeholder={backgroundControls.type === 'video' ? 'Paste a mobile video URL or upload a file' : 'Paste a mobile image URL or upload a file'}
+                      value={backgroundControls.mobileAssetUrl || ''}
                       onChange={(e) => handleUpdateBackground('mobileAssetUrl', e.target.value)}
                       className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"
                     />
@@ -1978,12 +1985,12 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                       Upload mobile
                     </button>
                   </div>
-                  <input ref={mobileBackgroundInputRef} type="file" accept={standardTheme.background.type === 'video' ? 'video/mp4,video/webm,video/quicktime' : 'image/jpeg,image/png,image/webp,image/gif,image/avif'} className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleBackgroundUpload(file, 'mobile'); }} />
+                  <input ref={mobileBackgroundInputRef} type="file" accept={backgroundControls.type === 'video' ? 'video/mp4,video/webm,video/quicktime' : 'image/jpeg,image/png,image/webp,image/gif,image/avif'} className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleBackgroundUpload(file, 'mobile'); }} />
                   <p className="text-[10px] text-subtle">When supplied, this asset is used below 640px; otherwise the desktop asset is reused.</p>
                 </div>
               )}
 
-              {(standardTheme.background.type === 'image' || standardTheme.background.type === 'video') && (
+              {(backgroundControls.type === 'image' || backgroundControls.type === 'video') && (
                 <div className="rounded-xl border border-line bg-canvas/70 p-3 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1998,7 +2005,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                       value={pexelsQuery}
                       onChange={(e) => setPexelsQuery(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') void searchPexels(); }}
-                      placeholder={standardTheme.background.type === 'video' ? 'ambient clouds' : 'editorial studio'}
+                      placeholder={backgroundControls.type === 'video' ? 'ambient clouds' : 'editorial studio'}
                       className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                       aria-label="Search Pexels backgrounds"
                     />
@@ -2038,7 +2045,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
               )}
 
-              {(standardTheme.background.type === 'image' || standardTheme.background.type === 'video') && (
+              {(backgroundControls.type === 'image' || backgroundControls.type === 'video') && (
                 <div className="rounded-xl border border-line bg-canvas/60 p-3 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -2056,7 +2063,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                     <p className="text-[11px] text-subtle">No uploaded backgrounds yet. Upload an image or video to add the first asset.</p>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Workspace background library">
-                      {backgroundAssets.filter(asset => asset.kind === standardTheme.background.type).map(asset => (
+                      {backgroundAssets.filter(asset => asset.kind === backgroundControls.type).map(asset => (
                         <div key={asset.id} className="group relative overflow-hidden rounded-lg border border-line bg-surface">
                           {asset.kind === 'video' ? <video src={asset.assetUrl} muted playsInline preload="metadata" className="h-20 w-full object-cover" /> : <img src={asset.assetUrl} alt="Uploaded background" loading="lazy" className="h-20 w-full object-cover" />}
                           <div className="flex items-center justify-between gap-1 p-1.5">
@@ -2070,41 +2077,41 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 </div>
               )}
 
-              {(standardTheme.background.type === 'image' || standardTheme.background.type === 'video') && (
+              {(backgroundControls.type === 'image' || backgroundControls.type === 'video') && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-line bg-canvas/60 p-3">
                   <div>
                     <label className="block text-xs font-medium text-body mb-1.5">Media fit</label>
-                    <select value={standardTheme.background.fit || 'cover'} onChange={(e) => handleUpdateBackground('fit', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"><option value="cover">Cover</option><option value="contain">Contain</option><option value="natural">Natural</option></select>
+                    <select value={backgroundControls.fit || 'cover'} onChange={(e) => handleUpdateBackground('fit', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"><option value="cover">Cover</option><option value="contain">Contain</option><option value="natural">Natural</option></select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-body mb-1.5">Focal position</label>
                     <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-[11px] text-muted">X <input type="range" min="0" max="100" value={standardTheme.background.focalPoint?.x ?? 50} onChange={(e) => handleUpdateBackground('focalPoint', { ...(standardTheme.background.focalPoint || { x: 50, y: 50 }), x: Number(e.target.value) })} className="flex-1 accent-indigo-500" /><span className="w-8 text-right font-mono">{Math.round(standardTheme.background.focalPoint?.x ?? 50)}%</span></label>
-                      <label className="flex items-center gap-2 text-[11px] text-muted">Y <input type="range" min="0" max="100" value={standardTheme.background.focalPoint?.y ?? 50} onChange={(e) => handleUpdateBackground('focalPoint', { ...(standardTheme.background.focalPoint || { x: 50, y: 50 }), y: Number(e.target.value) })} className="flex-1 accent-indigo-500" /><span className="w-8 text-right font-mono">{Math.round(standardTheme.background.focalPoint?.y ?? 50)}%</span></label>
+                      <label className="flex items-center gap-2 text-[11px] text-muted">X <input aria-label="Background horizontal position" type="range" min="0" max="100" value={backgroundControls.focalPoint?.x ?? 50} onChange={(e) => handleUpdateBackground('focalPoint', { ...(backgroundControls.focalPoint || { x: 50, y: 50 }), x: Number(e.target.value) })} className="flex-1 accent-indigo-500" /><span className="w-8 text-right font-mono">{Math.round(backgroundControls.focalPoint?.x ?? 50)}%</span></label>
+                      <label className="flex items-center gap-2 text-[11px] text-muted">Y <input aria-label="Background vertical position" type="range" min="0" max="100" value={backgroundControls.focalPoint?.y ?? 50} onChange={(e) => handleUpdateBackground('focalPoint', { ...(backgroundControls.focalPoint || { x: 50, y: 50 }), y: Number(e.target.value) })} className="flex-1 accent-indigo-500" /><span className="w-8 text-right font-mono">{Math.round(backgroundControls.focalPoint?.y ?? 50)}%</span></label>
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-body mb-1.5">Overlay color</label>
-                    <div className="flex gap-2"><input type="color" value={standardTheme.background.overlayColor || '#000000'} onChange={(e) => handleUpdateBackground('overlayColor', e.target.value)} className="h-9 w-10 rounded border border-line bg-surface" /><input value={standardTheme.background.overlayColor || '#000000'} onChange={(e) => handleUpdateBackground('overlayColor', e.target.value)} className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none" /></div>
+                    <div className="flex gap-2"><input type="color" value={backgroundControls.overlayColor || '#000000'} onChange={(e) => handleUpdateBackground('overlayColor', e.target.value)} className="h-9 w-10 rounded border border-line bg-surface" /><input value={backgroundControls.overlayColor || '#000000'} onChange={(e) => handleUpdateBackground('overlayColor', e.target.value)} className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none" /></div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-body mb-1.5">Fallback color</label>
-                    <div className="flex gap-2"><input type="color" value={standardTheme.background.fallbackColor || standardTheme.tokens.colors.pageBackground} onChange={(e) => handleUpdateBackground('fallbackColor', e.target.value)} className="h-9 w-10 rounded border border-line bg-surface" /><input value={standardTheme.background.fallbackColor || standardTheme.tokens.colors.pageBackground} onChange={(e) => handleUpdateBackground('fallbackColor', e.target.value)} className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink font-mono focus:outline-none" /></div>
+                    <div className="flex gap-2"><input type="color" value={backgroundControls.fallbackColor || standardTheme.tokens.colors.pageBackground} onChange={(e) => handleUpdateBackground('fallbackColor', e.target.value)} className="h-9 w-10 rounded border border-line bg-surface" /><input value={backgroundControls.fallbackColor || standardTheme.tokens.colors.pageBackground} onChange={(e) => handleUpdateBackground('fallbackColor', e.target.value)} className="min-w-0 flex-1 px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink font-mono focus:outline-none" /></div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-body mb-1.5">Background blur ({standardTheme.background.blur || 0}px)</label>
-                    <input type="range" min="0" max="24" value={standardTheme.background.blur || 0} onChange={(e) => handleUpdateBackground('blur', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-xs font-medium text-body mb-1.5">Background blur ({backgroundControls.blur || 0}px)</label>
+                    <input type="range" min="0" max="24" value={backgroundControls.blur || 0} onChange={(e) => handleUpdateBackground('blur', Number(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-body mb-1.5">Background scale ({Math.round((standardTheme.background.scale || 1) * 100)}%)</label>
-                    <input type="range" min="100" max="200" value={Math.round((standardTheme.background.scale || 1) * 100)} onChange={(e) => handleUpdateBackground('scale', Number(e.target.value) / 100)} className="w-full accent-indigo-500 cursor-pointer" />
+                    <label className="block text-xs font-medium text-body mb-1.5">Background zoom ({Math.round((backgroundControls.scale || 1) * 100)}%)</label>
+                    <div className="flex items-center gap-2"><button type="button" aria-label="Zoom background out" onClick={() => adjustBackgroundScale(-0.05)} disabled={(backgroundControls.scale || 1) <= 1} className="min-h-10 min-w-10 rounded-lg border border-line text-sm font-semibold text-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40">−</button><input aria-label="Background zoom" type="range" min="100" max="200" value={Math.round((backgroundControls.scale || 1) * 100)} onChange={(e) => handleUpdateBackground('scale', Number(e.target.value) / 100)} className="flex-1 accent-indigo-500 cursor-pointer" /><button type="button" aria-label="Zoom background in" onClick={() => adjustBackgroundScale(0.05)} disabled={(backgroundControls.scale || 1) >= 2} className="min-h-10 min-w-10 rounded-lg border border-line text-sm font-semibold text-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40">+</button></div>
                   </div>
-                  {standardTheme.background.type === 'video' && <>
-                    <div className="sm:col-span-2"><label className="block text-xs font-medium text-body mb-1.5">Video poster image URL</label><input value={standardTheme.background.posterUrl || ''} onChange={(e) => handleUpdateBackground('posterUrl', e.target.value)} placeholder="https://…" className="w-full px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none" /></div>
-                    <div><label className="block text-xs font-medium text-body mb-1.5">Reduced-motion fallback</label><select value={standardTheme.background.reducedMotionFallback || 'poster'} onChange={(e) => handleUpdateBackground('reducedMotionFallback', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"><option value="poster">Poster image</option><option value="image">Image background</option><option value="solid">Fallback color</option></select></div>
-                    <div className="sm:col-span-2 flex flex-wrap gap-4 text-xs text-muted"><label className="flex items-center gap-2"><input type="checkbox" checked={standardTheme.background.autoplay !== false} onChange={(e) => handleUpdateBackground('autoplay', e.target.checked)} /> Autoplay</label><label className="flex items-center gap-2"><input type="checkbox" checked={standardTheme.background.loop !== false} onChange={(e) => handleUpdateBackground('loop', e.target.checked)} /> Loop</label><label className="flex items-center gap-2"><input type="checkbox" checked={standardTheme.background.muted !== false} onChange={(e) => handleUpdateBackground('muted', e.target.checked)} /> Muted</label></div>
+                  {backgroundControls.type === 'video' && <>
+                    <div className="sm:col-span-2"><label className="block text-xs font-medium text-body mb-1.5">Video poster image URL</label><input value={backgroundControls.posterUrl || ''} onChange={(e) => handleUpdateBackground('posterUrl', e.target.value)} placeholder="https://…" className="w-full px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none" /></div>
+                    <div><label className="block text-xs font-medium text-body mb-1.5">Reduced-motion fallback</label><select value={backgroundControls.reducedMotionFallback || 'poster'} onChange={(e) => handleUpdateBackground('reducedMotionFallback', e.target.value)} className="w-full px-3 py-2 text-xs rounded-lg bg-surface border border-line text-ink focus:outline-none"><option value="poster">Poster image</option><option value="image">Image background</option><option value="solid">Fallback color</option></select></div>
+                    <div className="sm:col-span-2 flex flex-wrap gap-4 text-xs text-muted"><label className="flex items-center gap-2"><input type="checkbox" checked={backgroundControls.autoplay !== false} onChange={(e) => handleUpdateBackground('autoplay', e.target.checked)} /> Autoplay</label><label className="flex items-center gap-2"><input type="checkbox" checked={backgroundControls.loop !== false} onChange={(e) => handleUpdateBackground('loop', e.target.checked)} /> Loop</label><label className="flex items-center gap-2"><input type="checkbox" checked={backgroundControls.muted !== false} onChange={(e) => handleUpdateBackground('muted', e.target.checked)} /> Muted</label></div>
                   </>}
-                  {standardTheme.background.assetUrl && <button type="button" onClick={() => void handleClearBackground()} className="sm:col-span-2 justify-self-start rounded-lg border border-danger/40 px-3 py-2 text-xs font-semibold text-danger hover:bg-danger/10 cursor-pointer">Remove background asset</button>}
+                  {backgroundControls.assetUrl && <button type="button" onClick={() => void handleClearBackground()} className="sm:col-span-2 justify-self-start rounded-lg border border-danger/40 px-3 py-2 text-xs font-semibold text-danger hover:bg-danger/10 cursor-pointer">Remove background asset</button>}
                 </div>
               )}
 
@@ -2112,7 +2119,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-medium text-body">Dark Overlay Contrast Scrim</label>
                   <span className="text-[11px] text-muted font-mono">
-                    {Math.round((standardTheme.background.overlay ?? 0) * 100)}%
+                    {Math.round((backgroundControls.overlay ?? 0) * 100)}%
                   </span>
                 </div>
                 <input
@@ -2120,7 +2127,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   min="0"
                   max="0.8"
                   step="0.05"
-                  value={standardTheme.background.overlay ?? 0}
+                  value={backgroundControls.overlay ?? 0}
                   onChange={(e) => handleUpdateBackground('overlay', parseFloat(e.target.value))}
                   className="w-full accent-indigo-500 cursor-pointer"
                 />
