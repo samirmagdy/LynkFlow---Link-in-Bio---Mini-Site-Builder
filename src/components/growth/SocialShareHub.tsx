@@ -19,7 +19,7 @@ const BROADCAST_PROVIDERS = PROVIDERS.filter(provider => provider.id !== 'email'
 
 type BroadcastResult = {
   provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x';
-  status: 'published' | 'processing' | 'skipped' | 'failed';
+  status: 'published' | 'processing' | 'scheduled' | 'skipped' | 'failed';
   message: string;
 };
 
@@ -290,6 +290,46 @@ export const SocialShareHub: React.FC = () => {
     setBusyProvider(null);
   };
 
+  const scheduleToConnected = async () => {
+    if (!valid) { setError('Add a message and a valid page URL before scheduling.'); return; }
+    const connected = [linkedinConnection, tiktokConnection, instagramConnection, facebookConnection, youtubeConnection, threadsConnection, xConnection].filter(Boolean);
+    if (connected.length === 0) { setError('Connect at least one publishing account before scheduling.'); return; }
+    if ((tiktokConnection || instagramConnection || youtubeConnection) && !mediaUrl.trim()) { setError('Add a public HTTPS media URL to schedule TikTok, Instagram, or YouTube.'); return; }
+    const captionLimits: Record<'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x', number> = { linkedin: 3000, tiktok: 2200, instagram: 2200, facebook: 63206, youtube: 5000, threads: 500, x: 280 };
+    const invalidCaption = (Object.keys(captionLimits) as Array<keyof typeof captionLimits>).find(provider => captionFor(provider).length > captionLimits[provider]);
+    if (invalidCaption) { setError(`${invalidCaption} caption is too long for that platform (${captionLimits[invalidCaption]} characters maximum).`); return; }
+    setScheduling(true); setError(null); setBroadcastResults([]);
+    const scheduledIso = new Date(scheduledAt).toISOString();
+    const results: BroadcastResult[] = [];
+    const schedule = async (provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x') => {
+      const providerContent = captionFor(provider);
+      try {
+        let publication: SocialPublication;
+        if (provider === 'linkedin') publication = await scheduleLinkedInPost(providerContent, targetUrl.trim(), activeProfile.id, scheduledIso);
+        else if (provider === 'tiktok') publication = await scheduleTikTokPost(providerContent, mediaUrl.trim(), activeProfile.id, scheduledIso);
+        else if (provider === 'instagram') publication = await scheduleInstagramPost(providerContent, mediaUrl.trim(), instagramMediaType, activeProfile.id, scheduledIso);
+        else if (provider === 'facebook') publication = await scheduleFacebookPost(providerContent, targetUrl.trim(), activeProfile.id, scheduledIso);
+        else if (provider === 'youtube') publication = await scheduleYouTubePost(providerContent, mediaUrl.trim(), activeProfile.id, scheduledIso);
+        else if (provider === 'threads') publication = await scheduleThreadsPost(providerContent, targetUrl.trim(), activeProfile.id, scheduledIso);
+        else publication = await scheduleXPost(providerContent, targetUrl.trim(), activeProfile.id, scheduledIso);
+        setPublications(previous => [publication, ...previous].slice(0, 50));
+        results.push({ provider, status: 'scheduled', message: `Scheduled for ${new Date(scheduledIso).toLocaleString()}.` });
+      } catch (reason) { results.push({ provider, status: 'failed', message: reason instanceof Error ? reason.message : 'Provider rejected the schedule.' }); }
+    };
+    await Promise.all([
+      linkedinConnection ? schedule('linkedin') : Promise.resolve(results.push({ provider: 'linkedin', status: 'skipped', message: 'Connect LinkedIn to schedule there.' })),
+      tiktokConnection ? schedule('tiktok') : Promise.resolve(results.push({ provider: 'tiktok', status: 'skipped', message: 'Connect TikTok to schedule there.' })),
+      instagramConnection ? schedule('instagram') : Promise.resolve(results.push({ provider: 'instagram', status: 'skipped', message: 'Connect Instagram to schedule there.' })),
+      facebookConnection ? schedule('facebook') : Promise.resolve(results.push({ provider: 'facebook', status: 'skipped', message: 'Connect a Facebook Page to schedule there.' })),
+      youtubeConnection ? schedule('youtube') : Promise.resolve(results.push({ provider: 'youtube', status: 'skipped', message: 'Connect YouTube to schedule there.' })),
+      threadsConnection ? schedule('threads') : Promise.resolve(results.push({ provider: 'threads', status: 'skipped', message: 'Connect Threads to schedule there.' })),
+      xConnection ? schedule('x') : Promise.resolve(results.push({ provider: 'x', status: 'skipped', message: 'Connect X to schedule there.' }))
+    ]);
+    setBroadcastResults(results);
+    if (results.some(result => result.status === 'failed')) setError('Some channels could not be scheduled. Review the delivery results and retry only those channels.');
+    setScheduling(false);
+  };
+
   const schedulePost = async () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling.'); return; }
     if (!linkedinConnection) { startLinkedInOAuth(); return; }
@@ -394,6 +434,7 @@ export const SocialShareHub: React.FC = () => {
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div><p className="text-xs font-semibold text-ink">YouTube publishing</p><p className="mt-1 text-[11px] text-muted">{youtubeConnection ? `Connected as ${youtubeConnection.account_name || 'your YouTube channel'}. Videos are uploaded and confirmed by YouTube.` : 'Connect YouTube to upload a public video URL directly to your channel.'}</p></div>{youtubeConnection ? <div className="flex items-center gap-2"><span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span><button type="button" disabled={scheduling || busyProvider !== null || youtubePublishing} onClick={() => void scheduleYouTube()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">Schedule</button></div> : <button type="button" onClick={() => startYouTubeOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect YouTube</button>}</section>
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div><p className="text-xs font-semibold text-ink">Threads publishing</p><p className="mt-1 text-[11px] text-muted">{threadsConnection ? `Connected as ${threadsConnection.account_name || 'your Threads account'}. Posts are uploaded and confirmed by Threads.` : 'Connect Threads to publish directly from the shared composer.'}</p></div>{threadsConnection ? <div className="flex items-center gap-2"><span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span><button type="button" disabled={scheduling || busyProvider !== null} onClick={() => void scheduleThreads()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">Schedule</button></div> : <button type="button" onClick={() => startThreadsOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect Threads</button>}</section>
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><details><summary className="cursor-pointer text-sm font-semibold text-ink">Customize captions by platform <span className="font-normal text-muted">(optional)</span></summary><div className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">{(['instagram', 'tiktok', 'youtube', 'threads', 'x', 'linkedin'] as const).map(provider => <label key={provider} className="text-[11px] font-semibold capitalize text-body">{provider} <span className="font-normal text-muted">{provider === 'x' ? '280' : provider === 'threads' ? '500' : provider === 'youtube' ? '5000' : provider === 'linkedin' ? '3000' : '2200'} max</span><textarea value={captionOverrides[provider] || ''} onChange={event => setCaptionOverrides(previous => ({ ...previous, [provider]: event.target.value }))} placeholder={content} rows={3} className="mt-1 w-full resize-y rounded-lg border border-line bg-canvas px-2.5 py-2 text-xs font-normal text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" /></label>)}</div><p className="mt-3 text-[11px] text-muted">Empty fields reuse the main message. Captions are validated per network before publishing.</p></details></section>
+    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-ink">Schedule this campaign</p><p className="mt-1 text-[11px] text-muted">Create one schedule across every connected channel using each platform’s caption.</p></div><div className="flex flex-wrap items-center gap-2"><label className="text-[11px] font-semibold text-body">Publish at<input aria-label="Campaign publish time" type="datetime-local" value={scheduledAt} min={defaultScheduleTime()} onChange={event => setScheduledAt(event.target.value)} className="ml-2 min-h-10 rounded-xl border border-line bg-canvas px-2 text-xs font-normal text-ink" /></label><button type="button" disabled={scheduling || busyProvider !== null} onClick={() => void scheduleToConnected()} className="min-h-10 rounded-xl bg-accent px-3 text-xs font-bold text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60">{scheduling ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Schedule to connected'}</button></div></section>
     {publicationPanel}
     <section className="rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-ink">LinkedIn publishing</p><p className="mt-1 text-[11px] text-muted">{linkedinConnection ? `Connected as ${linkedinConnection.account_name || 'your LinkedIn account'}. Posts are confirmed by LinkedIn before they are marked complete.` : 'Connect LinkedIn to publish directly. Other networks continue through their native composer.'}</p></div>{linkedinConnection ? <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span> : <button type="button" onClick={() => startLinkedInOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect LinkedIn</button>}</div>{linkedinConnection && <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-end"><label className="min-w-0 flex-1 text-[11px] font-semibold text-body">Schedule a LinkedIn post<input type="datetime-local" value={scheduledAt} min={defaultScheduleTime()} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-10 w-full rounded-xl border border-line bg-canvas px-3 text-xs font-normal text-ink" /></label><button type="button" disabled={scheduling || busyProvider !== null || linkedinPublishing} onClick={() => void schedulePost()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">{scheduling ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Schedule post'}</button></div>}</section>
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
