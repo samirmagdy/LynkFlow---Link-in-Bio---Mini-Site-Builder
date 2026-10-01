@@ -2846,6 +2846,94 @@ async function listSocialConnections(request: Request, env: Env): Promise<Respon
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
+type FollowerConnection = LinkedInConnectionRow & { provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x'; account_name?: string | null };
+
+async function fetchFollowerCount(connection: FollowerConnection, env: Env): Promise<number> {
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const token = await decryptSocialToken(connection.access_token_ciphertext, env);
+  let response: Response;
+  let body: unknown;
+  if (connection.provider === 'x') {
+    response = await fetch(`https://api.x.com/2/users/${encodeURIComponent(connection.provider_account_id)}?user.fields=public_metrics`, { headers: { authorization: `Bearer ${token}` } });
+    body = await response.json().catch(() => null);
+    if (!response.ok || response.status === 401) throw new Error(response.status === 401 ? 'CONNECTION_EXPIRED' : 'PROVIDER_ERROR');
+    const count = Number((body as { data?: { public_metrics?: { followers_count?: number } } })?.data?.public_metrics?.followers_count);
+    if (!Number.isFinite(count) || count < 0) throw new Error('METRIC_UNAVAILABLE');
+    return Math.floor(count);
+  }
+  if (connection.provider === 'instagram' || connection.provider === 'facebook') {
+    response = await fetch(`${metaGraphBase(env)}/${encodeURIComponent(connection.provider_account_id)}?fields=followers_count,fan_count&access_token=${encodeURIComponent(token)}`);
+    body = await response.json().catch(() => null);
+    if (!response.ok || response.status === 401 || (body as { error?: { code?: number } })?.error?.code === 190) throw new Error(response.status === 401 || (body as { error?: { code?: number } })?.error?.code === 190 ? 'CONNECTION_EXPIRED' : 'PROVIDER_ERROR');
+    const metrics = body as { followers_count?: number; fan_count?: number };
+    const count = Number(connection.provider === 'instagram' ? metrics.followers_count : metrics.fan_count ?? metrics.followers_count);
+    if (!Number.isFinite(count) || count < 0) throw new Error('METRIC_UNAVAILABLE');
+    return Math.floor(count);
+  }
+  if (connection.provider === 'threads') {
+    response = await fetch(`https://graph.threads.net/v1.0/${encodeURIComponent(connection.provider_account_id)}?fields=followers_count&access_token=${encodeURIComponent(token)}`);
+    body = await response.json().catch(() => null);
+    if (!response.ok || response.status === 401) throw new Error(response.status === 401 ? 'CONNECTION_EXPIRED' : 'PROVIDER_ERROR');
+    const count = Number((body as { followers_count?: number }).followers_count);
+    if (!Number.isFinite(count) || count < 0) throw new Error('METRIC_UNAVAILABLE');
+    return Math.floor(count);
+  }
+  if (connection.provider === 'youtube') {
+    response = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${encodeURIComponent(connection.provider_account_id)}`, { headers: { authorization: `Bearer ${token}` } });
+    body = await response.json().catch(() => null);
+    if (!response.ok || response.status === 401) throw new Error(response.status === 401 ? 'CONNECTION_EXPIRED' : 'PROVIDER_ERROR');
+    const count = Number((body as { items?: Array<{ statistics?: { subscriberCount?: string } }> }).items?.[0]?.statistics?.subscriberCount);
+    if (!Number.isFinite(count) || count < 0) throw new Error('METRIC_UNAVAILABLE');
+    return Math.floor(count);
+  }
+  if (connection.provider === 'tiktok') {
+    response = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=follower_count', { headers: { authorization: `Bearer ${token}` } });
+    body = await response.json().catch(() => null);
+    if (!response.ok || response.status === 401) throw new Error(response.status === 401 ? 'CONNECTION_EXPIRED' : 'PROVIDER_ERROR');
+    const count = Number((body as { data?: { user?: { follower_count?: number } } }).data?.user?.follower_count);
+    if (!Number.isFinite(count) || count < 0) throw new Error('METRIC_UNAVAILABLE');
+    return Math.floor(count);
+  }
+  throw new Error('METRIC_UNAVAILABLE');
+}
+
+async function syncSocialFollowerCount(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot sync follower totals.', 403);
+  const profileId = new URL(request.url).searchParams.get('profileId')?.trim() || '';
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,data`, env);
+  const profiles = await profileResponse.json() as Array<{ id: string; data: Record<string, unknown> }>;
+  const profile = profiles[0];
+  if (!profile) return apiError('NOT_FOUND', 'Profile not found.', 404);
+  const connectionsResponse = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.active&select=id,provider,provider_account_id,account_name,access_token_ciphertext,refresh_token_ciphertext,token_expires_at&order=updated_at.desc`, env);
+  const connections = await connectionsResponse.json() as FollowerConnection[];
+  const counts: Array<{ provider: string; accountName: string | null; count: number; status: 'synced' }> = [];
+  const failures: Array<{ provider: string; accountName: string | null; status: 'unsupported' | 'failed' | 'expired'; message: string }> = [];
+  for (const connection of connections) {
+    try {
+      counts.push({ provider: connection.provider, accountName: connection.account_name || null, count: await fetchFollowerCount(connection, env), status: 'synced' });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'METRIC_UNAVAILABLE';
+      const status = reason === 'CONNECTION_EXPIRED' ? 'expired' : connection.provider === 'linkedin' ? 'unsupported' : 'failed';
+      failures.push({ provider: connection.provider, accountName: connection.account_name || null, status, message: status === 'expired' ? 'Reconnect this account.' : status === 'unsupported' ? 'Follower metrics are not available through the connected API scope.' : 'The provider did not return a follower total.' });
+      if (status === 'expired') await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+    }
+  }
+  if (!counts.length) return json({ data: { profileId, total: null, counts, failures, complete: false }, requestId: crypto.randomUUID() }, 200);
+  const complete = failures.length === 0;
+  const syncedAt = new Date().toISOString();
+  const total = counts.reduce((sum, item) => sum + item.count, 0);
+  const nextData = { ...profile.data, ...(complete ? { followerCount: total } : {}), followerCountSync: { syncedAt, total, complete, counts, failures } };
+  if (complete) {
+    const saveResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: syncedAt }) });
+    if (!saveResponse.ok) return apiError('PERSISTENCE_ERROR', 'Follower totals were fetched but could not be saved. Please retry.', 503);
+    await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.followers.synced', target: profileId, occurred_at: syncedAt, details: `Synced ${total} followers from ${counts.length} connected social accounts.` }) });
+  }
+  return json({ data: { profileId, total, counts, failures, complete, syncedAt }, requestId: crypto.randomUUID() });
+}
+
 async function disconnectSocialConnection(request: Request, env: Env, connectionId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -4553,6 +4641,10 @@ export default {
     if (url.pathname === '/api/social/connections') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialConnections(request, env); } catch (error) { return internalApiError('List social connections failed', error, 'Unable to load social connections.'); }
+    }
+    if (url.pathname === '/api/social/followers/sync') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await syncSocialFollowerCount(request, env); } catch (error) { return internalApiError('Sync social followers failed', error, 'Unable to sync follower totals.'); }
     }
     if (url.pathname.startsWith('/api/social/connections/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

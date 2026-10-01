@@ -42,6 +42,15 @@ export interface SocialPublication {
   updated_at: string;
 }
 
+export interface SocialFollowerSync {
+  profileId: string;
+  total: number | null;
+  counts: Array<{ provider: string; accountName: string | null; count: number; status: 'synced' }>;
+  failures: Array<{ provider: string; accountName: string | null; status: 'unsupported' | 'failed' | 'expired'; message: string }>;
+  complete: boolean;
+  syncedAt?: string;
+}
+
 async function authorizedRequest(path: string, init?: RequestInit): Promise<Response> {
   if (!supabase) throw new Error('Sharing requires a signed-in workspace.');
   const { data: { session } } = await supabase.auth.getSession();
@@ -76,6 +85,13 @@ export async function loadSocialConnections(): Promise<SocialConnection[]> {
   const body = await response.json() as { data?: SocialConnection[]; error?: string | { message?: string } };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to load social connections.');
   return Array.isArray(body.data) ? body.data : [];
+}
+
+export async function syncSocialFollowers(profileId: string): Promise<SocialFollowerSync> {
+  const response = await authorizedRequest(`/api/social/followers/sync?profileId=${encodeURIComponent(profileId)}`, { method: 'POST' });
+  const body = await response.json() as { data?: SocialFollowerSync; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to sync follower totals.');
+  return body.data;
 }
 
 export function startLinkedInOAuth(): void {
