@@ -181,6 +181,8 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
         if (!Array.isArray(payload.lessons) || payload.lessons.length === 0) errors.push('Course block requires at least one lesson.');
         else payload.lessons.forEach((lesson, index) => {
           if (!isPayloadRecord(lesson) || !getString(lesson, 'title').trim()) errors.push(`Course lesson #${index + 1} requires a title.`);
+          const contentUrl = isPayloadRecord(lesson) ? getString(lesson, 'contentUrl') : '';
+          if (contentUrl && !validateUrl(contentUrl).isValid) errors.push(`Course lesson #${index + 1} has an invalid lesson link.`);
         });
       }
       if (checkoutEnabled) {
