@@ -64,14 +64,16 @@ export const OnboardingModal: React.FC = () => {
   const [selectedThemeId, setSelectedThemeId] = useState(THEME_PRESETS[0].id);
   const [selectedPersonaId, setSelectedPersonaId] = useState(CATEGORIES[0].personaTemplateId);
   const [handleTouched, setHandleTouched] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOnboardingOpen) return null;
 
   const existingHandles = profiles.map(p => p.username);
   const handleCheck = validateHandle(handle, existingHandles);
 
-  const handleNextStep = (e: React.FormEvent) => {
+  const handleNextStep = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (step === 1) {
       setStep(2);
     } else if (step === 2) {
@@ -88,7 +90,12 @@ export const OnboardingModal: React.FC = () => {
         bio: bio.trim() || `Official links, portfolio and releases for ${displayName.trim() || handleCheck.normalized}.`,
         themeId: selectedThemeId
       };
-      completeOnboarding(blueprint);
+      setIsSubmitting(true);
+      try {
+        await completeOnboarding(blueprint);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -307,10 +314,11 @@ export const OnboardingModal: React.FC = () => {
               <button
                 type="submit"
                 onClick={(e) => triggerAnimeRipple(e, e.currentTarget, 'rgba(255, 255, 255, 0.25)')}
-                className="py-2.5 px-6 rounded-xl bg-inverse hover:bg-inverse-hover text-inverse-text text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg"
+                disabled={isSubmitting}
+                className="py-2.5 px-6 rounded-xl bg-inverse hover:bg-inverse-hover text-inverse-text text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg disabled:cursor-wait disabled:opacity-70"
               >
-                <span>Launch Creator Studio</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>{isSubmitting ? 'Preparing your studio…' : 'Launch Creator Studio'}</span>
+                {isSubmitting ? <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowRight className="w-3.5 h-3.5" />}
               </button>
             </div>
           </form>
