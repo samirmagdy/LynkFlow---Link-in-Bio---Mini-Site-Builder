@@ -64,7 +64,7 @@ export interface AnalyticsAggregateSummary {
   devices: DeviceMetric[];
   countries: CountryMetric[];
   consentOptOutRate: number; // percentage of visitors who opted out
-  ingestionLagMs: number;
+  ingestionLagMs: number | null;
 }
 
 const STORAGE_KEYS = {
@@ -350,6 +350,14 @@ class AnalyticsEngineService {
       .sort((a, b) => b.views - a.views)
       .slice(0, 8);
 
+    const newestEventTimestamp = inRangeEvents.reduce((latest, event) => {
+      const timestamp = new Date(event.timestamp).getTime();
+      return Number.isFinite(timestamp) && timestamp > latest ? timestamp : latest;
+    }, 0);
+    const ingestionLagMs = newestEventTimestamp
+      ? Math.max(0, Date.now() - newestEventTimestamp)
+      : null;
+
     return {
       profileId,
       dateRange: range,
@@ -367,7 +375,7 @@ class AnalyticsEngineService {
       devices,
       countries,
       consentOptOutRate,
-      ingestionLagMs: 85 // Near real-time simulated client telemetry
+      ingestionLagMs
     };
   }
 

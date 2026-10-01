@@ -280,7 +280,7 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-success font-semibold">Live Telemetry</span>
             <span className="text-subtle">·</span>
-            <span>{aggregateSummary.ingestionLagMs}ms latency</span>
+            <span>{aggregateSummary.ingestionLagMs === null ? 'No events yet' : `${aggregateSummary.ingestionLagMs}ms since latest event`}</span>
           </div>
 
           {/* Quick Profile Selector */}
