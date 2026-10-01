@@ -171,6 +171,7 @@ export interface LinkBlockPayload {
   url: string;
   subtitle?: string;
   icon?: string;
+  thumbnailUrl?: string;
   highlightBadge?: string;
   animation?: 'none' | 'pulse' | 'shimmer' | 'bounce' | AnimeBlockEffect;
   openInNewTab?: boolean;

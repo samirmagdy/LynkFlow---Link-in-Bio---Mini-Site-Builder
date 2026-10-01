@@ -1370,7 +1370,7 @@ function validateDraftData(data: Record<string, unknown>): string | null {
     for (const block of blocks) {
       const payload = block.payload && typeof block.payload === 'object' ? block.payload as Record<string, unknown> : {};
       const directUrls: Array<[unknown, string]> = [
-        [payload.url, 'Block URL'], [payload.href, 'Block URL'], [payload.image, 'Block image'],
+        [payload.url, 'Block URL'], [payload.href, 'Block URL'], [payload.image, 'Block image'], [payload.thumbnailUrl, 'Block thumbnail'],
         [payload.fileUrl, 'File URL'], [payload.poster, 'Media poster'], [payload.captionsUrl, 'Media captions']
       ];
       for (const [value, label] of directUrls) {

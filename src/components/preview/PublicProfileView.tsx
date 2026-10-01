@@ -720,6 +720,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   const requestedLinkVariant = block.style?.variant === 'image' ? 'image-card' : block.style?.variant === 'featured' ? 'solid' : block.style?.variant;
                   const linkVariant = resolveLinkVariant(requestedLinkVariant, variants.link || defaultVariant);
                   const minH = linkDefaults?.height ? `${linkDefaults.height}px` : '56px';
+                  const thumbnailHref = safePublicHref(payload.thumbnailUrl);
 
                   return (
                     <a
@@ -764,6 +765,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-ink/5 to-transparent -translate-x-full animate-[shimmer_2.5s_infinite]" />
                       )}
 
+                      {thumbnailHref && <img src={thumbnailHref} alt="" loading="lazy" className="mr-3 h-11 w-11 shrink-0 rounded-lg object-cover" aria-hidden="true" />}
                       <div className="min-w-0 flex-1 pr-3">
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="font-semibold text-sm tracking-tight truncate group-hover:underline">

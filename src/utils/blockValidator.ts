@@ -128,6 +128,8 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
         const check = validateUrl(url);
         if (!check.isValid) errors.push(`Link URL error: ${check.error}`);
       }
+      const thumbnailUrl = getString(payload, 'thumbnailUrl');
+      if (thumbnailUrl && !validateUrl(thumbnailUrl).isValid) errors.push('Link thumbnail URL is invalid.');
       break;
     }
 
