@@ -133,7 +133,7 @@ export const SocialShareHub: React.FC = () => {
     }
     if (provider === 'tiktok' && !tiktokConnection) { startTikTokOAuth(); return; }
     if (provider === 'tiktok' && tiktokConnection) {
-      if (!mediaUrl.trim()) { setError('Add a public HTTPS video URL before publishing to TikTok.'); return; }
+      if (!mediaUrl.trim()) { setError('Upload a video or add a public HTTPS URL before publishing to TikTok.'); return; }
       setTiktokPublishing(true); setError(null);
       try {
         const event = await recordSocialShare(activeProfile.id, provider, content.trim(), mediaUrl.trim());
@@ -146,7 +146,7 @@ export const SocialShareHub: React.FC = () => {
     }
     if (provider === 'instagram' && !instagramConnection) { startInstagramOAuth(); return; }
     if (provider === 'instagram' && instagramConnection) {
-      if (!mediaUrl.trim()) { setError('Add a public HTTPS image or video URL before publishing to Instagram.'); return; }
+      if (!mediaUrl.trim()) { setError('Upload an image or video, or add a public HTTPS URL before publishing to Instagram.'); return; }
       setInstagramPublishing(true); setError(null);
       try {
         const event = await recordSocialShare(activeProfile.id, provider, content.trim(), mediaUrl.trim());
@@ -183,7 +183,7 @@ export const SocialShareHub: React.FC = () => {
     }
     if (provider === 'youtube' && !youtubeConnection) { startYouTubeOAuth(); return; }
     if (provider === 'youtube' && youtubeConnection) {
-      if (!mediaUrl.trim()) { setError('Add a public HTTPS video URL before publishing to YouTube.'); return; }
+      if (!mediaUrl.trim()) { setError('Upload a video or add a public HTTPS URL before publishing to YouTube.'); return; }
       setYouTubePublishing(true); setError(null);
       try {
         const event = await recordSocialShare(activeProfile.id, provider, content.trim(), mediaUrl.trim());
@@ -246,7 +246,7 @@ export const SocialShareHub: React.FC = () => {
       return;
     }
     if ((tiktokConnection || instagramConnection || youtubeConnection) && !mediaUrl.trim()) {
-      setError('Add a public HTTPS media URL to publish to TikTok, Instagram, or YouTube.');
+      setError('Upload media or add a public HTTPS media URL to publish to TikTok, Instagram, or YouTube.');
       return;
     }
     const captionLimits: Record<'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x', number> = { linkedin: 3000, tiktok: 2200, instagram: 2200, facebook: 63206, youtube: 5000, threads: 500, x: 280 };
@@ -321,7 +321,7 @@ export const SocialShareHub: React.FC = () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling.'); return; }
     const connected = [linkedinConnection, tiktokConnection, instagramConnection, facebookConnection, youtubeConnection, threadsConnection, xConnection].filter(Boolean);
     if (connected.length === 0) { setError('Connect at least one publishing account before scheduling.'); return; }
-    if ((tiktokConnection || instagramConnection || youtubeConnection) && !mediaUrl.trim()) { setError('Add a public HTTPS media URL to schedule TikTok, Instagram, or YouTube.'); return; }
+    if ((tiktokConnection || instagramConnection || youtubeConnection) && !mediaUrl.trim()) { setError('Upload media or add a public HTTPS media URL to schedule TikTok, Instagram, or YouTube.'); return; }
     const captionLimits: Record<'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x', number> = { linkedin: 3000, tiktok: 2200, instagram: 2200, facebook: 63206, youtube: 5000, threads: 500, x: 280 };
     const invalidCaption = (Object.keys(captionLimits) as Array<keyof typeof captionLimits>).find(provider => captionFor(provider).length > captionLimits[provider]);
     if (invalidCaption) { setError(`${invalidCaption} caption is too long for that platform (${captionLimits[invalidCaption]} characters maximum).`); return; }
@@ -369,7 +369,7 @@ export const SocialShareHub: React.FC = () => {
   };
 
   const scheduleTikTok = async () => {
-    if (!valid || !mediaUrl.trim()) { setError('Add a message, page URL, and public HTTPS video URL before scheduling TikTok.'); return; }
+    if (!valid || !mediaUrl.trim()) { setError('Add a message and page URL, then upload a video or provide a public HTTPS URL before scheduling TikTok.'); return; }
     if (!tiktokConnection) { startTikTokOAuth(); return; }
     setScheduling(true); setError(null);
     try {
@@ -380,7 +380,7 @@ export const SocialShareHub: React.FC = () => {
   };
 
   const scheduleInstagram = async () => {
-    if (!valid || !mediaUrl.trim()) { setError('Add a message, page URL, and public HTTPS media URL before scheduling Instagram.'); return; }
+    if (!valid || !mediaUrl.trim()) { setError('Add a message and page URL, then upload media or provide a public HTTPS URL before scheduling Instagram.'); return; }
     if (!instagramConnection) { startInstagramOAuth(); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleInstagramPost(content.trim(), mediaUrl.trim(), instagramMediaType, activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
@@ -416,7 +416,7 @@ export const SocialShareHub: React.FC = () => {
   };
 
   const scheduleYouTube = async () => {
-    if (!valid || !mediaUrl.trim()) { setError('Add a message, page URL, and public HTTPS video URL before scheduling YouTube.'); return; }
+    if (!valid || !mediaUrl.trim()) { setError('Add a message and page URL, then upload a video or provide a public HTTPS URL before scheduling YouTube.'); return; }
     if (!youtubeConnection) { startYouTubeOAuth(); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleYouTubePost(content.trim(), mediaUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
