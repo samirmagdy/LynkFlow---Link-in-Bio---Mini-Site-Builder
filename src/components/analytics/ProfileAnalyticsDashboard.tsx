@@ -177,9 +177,6 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
   // Real traffic channels for PieChart (AN-003)
   const referralSources = useMemo(() => {
     const palette = ['#e1306c', '#ef4444', '#38bdf8', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6'];
-    if (!aggregateSummary.referrers.length) {
-      return [{ name: 'Direct Traffic', value: 100, color: '#6366f1' }];
-    }
     return aggregateSummary.referrers.map((ref, idx) => ({
       name: ref.source,
       value: ref.views,
@@ -698,34 +695,43 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
                 Traffic Acquisition Channels
               </h4>
             </div>
-            <span className="text-[11px] font-mono text-muted">Simulated Shares</span>
+            <span className="text-[11px] font-mono text-muted">
+              {referralSources.length ? `${referralSources.reduce((total, source) => total + source.value, 0).toLocaleString()} views` : 'Awaiting traffic'}
+            </span>
           </div>
 
           <div className="h-52 w-full flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Tooltip content={<CustomChartTooltip unit="%" />} />
-                <Pie
-                  data={referralSources}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={75}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {referralSources.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Legend
-                  layout="horizontal"
-                  verticalAlign="bottom"
-                  align="center"
-                  wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {referralSources.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Tooltip content={<CustomChartTooltip unit="%" />} />
+                  <Pie
+                    data={referralSources}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {referralSources.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Legend
+                    layout="horizontal"
+                    verticalAlign="bottom"
+                    align="center"
+                    wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center text-sm text-muted">
+                <Compass className="mx-auto mb-2 h-6 w-6 opacity-50" />
+                Share your profile to see where visitors come from.
+              </div>
+            )}
           </div>
         </div>
 
