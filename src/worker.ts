@@ -754,6 +754,48 @@ async function submitPublicForm(request: Request, env: Env, context: { waitUntil
   return json({ success: true, submissionId });
 }
 
+async function ingestPublicAnalytics(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return apiError('SERVICE_UNAVAILABLE', 'Analytics service is not configured.', 503);
+  let input: { profileId?: string; blockId?: string; type?: string; referrer?: string; device?: string; campaign?: string; consentGranted?: boolean };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const type = String(input.type || '').trim();
+  if (!profileId || !['page_view', 'block_click', 'qr_scan', 'form_submit'].includes(type)) return apiError('VALIDATION_ERROR', 'A valid profileId and event type are required.', 422);
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const rateKey = await hashValue(`analytics:${ip}:${profileId}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL);
+  const rate = await consumePublicRateLimit(env, `analytics:${rateKey}`, 60);
+  if (!rate.allowed) return rateLimitedResponse('Too many analytics events. Please retry shortly.', rate.retryAfterSeconds);
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&select=id,workspace_id,data`, env);
+  const profiles = await profileResponse.json() as Array<{ id: string; workspace_id: string; data?: Record<string, unknown> }>;
+  const profile = profiles[0];
+  const snapshot = profile?.data?.publishedSnapshot as Record<string, unknown> | undefined;
+  if (!profile || !snapshot) return apiError('NOT_FOUND', 'Published profile not found.', 404);
+  const publishedTabs = Array.isArray(snapshot.tabs) ? snapshot.tabs as Array<Record<string, unknown>> : [];
+  if (type !== 'page_view') {
+    const blockId = String(input.blockId || '').trim();
+    const blockExists = publishedTabs.some(tab => Array.isArray(tab.blocks) && (tab.blocks as Array<Record<string, unknown>>).some(block => block.id === blockId));
+    if (!blockId || !blockExists) return apiError('NOT_FOUND', 'Published block not found.', 404);
+  }
+  const userAgent = request.headers.get('user-agent') || '';
+  const isBot = /bot|googlebot|crawler|spider|robot|lighthouse|headless/i.test(userAgent);
+  let device: 'mobile' | 'desktop' | 'tablet' = 'desktop';
+  if (input.device === 'mobile' || input.device === 'tablet') device = input.device;
+  else if (/ipad|tablet/i.test(userAgent)) device = 'tablet';
+  else if (/mobile|iphone|android/i.test(userAgent)) device = 'mobile';
+  let referrer = 'Direct';
+  try { referrer = new URL(String(input.referrer || request.headers.get('referer') || '')).hostname || 'Direct'; } catch { referrer = String(input.referrer || 'Direct').split('?')[0].split('#')[0].slice(0, 120) || 'Direct'; }
+  const occurredAt = new Date().toISOString();
+  const visitorHash = await hashValue(`${occurredAt.slice(0, 10)}:${ip}:${userAgent.slice(0, 120)}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL);
+  await supabaseRequest('analytics_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({
+    id: `ana_${crypto.randomUUID()}`, workspace_id: profile.workspace_id, profile_id: profileId,
+    event_type: type, block_id: input.blockId || null, block_title: null, tab_id: null,
+    snapshot_version: Number(snapshot.publishedVersion || 0) || null, visitor_hash: `vh_${visitorHash}`,
+    occurred_at: occurredAt, referrer, country: 'Unknown', device, campaign: String(input.campaign || '').slice(0, 64) || null,
+    is_bot: isBot, consent_granted: input.consentGranted !== false
+  }) });
+  return json({ data: { accepted: true }, requestId: crypto.randomUUID() });
+}
+
 async function submitPublicAbuseReport(request: Request, env: Env): Promise<Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: 'Report service is not configured.' }, 503);
   let input: { profileUsername?: string; reason?: string; description?: string; reporterEmail?: string };
@@ -2674,6 +2716,10 @@ export default {
     if (url.pathname === '/api/public/forms') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await submitPublicForm(request, env, context); } catch (error) { return internalApiError('Public form submission failed', error, 'Form submission failed.'); }
+    }
+    if (url.pathname === '/api/public/analytics') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await ingestPublicAnalytics(request, env); } catch (error) { return internalApiError('Public analytics ingestion failed', error, 'Analytics event could not be recorded.'); }
     }
     if (url.pathname === '/api/public/newsletter') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

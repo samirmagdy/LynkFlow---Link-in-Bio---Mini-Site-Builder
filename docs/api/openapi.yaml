@@ -199,6 +199,31 @@ paths:
         '200': {description: Subscriber unsubscribed}
         '400': {description: Invalid unsubscribe link}
         '503': {description: Unsubscribe temporarily unavailable}
+  /api/public/analytics:
+    post:
+      operationId: ingest-public-analytics
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profileId, type]
+              properties:
+                profileId: {type: string}
+                blockId: {type: string}
+                type: {type: string, enum: [page_view, block_click, qr_scan, form_submit]}
+                referrer: {type: string, maxLength: 320}
+                device: {type: string, enum: [mobile, desktop, tablet]}
+                campaign: {type: string, maxLength: 64}
+                consentGranted: {type: boolean}
+      responses:
+        '200': {description: Event accepted}
+        '404': {description: Published profile or block not found}
+        '422': {description: Invalid event}
+        '429': {description: Rate limited}
+        '503': {description: Analytics service unavailable}
   /api/automations:
     get:
       operationId: list-email-automations

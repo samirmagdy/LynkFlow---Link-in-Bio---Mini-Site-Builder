@@ -1420,6 +1420,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     const newEvent = analyticsEngineService.recordVisitorEvent(eventData);
     setAnalytics(prev => [newEvent, ...prev.slice(0, 500)]);
 
+    // Persist anonymous public traffic at the edge so creator analytics do not
+    // depend on the visitor's browser storage. The public route re-validates
+    // profile/block ownership, sanitizes the referrer, and applies rate limits.
+    if (typeof window !== 'undefined' && user.id === 'usr-guest') {
+      void fetch('/api/public/analytics', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          profileId: newEvent.profileId,
+          blockId: newEvent.blockId,
+          type: newEvent.type,
+          referrer: newEvent.referrer,
+          device: newEvent.device,
+          campaign: newEvent.campaign,
+          consentGranted: newEvent.consentGranted
+        })
+      }).catch(() => undefined);
+    }
+
     // Also increment block click counter if applicable
     if (eventData.type === 'block_click' && eventData.blockId) {
       setProfiles(prev => prev.map(p => {
