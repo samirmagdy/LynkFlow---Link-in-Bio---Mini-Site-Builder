@@ -571,6 +571,109 @@ async function courseProgressResponse(request: Request, env: Env): Promise<Respo
   return json({ data: { completedLessonIds: rows.map(row => row.lesson_id).filter((id): id is string => typeof id === 'string' && lessonIds.has(id)) }, requestId: crypto.randomUUID() });
 }
 
+type CustomerLibraryOrder = {
+  id: string;
+  profile_id: string;
+  block_id: string;
+  commerce_type?: string;
+  membership_status?: string | null;
+  customer_name?: string | null;
+  delivery_url?: string | null;
+  created_at: string;
+  paid_at?: string | null;
+};
+
+function customerLibraryMessagePage(message: string, status = 200): Response {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Check your email · LynkFlow</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:560px;margin:0 auto;padding:64px 20px}.card{padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(30px,7vw,48px);line-height:1.05;letter-spacing:-.04em}p{color:#5b5b6b}.back{display:inline-flex;margin-top:12px;color:#5142e8;font-weight:700;text-decoration:none}</style></head><body><main class="shell"><section class="card"><div style="color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase">LynkFlow purchase library</div><h1>Check your email.</h1><p>${escapeHtml(message)}</p><a class="back" href="/customer-library">Request another link</a></section></main></body></html>`;
+  return new Response(html, { status, headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
+}
+
+async function requestCustomerLibrary(request: Request, env: Env): Promise<Response> {
+  let email = '';
+  const contentType = request.headers.get('content-type') || '';
+  try {
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      const form = await request.formData();
+      email = String(form.get('email') || '').trim().toLowerCase();
+    } else {
+      const input = await request.json() as { email?: string };
+      email = String(input.email || '').trim().toLowerCase();
+    }
+  } catch {
+    return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage('Enter a valid email address and try again.', 400) : apiError('VALIDATION_ERROR', 'Request body must be valid JSON or form data.', 400);
+  }
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!validEmail) return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage('Enter a valid email address and try again.', 422) : apiError('VALIDATION_ERROR', 'A valid email address is required.', 422);
+
+  const ordersResponse = await supabaseRequest(`product_orders?customer_email=ilike.${encodeURIComponent(email)}&payment_status=eq.paid&select=id&limit=1`, env);
+  const orders = await ordersResponse.json() as Array<{ id: string }>;
+  if (orders.length && env.RESEND_API_KEY) {
+    const cooldownSince = new Date(Date.now() - 60 * 1000).toISOString();
+    const recentSessionResponse = await supabaseRequest(`customer_library_sessions?customer_email=ilike.${encodeURIComponent(email)}&created_at=gt.${encodeURIComponent(cooldownSince)}&select=id&limit=1`, env);
+    const recentSessions = recentSessionResponse.ok ? await recentSessionResponse.json() as Array<{ id: string }> : [];
+    if (recentSessions.length) {
+      const message = 'If a paid purchase exists for that email, a secure access link has been sent. If you do not see it, check your spam folder.';
+      return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage(message) : json({ data: { message }, requestId: crypto.randomUUID() }, 202);
+    }
+    const token = `library_${randomSecret(32)}`;
+    const tokenHash = await hashValue(token, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL || 'lynkflow-customer-library');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const sessionId = `library_${crypto.randomUUID()}`;
+    const sessionResponse = await supabaseRequest('customer_library_sessions', env, {
+      method: 'POST', headers: { prefer: 'return=minimal' },
+      body: JSON.stringify({ id: sessionId, token_hash: tokenHash, customer_email: email, expires_at: expiresAt })
+    });
+    if (!sessionResponse.ok) return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage('Your access link could not be created. Please try again.', 503) : apiError('PERSISTENCE_ERROR', 'Your access link could not be created. Please retry.', 503);
+    const origin = env.APP_URL || new URL(request.url).origin;
+    const sent = await sendResendEmail(env, { to: email, subject: 'Open your LynkFlow purchase library', html: `<p>Hi,</p><p>Your LynkFlow purchase library is ready. This secure link expires in 24 hours:</p><p><a href="${escapeHtml(origin)}/customer-library?token=${encodeURIComponent(token)}">Open my purchase library</a></p><p>If you did not request this, you can ignore this email.</p>` });
+    if (!sent) {
+      await supabaseRequest(`customer_library_sessions?id=eq.${encodeURIComponent(sessionId)}`, env, { method: 'DELETE' });
+      return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage('The email provider is temporarily unavailable. Please try again shortly.', 503) : apiError('EMAIL_DELIVERY_FAILED', 'The access email could not be delivered. Please retry shortly.', 503);
+    }
+  }
+  const message = 'If a paid purchase exists for that email, a secure access link has been sent. If you do not see it, check your spam folder.';
+  return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage(message) : json({ data: { message }, requestId: crypto.randomUUID() }, 202);
+}
+
+async function customerLibraryPage(request: Request, env: Env): Promise<Response> {
+  const token = new URL(request.url).searchParams.get('token')?.trim() || '';
+  if (!token) {
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Your purchase library · LynkFlow</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:560px;margin:0 auto;padding:52px 20px 72px}.card{padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(32px,8vw,54px);line-height:1.02;letter-spacing:-.05em}p{color:#5b5b6b}label{display:block;margin-top:24px;font-weight:700;font-size:14px}input{box-sizing:border-box;width:100%;margin-top:8px;padding:13px;border:1px solid #d7d7e3;border-radius:12px;font:inherit}button{width:100%;margin-top:14px;border:0;border-radius:12px;padding:13px;background:#5142e8;color:#fff;font:inherit;font-weight:750;cursor:pointer}.hint{font-size:12px;margin-top:16px}.footer{margin-top:18px;text-align:center;color:#858596;font-size:12px}.footer a{color:inherit}</style></head><body><main class="shell"><section class="card"><div style="color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase">LynkFlow purchase library</div><h1>Your courses and purchases, in one place.</h1><p>Enter the email you used at checkout. We’ll send you a secure link to your paid products and course progress.</p><form action="/api/public/customer-library/request" method="post"><label for="email">Checkout email<input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label><button type="submit">Email me my library</button></form><p class="hint">No password required. Your access link expires after 24 hours.</p></section><div class="footer"><a href="/">Return to LynkFlow</a></div></main></body></html>`;
+    return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" } });
+  }
+  const tokenHash = await hashValue(token, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL || 'lynkflow-customer-library');
+  const sessionResponse = await supabaseRequest(`customer_library_sessions?token_hash=eq.${encodeURIComponent(tokenHash)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,customer_email,expires_at&limit=1`, env);
+  const sessions = await sessionResponse.json() as Array<{ id: string; customer_email: string; expires_at: string }>;
+  const session = sessions[0];
+  if (!session) return customerLibraryMessagePage('This access link is invalid or expired.', 404);
+  await supabaseRequest(`customer_library_sessions?id=eq.${encodeURIComponent(session.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ last_used_at: new Date().toISOString() }) });
+  const ordersResponse = await supabaseRequest(`product_orders?customer_email=ilike.${encodeURIComponent(session.customer_email)}&payment_status=eq.paid&order=created_at.desc&limit=50&select=id,profile_id,block_id,commerce_type,membership_status,delivery_url,created_at,paid_at`, env);
+  const orders = await ordersResponse.json() as CustomerLibraryOrder[];
+  const profileCache = new Map<string, Promise<Array<{ username?: string; snapshot?: PublicSnapshot }>>>();
+  const items = (await Promise.all(orders.map(async order => {
+    let profilePromise = profileCache.get(order.profile_id);
+    if (!profilePromise) {
+      profilePromise = supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(order.profile_id)}&select=username,snapshot`, env)
+        .then(async profileResponse => profileResponse.ok ? await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }> : []);
+      profileCache.set(order.profile_id, profilePromise);
+    }
+    const profiles = await profilePromise;
+    const snapshot = profiles[0]?.snapshot;
+    const block = (snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []).find(candidate => candidate.id === order.block_id);
+    if (!block) return null;
+    const payload = block.payload || {};
+    const title = String(block.title || (order.commerce_type === 'course' ? 'Course' : 'Purchase'));
+    const description = String(payload.description || '');
+    const accessUrl = safePublicHref(order.delivery_url);
+    const isCourse = order.commerce_type === 'course';
+    const status = order.commerce_type === 'membership' ? String(order.membership_status || 'active') : isCourse ? 'Course access' : 'Paid';
+    return { title, description, username: String(profiles[0]?.username || ''), accessUrl, status, isCourse, createdAt: order.created_at };
+  }))).filter((item): item is { title: string; description: string; username: string; accessUrl: string | null; status: string; isCourse: boolean; createdAt: string } => Boolean(item));
+  const cards = items.length ? items.map(item => `<article class="item"><div><div class="eyebrow">${escapeHtml(item.status)} · ${escapeHtml(new Date(item.createdAt).toLocaleDateString())}</div><h2>${escapeHtml(item.title)}</h2>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}<p class="creator">From @${escapeHtml(item.username)}</p></div>${item.accessUrl ? `<a class="open" href="${escapeHtml(item.accessUrl)}">${item.isCourse ? 'Continue course' : 'Open purchase'} ↗</a>` : '<span class="pending">Access link unavailable</span>'}</article>`).join('') : '<div class="empty"><h2>No paid purchases found</h2><p>If you just completed checkout, wait for your confirmation email and try again.</p></div>';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Your purchase library · LynkFlow</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:0 auto;padding:44px 18px 72px}.header{margin-bottom:26px}.eyebrow{color:#5b4bff;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.header h1{margin:8px 0;font-size:clamp(34px,8vw,58px);line-height:1.02;letter-spacing:-.05em}.header p{color:#5b5b6b}.items{display:grid;gap:14px}.item{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px;border:1px solid #dedee8;border-radius:20px;background:#fff;box-shadow:0 12px 32px #2020400b}.item h2{margin:5px 0 0;font-size:20px}.item p{margin:8px 0 0;color:#666678}.item .creator{font-size:12px}.open{flex:none;align-self:center;border-radius:11px;padding:11px 13px;background:#5142e8;color:#fff;font-weight:750;text-decoration:none}.pending{flex:none;align-self:center;color:#858596;font-size:12px}.empty{padding:34px 20px;border:1px dashed #cfcfe0;border-radius:20px;text-align:center;background:#fff}.empty h2{margin:0;font-size:20px}.empty p{color:#666678}.footer{margin-top:24px;color:#858596;font-size:12px}.footer a{color:inherit}@media(max-width:560px){.shell{padding:28px 14px 56px}.item{display:block}.open,.pending{display:inline-flex;margin-top:16px}}</style></head><body><main class="shell"><header class="header"><div class="eyebrow">LynkFlow purchase library</div><h1>Welcome back.</h1><p>Access your paid products and continue learning from where you stopped.</p></header><section class="items" aria-label="Paid purchases">${cards}</section><footer class="footer"><a href="/customer-library">Request a new access link</a></footer></main></body></html>`;
+  return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'private,no-store', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
+}
+
 async function courseAccessResponse(request: Request, env: Env): Promise<Response> {
   const token = new URL(request.url).searchParams.get('token')?.trim() || '';
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return new Response('Paid access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
@@ -4739,6 +4842,10 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await courseAccessResponse(request, env); } catch (error) { console.error('Course access rendering failed', error); return new Response('Course access is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
     }
+    if (url.pathname === '/customer-library') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await customerLibraryPage(request, env); } catch (error) { console.error('Customer library rendering failed', error); return new Response('Customer library is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
+    }
     if (url.pathname === '/client-approval') {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await clientApprovalPage(request, env); } catch (error) { console.error('Client approval page failed', error); return new Response('Approval page is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
@@ -4746,6 +4853,10 @@ export default {
     if (url.pathname === '/api/public/course-progress') {
       if (!['GET', 'POST'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await courseProgressResponse(request, env); } catch (error) { console.error('Course progress request failed', error); return apiError('PERSISTENCE_ERROR', 'Course progress is temporarily unavailable.', 503); }
+    }
+    if (url.pathname === '/api/public/customer-library/request') {
+      if (request.method !== 'POST') return new Response('Method not allowed.', { status: 405 });
+      try { return await requestCustomerLibrary(request, env); } catch (error) { console.error('Customer library request failed', error); return new Response('Customer library request is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
     }
     const shopMatch = url.pathname.match(/^\/@([a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?)\/shop$/i);
     if (shopMatch) {
