@@ -14,4 +14,6 @@ assert.equal(validateBlockPayload('membership', { price: '9', currency: 'USD', i
 assert.equal(validateBlockPayload('membership', { price: '9', currency: 'USD', interval: 'month', checkoutEnabled: true, deliveryUrl: 'https://example.com/members' }).isValid, true);
 assert.equal(validateBlockPayload('membership', { price: '9', currency: 'USD', interval: 'month', checkoutEnabled: true, deliveryUrl: 'javascript:alert(1)' }).isValid, false);
 assert.equal(validateBlockPayload('membership', { price: '9', currency: 'USD', interval: 'weekly', checkoutEnabled: true }).isValid, false);
+assert.equal(validateBlockPayload('product', { price: '29', currency: 'USD', checkoutEnabled: true, physicalProduct: true }).isValid, true);
+assert.equal(validateBlockPayload('course', { price: '29', currency: 'USD', checkoutEnabled: true, physicalProduct: true, deliveryUrl: 'https://example.com/access', lessons: [{ id: 'l1', title: 'Welcome' }] }).isValid, false);
 console.log('Product checkout contract passed.');

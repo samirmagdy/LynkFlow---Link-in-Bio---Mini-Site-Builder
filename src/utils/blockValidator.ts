@@ -173,6 +173,7 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       const image = getString(payload, 'image');
       const deliveryUrl = getString(payload, 'deliveryUrl');
       const checkoutEnabled = payload.checkoutEnabled === true;
+      if (type === 'course' && payload.physicalProduct === true) errors.push('Course blocks cannot be physical products.');
       if (!checkoutEnabled && !url) errors.push(`${type === 'course' ? 'Course' : 'Product'} block requires a destination URL.`);
       if (url && !validateUrl(url).isValid) errors.push(`${type === 'course' ? 'Course' : 'Product'} destination URL is invalid.`);
       if (image && !validateUrl(image).isValid) errors.push(`${type === 'course' ? 'Course' : 'Product'} image URL is invalid.`);
