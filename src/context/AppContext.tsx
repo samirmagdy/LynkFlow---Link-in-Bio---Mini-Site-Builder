@@ -1148,6 +1148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
       socialLinks: persona?.socialLinks,
       starterBlocks: persona?.blocks
     });
+    if (persona) newProfile.starterSiteId = persona.id;
 
     if (isSupabaseConfigured && user.id !== 'usr-guest') {
       try {

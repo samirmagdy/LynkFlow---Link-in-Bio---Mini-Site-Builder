@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { THEME_PRESETS } from '../../data/mockData';
+import { PERSONA_TEMPLATES } from '../../data/personaTemplates';
 import { validateHandle } from '../../utils/handleValidator';
 import { StarterProfileBlueprint } from '../../types';
 import { 
@@ -14,13 +15,12 @@ import { triggerAnimeRipple } from '../../utils/animeAnimations';
 import { Dialog } from '../common/Dialog';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
-const CATEGORIES = [
-  { id: 'Creator & Artist', personaTemplateId: 'creator-portfolio', label: 'Creator & Visual Artist', desc: 'Photography, portfolio, YouTube cinema reels & digital prints' },
-  { id: 'Design Agency & Studio', personaTemplateId: 'creator-portfolio', label: 'Agency & Studio', desc: 'Client case studies, quote intake forms & font licenses' },
-  { id: 'Hospitality & Culinary', personaTemplateId: 'small-business-shop', label: 'Culinary & Hospitality', desc: 'Menus, reservations, cookbook preorders & masterclasses' },
-  { id: 'Podcaster & Musician', personaTemplateId: 'music-artist', label: 'Musician & Audio', desc: 'Spotify streams, tour tickets, merch shop & newsletter' },
-  { id: 'Tech & Startup', personaTemplateId: 'coach-consultant', label: 'Tech & Modern Founder', desc: 'Product demos, investor deck, beta signups & calendar booking' }
-];
+const CATEGORIES = PERSONA_TEMPLATES.map(template => ({
+  id: template.category,
+  personaTemplateId: template.id,
+  label: template.name,
+  desc: template.description,
+}));
 
 const ThemePreviewCard: React.FC<{ theme: (typeof THEME_PRESETS)[number]; selected: boolean }> = ({ theme, selected }) => {
   const pageBackground = theme.bgGradient || theme.bgColor;
@@ -62,6 +62,7 @@ export const OnboardingModal: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [selectedThemeId, setSelectedThemeId] = useState(THEME_PRESETS[0].id);
+  const [selectedPersonaId, setSelectedPersonaId] = useState(CATEGORIES[0].personaTemplateId);
   const [handleTouched, setHandleTouched] = useState(false);
 
   if (!isOnboardingOpen) return null;
@@ -78,9 +79,10 @@ export const OnboardingModal: React.FC = () => {
       if (!handleCheck.isValid) return;
       setStep(3);
     } else if (step === 3) {
+      const selectedPersona = PERSONA_TEMPLATES.find(template => template.id === selectedPersonaId);
       const blueprint: StarterProfileBlueprint = {
-        category,
-        personaTemplateId: CATEGORIES.find(item => item.id === category)?.personaTemplateId,
+        category: selectedPersona?.category || category,
+        personaTemplateId: selectedPersona?.id,
         handle: handleCheck.normalized,
         displayName: displayName.trim() || handleCheck.normalized,
         bio: bio.trim() || `Official links, portfolio and releases for ${displayName.trim() || handleCheck.normalized}.`,
@@ -134,7 +136,7 @@ export const OnboardingModal: React.FC = () => {
                   <button
                     key={cat.id}
                     type="button"
-                    onClick={() => setCategory(cat.id)}
+                onClick={() => { setCategory(cat.id); setSelectedPersonaId(cat.personaTemplateId); }}
                     className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                       isSelected 
                         ? 'border-indigo-500 bg-accent-surface text-ink' 
