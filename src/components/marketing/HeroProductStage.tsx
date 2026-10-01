@@ -33,8 +33,8 @@ const RECENT = [
 ];
 
 // Use a real shipped preset in the product mock so the landing page demonstrates
-// the same theme model as the public renderer. The video is a muted Pexels CDN
-// asset; the preset image remains the poster and visual fallback.
+// the same theme model as the public renderer. Values in this preview are
+// intentionally labelled as demo data rather than presented as live telemetry.
 const HERO_THEME = SPEC_THEME_PRESETS.find(theme => theme.id === 'preset-midnight-studio') ?? SPEC_THEME_PRESETS[0];
 const HERO_VIDEO_URL = 'https://videos.pexels.com/video-files/34715630/14715594_360_640_30fps.mp4';
 const HERO_VIDEO_POSTER = 'https://images.pexels.com/videos/34715630/pexels-photo-34715630.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630';
@@ -67,15 +67,15 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
         <div className="max-w-xl text-left">
           <div className="anime-hero-item inline-flex items-center gap-2 rounded-full border border-line bg-surface/80 px-3.5 py-1.5 text-xs font-medium text-muted shadow-sm backdrop-blur-sm">
             <span className="h-2 w-2 rounded-full bg-success motion-safe:animate-pulse" aria-hidden="true" />
-            Branded pages for creators, studios, and brands
+            One branded home for links, leads, and sales
           </div>
 
           <h1 className="anime-hero-item mt-7 text-4xl font-extrabold leading-[1.05] tracking-tight text-ink text-balance sm:text-6xl lg:text-[4.4rem]">
-            Turn every click into a <span className="text-accent">clear next step.</span>
+            One branded page for <span className="text-accent">everything you make.</span>
           </h1>
 
           <p className="anime-hero-item mt-6 max-w-lg text-base leading-relaxed text-muted sm:text-lg">
-            Build one flexible destination for links, video, forms, downloads, and bookings. Make it yours, publish in minutes, and see what moves your audience.
+            Publish links, forms, downloads, and bookings from one flexible page. Customize the system, preview it live, then publish when it is ready.
           </p>
 
           <div className="anime-hero-item mt-8 flex flex-col gap-3 sm:flex-row">
@@ -96,19 +96,11 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
           </ul>
         </div>
 
-        <div className="relative flex min-h-[570px] items-center justify-center py-8 sm:min-h-[640px]">
-          <div className="hero-product-stage__ripple" aria-hidden="true" />
-
-          <FloatingCard label="Theme studio status" className="hero-product-stage__theme anime-hero-item hidden sm:block">
-            <div className="mb-3 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-subtle"><span className="flex items-center gap-1.5"><Palette className="h-3.5 w-3.5 text-accent" /> Theme studio</span><span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] normal-case tracking-normal text-success">Ready</span></div>
-            <div className="rounded-xl border border-line bg-canvas/80 p-2.5"><div className="mb-3 flex items-center gap-2"><span className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-400 to-emerald-300" /><span className="space-y-1"><span className="block h-1.5 w-20 rounded-full bg-ink/70" /><span className="block h-1 w-12 rounded-full bg-subtle/50" /></span></div><div className="space-y-1.5"><span className="block h-7 rounded-lg bg-inverse" /><span className="block h-7 rounded-lg border border-line-strong bg-surface" /><span className="block h-7 rounded-lg border border-accent/30 bg-accent/10" /></div></div>
-            <p className="mt-2 text-[9px] text-muted">Contrast-safe tokens applied</p>
-          </FloatingCard>
-
+        <div className="relative flex min-h-[420px] items-center justify-center py-8 sm:min-h-[560px]">
           <FloatingCard label="Live analytics status" className="hero-product-stage__analytics anime-hero-item hidden sm:block">
-            <div className="mb-3 flex items-center justify-between text-[10px] font-semibold text-body"><span className="flex items-center gap-1.5"><BarChart3 className="h-3.5 w-3.5 text-success" /> Live signals</span><span className="text-[9px] font-mono text-subtle">30 DAYS</span></div>
+            <div className="mb-3 flex items-center justify-between text-[10px] font-semibold text-body"><span className="flex items-center gap-1.5"><BarChart3 className="h-3.5 w-3.5 text-success" /> Sample insights</span><span className="text-[9px] font-mono text-subtle">DEMO DATA</span></div>
             <div className="flex h-20 items-end gap-1.5 rounded-xl border border-line bg-canvas/70 px-3 pb-2 pt-3">{[28, 42, 34, 58, 48, 68, 55, 76, 63, 84].map((height, index) => <span key={index} className={`hero-product-stage__bar rounded-t-sm ${index > 6 ? 'bg-accent' : 'bg-emerald-400/60'}`} style={{ height: `${height}%` }} />)}</div>
-            <div className="mt-3 flex items-center justify-between"><span className="text-[9px] text-subtle">Qualified clicks</span><strong className="text-sm text-ink">2,184 <span className="text-[9px] font-medium text-success">+18%</span></strong></div>
+            <div className="mt-3 flex items-center justify-between"><span className="text-[9px] text-subtle">Qualified clicks</span><strong className="text-sm text-ink">2,184 <span className="text-[9px] font-medium text-success">sample</span></strong></div>
           </FloatingCard>
 
           <div className="hero-product-stage__phone relative z-10 w-[min(78vw,300px)] overflow-hidden rounded-[2.45rem] border-[7px] border-[#1c1c22] bg-[#111117] p-1.5 shadow-xl shadow-indigo-950/20 sm:w-[300px]">
@@ -136,7 +128,7 @@ export const HeroProductStage: React.FC<HeroProductStageProps> = ({ onOpenAuth, 
             </div>
           </div>
 
-          <div className="hero-product-stage__status rounded-full border border-success/20 bg-success/10 px-3 py-1.5 text-[10px] font-medium text-success shadow-md"><Check className="mr-1 inline-block h-3.5 w-3.5" /> Draft to live in one controlled flow</div>
+          <div className="hero-product-stage__status rounded-full border border-line bg-surface px-3 py-1.5 text-[10px] font-medium text-muted shadow-sm"><Check className="mr-1 inline-block h-3.5 w-3.5 text-success" /> Previewing a published profile</div>
         </div>
       </div>
     </div>

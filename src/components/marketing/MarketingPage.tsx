@@ -248,10 +248,10 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="featured-anime-header text-center max-w-2xl mx-auto space-y-2">
             <h2 className="text-2xl sm:text-3xl font-bold text-ink font-display tracking-tight">
-              Crafted for creators, studios & modern brands.
+              Built around how creators actually work.
             </h2>
             <p className="text-sm sm:text-base leading-relaxed text-muted">
-              Explore example LynkFlow sites built for different creator and agency goals.
+              Start from a real use case, then make the page your own.
             </p>
           </div>
 
@@ -261,7 +261,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               href="/@alexvance?demo=1"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
-              className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
+              className="featured-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/50 transition-colors cursor-pointer group space-y-4"
             >
               <ProductIllustration variant="assembly" className="mb-2 max-h-24" />
               <div className="flex items-center justify-between">
@@ -288,7 +288,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               href="/@studionova_agency?demo=1"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
-              className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
+              className="featured-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/50 transition-colors cursor-pointer group space-y-4"
             >
               <ProductIllustration variant="theme" className="mb-2 max-h-24" />
               <div className="flex items-center justify-between">
@@ -315,7 +315,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               href="/@mayakitchen?demo=1"
               onMouseEnter={handleCardMouseEnter}
               onMouseLeave={handleCardMouseLeave}
-              className="featured-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-colors cursor-pointer group space-y-4"
+              className="featured-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/50 transition-colors cursor-pointer group space-y-4"
             >
               <ProductIllustration variant="onboarding" className="mb-2 max-h-24" />
               <div className="flex items-center justify-between">
@@ -350,10 +350,10 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       >
         <div className="feature-anime-header text-center max-w-2xl mx-auto space-y-2">
           <h2 className="text-2xl sm:text-3xl font-bold text-ink font-display tracking-tight">
-            Engineered for conversion, not just navigation.
+            Give every visitor a useful next step.
           </h2>
           <p className="text-sm sm:text-base leading-relaxed text-muted">
-            Everything you need to turn visitors into followers, clients, and revenue.
+            Links, leads, bookings, downloads, and analytics in one place.
           </p>
         </div>
 
@@ -361,9 +361,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-indigo-500/40 transition-colors space-y-3 cursor-default"
+            className="feature-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/40 transition-colors space-y-3 cursor-default"
           >
-            <ProductIllustration variant="assembly" className="mb-3 max-h-32" />
             <div className="anime-icon-target p-2.5 rounded-xl bg-indigo-500/10 text-accent w-fit">
               <Layers className="w-5 h-5" />
             </div>
@@ -376,9 +375,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-emerald-500/40 transition-colors space-y-3 cursor-default"
+            className="feature-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/40 transition-colors space-y-3 cursor-default"
           >
-            <ProductIllustration variant="theme" className="mb-3 max-h-32" />
             <div className="anime-icon-target p-2.5 rounded-xl bg-emerald-500/10 text-success w-fit">
               <Palette className="w-5 h-5" />
             </div>
@@ -391,9 +389,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-cyan-500/40 transition-colors space-y-3 cursor-default"
+            className="feature-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/40 transition-colors space-y-3 cursor-default"
           >
-            <ProductIllustration variant="privacy" className="mb-3 max-h-32" />
             <div className="anime-icon-target p-2.5 rounded-xl bg-cyan-500/10 text-info w-fit">
               <BarChart2 className="w-5 h-5" />
             </div>
@@ -406,9 +403,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-amber-500/40 transition-colors space-y-3 cursor-default"
+            className="feature-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/40 transition-colors space-y-3 cursor-default"
           >
-            <ProductIllustration variant="qr" className="mb-3 max-h-32" />
             <div className="anime-icon-target p-2.5 rounded-xl bg-amber-500/10 text-warning w-fit">
               <QrCode className="w-5 h-5" />
             </div>
@@ -421,9 +417,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-rose-500/40 transition-colors space-y-3 cursor-default"
+            className="feature-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/40 transition-colors space-y-3 cursor-default"
           >
-            <ProductIllustration variant="route" className="mb-3 max-h-32" />
             <div className="anime-icon-target p-2.5 rounded-xl bg-rose-500/10 text-danger w-fit">
               <Globe className="w-5 h-5" />
             </div>
@@ -436,9 +431,8 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
           <div 
             onMouseEnter={handleCardMouseEnter}
             onMouseLeave={handleCardMouseLeave}
-            className="feature-anime-card relative overflow-hidden p-6 rounded-2xl bg-surface border border-line hover:border-violet-500/40 transition-colors space-y-3 cursor-default"
+            className="feature-anime-card relative overflow-hidden p-6 rounded-xl bg-surface border border-line hover:border-accent/40 transition-colors space-y-3 cursor-default"
           >
-            <ProductIllustration variant="profiles" className="mb-3 max-h-32" />
             <div className="anime-icon-target p-2.5 rounded-xl bg-violet-500/10 text-accent-soft w-fit">
               <ShieldCheck className="w-5 h-5" />
             </div>
@@ -463,7 +457,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
             <h2 className="text-3xl sm:text-4xl font-extrabold text-ink font-display tracking-tight">
               Simple, transparent pricing for every creator.
             </h2>
-            <p className="text-xs sm:text-sm text-muted">
+            <p className="text-sm leading-relaxed text-muted">
               No hidden add-ons or fake feature gates. All plans include unlimited block creation and our shared design token engine.
             </p>
 
@@ -504,9 +498,9 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               return (
                 <div
                   key={plan.id}
-                  className={`relative p-6 sm:p-7 rounded-3xl border flex flex-col justify-between transition-all ${
+                    className={`relative p-6 sm:p-7 rounded-2xl border flex flex-col justify-between transition-all ${
                     isPopular 
-                      ? 'bg-surface/90 border-indigo-500/60 shadow-xl shadow-indigo-500/10' 
+                      ? 'bg-surface/90 border-indigo-500/60 shadow-md shadow-indigo-500/10'
                       : 'bg-surface/50 border-line hover:border-line-strong'
                   }`}
                 >
@@ -602,7 +596,7 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
               <p className="text-xs text-muted">Concrete limits without ambiguous or misleading promises.</p>
             </div>
 
-            <div className="rounded-2xl border border-line bg-surface overflow-x-auto shadow-xl">
+            <div className="rounded-2xl border border-line bg-surface overflow-x-auto shadow-md">
               <table className="w-full text-left text-sm min-w-[600px]">
                 <caption className="sr-only">LynkFlow plan capability comparison</caption>
                 <thead className="bg-canvas border-b border-line text-muted">
@@ -735,17 +729,19 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="cta-anime-item inline-flex items-center gap-2 text-xs font-mono text-accent bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
             <Flame className="w-3.5 h-3.5 text-warning" />
-            <span>Start Building in 60 Seconds</span>
+            <span>Start free — publish when ready</span>
           </div>
 
           <h2 className="cta-anime-item text-3xl sm:text-5xl font-extrabold text-ink font-display tracking-tight">
-            Ready to build your link-in-bio page?
+            Publish a page that feels like yours.
           </h2>
           <p className="cta-anime-item text-sm text-muted max-w-xl mx-auto">
             Get started in under 3 minutes. Build with flexible blocks, themes, forms, and analytics before you publish.
           </p>
-          <div className="cta-anime-item mx-auto max-w-xl rounded-3xl border border-indigo-500/15 bg-indigo-500/5 p-3">
-            <ProductIllustration variant="assembly" />
+          <div className="cta-anime-item mx-auto grid max-w-xl grid-cols-3 divide-x divide-line rounded-2xl border border-line bg-surface/70 p-4 text-left text-xs text-muted">
+            <span className="px-3"><strong className="block text-ink">01</strong>Choose a starting point</span>
+            <span className="px-3"><strong className="block text-ink">02</strong>Shape the system</span>
+            <span className="px-3"><strong className="block text-ink">03</strong>Publish when ready</span>
           </div>
           <div className="cta-anime-item pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
@@ -789,14 +785,12 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
       {/* Clean Brand Footer with Legal & Help Entry Points */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 border-t border-line text-muted text-sm">
         <div className="max-w-7xl mx-auto space-y-8">
-          <div className="relative isolate overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-surface to-emerald-400/5 p-6 shadow-xl shadow-black/5 sm:p-10">
-            <div className="pointer-events-none absolute -right-16 -top-20 -z-10 h-56 w-56 rounded-full bg-indigo-500/15 blur-3xl" aria-hidden="true" />
-            <div className="pointer-events-none absolute -bottom-24 left-1/3 -z-10 h-48 w-48 rounded-full bg-emerald-400/10 blur-3xl" aria-hidden="true" />
+          <div className="relative isolate overflow-hidden rounded-2xl border border-line bg-surface p-6 sm:p-10">
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.9fr)] lg:items-end">
               <div className="max-w-2xl">
                 <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.16em] text-accent">
                   <Sparkles className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
-                  Product notes for creators
+                  Product notes
                 </div>
                 <h2 className="mt-4 max-w-xl font-display text-3xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl">
                   Build less busywork into your next page.
