@@ -72,9 +72,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-canvas">
+    <div className="studio-shell flex h-[calc(100vh-64px)] w-full overflow-hidden bg-canvas">
       {/* Left Navigation Sidebar */}
-      <aside className="w-56 shrink-0 border-r border-line bg-surface/40 backdrop-blur-md hidden md:flex flex-col justify-between p-3">
+      <aside className="studio-sidebar w-56 shrink-0 border-r border-line bg-surface/40 backdrop-blur-md hidden md:flex flex-col justify-between p-3">
         <nav aria-label="Workspace navigation" className="space-y-1">
           <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-subtle">
             Workspace Hub
@@ -161,7 +161,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       </aside>
 
       {/* Main Workspace Body */}
-      <main className="min-w-0 flex-1 flex flex-col h-full overflow-hidden bg-canvas pb-24 md:pb-0">
+      <main className="studio-workspace min-w-0 flex-1 flex flex-col h-full overflow-hidden bg-canvas pb-24 md:pb-0">
         <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-subtle">Loading workspace…</div>}>
           {currentView === 'editor' && (
             <EditorView
@@ -185,7 +185,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       {/* Mobile workspace tabs: compact app navigation with a safe-area-aware floating surface. */}
       <nav
         aria-label="Mobile workspace navigation"
-        className="fixed inset-x-3 bottom-3 z-50 md:hidden rounded-2xl border border-line-strong bg-surface/95 p-1.5 shadow-2xl shadow-black/20 backdrop-blur-xl"
+        className="studio-mobile-nav fixed inset-x-3 bottom-3 z-50 md:hidden rounded-2xl border border-line-strong bg-surface/95 p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl"
         style={{ paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))' }}
       >
         <div className="grid grid-cols-5 gap-1">
@@ -232,7 +232,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           <div
             role="dialog"
             aria-label="More workspace destinations"
-            className="absolute bottom-[calc(100%+0.75rem)] left-0 right-0 rounded-2xl border border-line-strong bg-surface/98 p-2 shadow-2xl shadow-black/20 backdrop-blur-xl animate-in slide-in-from-bottom-2 duration-150"
+            className="absolute bottom-[calc(100%+0.75rem)] left-0 right-0 rounded-2xl border border-line-strong bg-surface/98 p-2 shadow-lg shadow-black/10 backdrop-blur-xl animate-in slide-in-from-bottom-2 duration-150"
           >
             <div className="mb-1 flex items-center justify-between px-2 py-1">
               <span className="text-[10px] font-mono uppercase tracking-wider text-subtle">Workspace</span>

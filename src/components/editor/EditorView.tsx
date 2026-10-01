@@ -100,7 +100,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="studio-editor flex-1 flex flex-col h-full overflow-hidden">
       {/* Workspace Subheader / Actions Bar */}
       <div className="px-4 sm:px-6 py-3 border-b border-line bg-surface/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Profile Switcher */}

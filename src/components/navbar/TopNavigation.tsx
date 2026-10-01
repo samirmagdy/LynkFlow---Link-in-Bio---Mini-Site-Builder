@@ -219,7 +219,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
 
       {/* Mobile Drawer (Accessible at 320px & 200% text zoom) */}
       {mobileMenuOpen && (
-        <div className={`pointer-events-auto md:hidden px-4 py-4 space-y-3 animate-in slide-in-from-top-2 duration-150 shadow-2xl ${isMarketing ? 'mx-3 mt-2 rounded-3xl border border-line bg-canvas/98 sm:mx-5' : 'border-t border-line bg-canvas/98'}`}>
+        <div className={`pointer-events-auto md:hidden px-4 py-4 space-y-3 animate-in slide-in-from-top-2 duration-150 shadow-lg shadow-black/10 ${isMarketing ? 'mx-3 mt-2 rounded-2xl border border-line bg-canvas/98 sm:mx-5' : 'border-t border-line bg-canvas/98'}`}>
           <div className="grid grid-cols-2 gap-2 pb-3 border-b border-line text-xs">
             <button
               onClick={() => {

@@ -59,7 +59,7 @@ export const SupportInbox: React.FC = () => {
   };
 
   return (
-    <section className="max-w-5xl mx-auto p-6 md:p-10 space-y-8">
+    <section className="studio-page max-w-5xl mx-auto w-full overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-8">
       <header>
         <div className="flex items-center gap-3"><span className="p-2 rounded-xl bg-accent/10 text-accent"><LifeBuoy className="w-5 h-5" /></span><h1 className="text-2xl font-bold text-ink">Support</h1></div>
         <p className="mt-2 text-sm text-subtle">Create a request and track its SLA from your workspace.</p>
