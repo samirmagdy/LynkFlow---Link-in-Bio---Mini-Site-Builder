@@ -89,6 +89,7 @@ const removeCloudWorkspaceMember = lazyCall<CloudSyncModule['removeCloudWorkspac
 const updateCloudWorkspaceMember = lazyCall<CloudSyncModule['updateCloudWorkspaceMember']>(getCloudSync, 'updateCloudWorkspaceMember');
 const deleteCloudRecord = lazyCall<CloudSyncModule['deleteCloudRecord']>(getCloudSync, 'deleteCloudRecord');
 const publishCloudProfile = lazyCall<CloudSyncModule['publishCloudProfile']>(getCloudSync, 'publishCloudProfile');
+const bulkPublishCloudProfiles = lazyCall<CloudSyncModule['bulkPublishCloudProfiles']>(getCloudSync, 'bulkPublishCloudProfiles');
 const rollbackCloudProfile = lazyCall<CloudSyncModule['rollbackCloudProfile']>(getCloudSync, 'rollbackCloudProfile');
 const createCloudPreviewToken = lazyCall<CloudSyncModule['createCloudPreviewToken']>(getCloudSync, 'createCloudPreviewToken');
 
@@ -189,6 +190,7 @@ interface AppContextType {
   updateDraftProfile: (updater: (prev: Profile) => Profile) => void;
   saveDraftNow: () => Promise<void>;
   publishProfile: (changeNote?: string, idempotencyKey?: string, versionName?: string, versionNotes?: string) => Promise<boolean>;
+  bulkPublishProfiles: (profileIds: string[], changeNote?: string, versionName?: string, versionNotes?: string) => Promise<{ published: number; failed: number }>;
   revertDraftToPublished: () => void;
   resetThemeToPublished: () => void;
   rollbackToPublishedSnapshot: (snapshotId: string, reason?: string) => Promise<boolean>;
@@ -995,6 +997,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     setLastSavedAt(new Date().toISOString());
     showToast(`Published @${draftProfile.username} live (v${result.publishedVersion})!`);
     return true;
+  };
+
+  const bulkPublishProfiles = async (profileIds: string[], changeNote?: string, versionName?: string, versionNotes?: string): Promise<{ published: number; failed: number }> => {
+    if (!isSupabaseConfigured || user.id === 'usr-guest') {
+      showToast('Bulk publishing requires a connected workspace.');
+      return { published: 0, failed: profileIds.length };
+    }
+    if (!user.isVerified) {
+      showToast('Verify your email before publishing profiles.');
+      return { published: 0, failed: profileIds.length };
+    }
+    try {
+      const result = await bulkPublishCloudProfiles(profileIds, changeNote, versionName, versionNotes);
+      const publishedById = new Map(result.published.map(item => [item.profileId, item]));
+      setProfiles(prev => prev.map(profile => {
+        const published = publishedById.get(profile.id);
+        return published ? { ...profile, status: 'published', publishedVersion: published.publishedVersion, publishedAt: published.publishedAt, updatedAt: published.publishedAt } : profile;
+      }));
+      setDraftProfile(prev => {
+        const published = publishedById.get(prev.id);
+        return published ? { ...prev, status: 'published', publishedVersion: published.publishedVersion, publishedAt: published.publishedAt, updatedAt: published.publishedAt } : prev;
+      });
+      const message = result.failures.length ? `Published ${result.published.length}; ${result.failures.length} profile${result.failures.length === 1 ? '' : 's'} need attention.` : `Published ${result.published.length} profiles live.`;
+      showToast(message);
+      return { published: result.published.length, failed: result.failures.length };
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Bulk publishing failed.');
+      return { published: 0, failed: profileIds.length };
+    }
   };
 
   const rollbackToPublishedSnapshot = async (snapshotId: string, reason?: string): Promise<boolean> => {
@@ -2353,6 +2384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         updateDraftProfile,
         saveDraftNow,
         publishProfile,
+        bulkPublishProfiles,
         revertDraftToPublished,
         resetThemeToPublished,
         rollbackToPublishedSnapshot,

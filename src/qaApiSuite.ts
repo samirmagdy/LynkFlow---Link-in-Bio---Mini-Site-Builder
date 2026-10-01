@@ -7,6 +7,7 @@ const checks = [
   ['blocks list', '/api/v1/profiles/example/blocks', 'GET'],
   ['theme read', '/api/v1/profiles/example/themes', 'GET'],
   ['publish', '/api/v1/profiles/example/publish', 'POST'],
+  ['bulk publish', '/api/profile/bulk-publish', 'POST'],
   ['webhook create', '/api/webhooks', 'POST'],
   ['workspace invite', '/api/workspace/invite', 'POST'],
   ['workspace member revoke', '/api/workspace/members/example', 'DELETE'],

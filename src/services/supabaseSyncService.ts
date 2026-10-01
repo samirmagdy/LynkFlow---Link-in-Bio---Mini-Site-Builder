@@ -371,6 +371,31 @@ export async function publishCloudProfile(
   return body.data.profile;
 }
 
+export interface BulkPublishResult {
+  requested: number;
+  published: Array<{ profileId: string; username: string; publishedVersion: number; publishedAt: string }>;
+  failures: Array<{ profileId: string; error: string }>;
+  complete: boolean;
+  completedAt: string;
+}
+
+export async function bulkPublishCloudProfiles(profileIds: string[], changeNote?: string, versionName?: string, versionNotes?: string): Promise<BulkPublishResult> {
+  if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is required for bulk publishing.');
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in before bulk publishing.');
+  const response = await fetch('/api/profile/bulk-publish', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ profileIds, changeNote, versionName, versionNotes }),
+  });
+  const body = await response.json() as { data?: BulkPublishResult; error?: string | { message?: string } };
+  if (!response.ok || !body.data) {
+    const message = typeof body.error === 'string' ? body.error : body.error?.message;
+    throw new Error(message || 'Unable to bulk publish profiles.');
+  }
+  return body.data;
+}
+
 export async function createCloudPreviewToken(profileId: string, ttlMinutes: number): Promise<{ token: string; expiresAt: string }> {
   if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is required for shared previews.');
   const { data: { session } } = await supabase.auth.getSession();

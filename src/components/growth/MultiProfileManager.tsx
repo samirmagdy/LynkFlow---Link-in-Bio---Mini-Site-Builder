@@ -21,7 +21,9 @@ import {
   UserPlus,
   X,
   Edit3,
-  Crown
+  Crown,
+  Check,
+  Send
 } from 'lucide-react';
 
 // ─── Profile Status Badge ─────────────────────────────────────────────────────
@@ -229,13 +231,15 @@ function DeleteProfileModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const MultiProfileManager: React.FC = () => {
-  const { profiles, workspace, activeProfile, switchActiveProfile, createNewProfile, duplicateProfile, deleteProfile, removeDomain, addMember, removeMember, showToast, setCurrentView } = useApp();
+  const { profiles, workspace, activeProfile, switchActiveProfile, createNewProfile, duplicateProfile, deleteProfile, removeDomain, addMember, removeMember, bulkPublishProfiles, showToast, setCurrentView } = useApp();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; username: string; hasDomain: boolean } | null>(null);
   const [showNewProfileForm, setShowNewProfileForm] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
   const [newCategory, setNewCategory] = useState('Creator');
+  const [selectedProfileIds, setSelectedProfileIds] = useState<Set<string>>(new Set());
+  const [bulkPublishing, setBulkPublishing] = useState(false);
 
   const entitlements = billingService.getWorkspaceEntitlements(workspace);
   const maxProfiles = entitlements.maxProfiles;
@@ -256,6 +260,24 @@ export const MultiProfileManager: React.FC = () => {
       removeDomain(profileId); // PRO-003: disconnect domain before deletion
     }
     return deleteProfile(profileId);
+  };
+
+  const toggleProfileSelection = (profileId: string) => {
+    setSelectedProfileIds(current => {
+      const next = new Set(current);
+      if (next.has(profileId)) next.delete(profileId); else next.add(profileId);
+      return next;
+    });
+  };
+
+  const handleBulkPublish = async () => {
+    const ids = Array.from(selectedProfileIds);
+    if (!ids.length || bulkPublishing) return;
+    if (!window.confirm(`Publish ${ids.length} selected profile${ids.length === 1 ? '' : 's'} now? Each profile will still pass its own accessibility and content validation.`)) return;
+    setBulkPublishing(true);
+    await bulkPublishProfiles(ids, 'Bulk agency release');
+    setSelectedProfileIds(new Set());
+    setBulkPublishing(false);
   };
 
   return (
@@ -298,6 +320,23 @@ export const MultiProfileManager: React.FC = () => {
       )}
 
       <AgencyAnalyticsPanel />
+
+      {workspace.plan === 'agency' && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-xs font-bold text-ink"><Send className="h-3.5 w-3.5 text-accent" />Agency release</h3>
+            <p className="mt-1 text-[11px] text-muted">Select profiles to publish through the same validation, permissions, and audit pipeline.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setSelectedProfileIds(selectedProfileIds.size === profiles.length ? new Set() : new Set(profiles.map(profile => profile.id)))} className="rounded-xl border border-line px-3 py-2 text-[11px] font-semibold text-body hover:bg-surface-2">
+              {selectedProfileIds.size === profiles.length ? 'Clear all' : 'Select all'}
+            </button>
+            <button type="button" disabled={!selectedProfileIds.size || bulkPublishing} onClick={() => void handleBulkPublish()} className="inline-flex items-center gap-1.5 rounded-xl bg-ink px-3 py-2 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <Send className="h-3.5 w-3.5" />{bulkPublishing ? 'Publishing…' : `Publish ${selectedProfileIds.size || ''}`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* New Profile Form */}
       {showNewProfileForm && (
@@ -354,6 +393,11 @@ export const MultiProfileManager: React.FC = () => {
               }`}
             >
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                {workspace.plan === 'agency' && (
+                  <button type="button" onClick={() => toggleProfileSelection(profile.id)} aria-label={`${selectedProfileIds.has(profile.id) ? 'Deselect' : 'Select'} @${profile.username} for bulk publishing`} aria-pressed={selectedProfileIds.has(profile.id)} className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl border transition-colors ${selectedProfileIds.has(profile.id) ? 'border-accent bg-accent text-white' : 'border-line bg-canvas text-transparent hover:border-accent'}`}>
+                    <Check className="h-4 w-4" />
+                  </button>
+                )}
                 {/* Avatar placeholder */}
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
                   isActive ? 'bg-indigo-600/30 text-accent-soft border border-indigo-500/30' : 'bg-surface-2 text-muted border border-line-strong'

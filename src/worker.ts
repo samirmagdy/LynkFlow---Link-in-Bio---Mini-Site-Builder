@@ -1688,6 +1688,43 @@ async function publishDashboardProfile(request: Request, env: Env): Promise<Resp
   return json(result);
 }
 
+async function bulkPublishDashboardProfiles(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before publishing to the live web.', 403);
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish profiles.', 403);
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=plan,status,current_period_end`, env);
+  const workspace = (await workspaceResponse.json() as Array<{ plan?: string; status?: string; current_period_end?: string | null }>)[0];
+  const expired = workspace?.status === 'canceled' && Boolean(workspace.current_period_end && workspace.current_period_end < new Date().toISOString());
+  if (!workspace || expired || workspace.plan !== 'agency') return apiError('ENTITLEMENT_REQUIRED', 'Bulk publishing requires the Agency plan.', 403);
+  let input: { profileIds?: unknown; changeNote?: string; versionName?: string; versionNotes?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileIds = Array.isArray(input.profileIds) ? [...new Set(input.profileIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map(id => id.trim()))] : [];
+  if (!profileIds.length || profileIds.length > 50) return apiError('VALIDATION_ERROR', 'Select between 1 and 50 profiles.', 422);
+  const authorization = request.headers.get('authorization');
+  if (!authorization) return apiError('UNAUTHORIZED', 'Authentication required.', 401);
+  const published: Array<{ profileId: string; username: string; publishedVersion: number; publishedAt: string }> = [];
+  const failures: Array<{ profileId: string; error: string }> = [];
+  for (const profileId of profileIds) {
+    if (!canManageProfile(user, profileId)) {
+      failures.push({ profileId, error: 'You do not have permission to publish this profile.' });
+      continue;
+    }
+    const childHeaders = new Headers({ authorization, 'content-type': 'application/json', 'idempotency-key': `bulk-publish-${await sha256(`${user.id}:${profileId}:${input.versionName || ''}:${input.versionNotes || ''}`)}` });
+    const childRequest = new Request(new URL('/api/profile/publish', request.url), { method: 'POST', headers: childHeaders, body: JSON.stringify({ profileId, changeNote: input.changeNote, versionName: input.versionName, versionNotes: input.versionNotes }) });
+    const response = await publishDashboardProfile(childRequest, env);
+    const body = await response.json() as { data?: { profile?: { username?: string; publishedVersion?: number; publishedAt?: string } }; error?: string | { message?: string } };
+    if (!response.ok || !body.data?.profile) {
+      failures.push({ profileId, error: typeof body.error === 'string' ? body.error : body.error?.message || 'Profile could not be published.' });
+      continue;
+    }
+    published.push({ profileId, username: body.data.profile.username || profileId, publishedVersion: Number(body.data.profile.publishedVersion || 0), publishedAt: body.data.profile.publishedAt || new Date().toISOString() });
+  }
+  const completedAt = new Date().toISOString();
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'profiles.bulk_published', target: `${published.length}/${profileIds.length}`, occurred_at: completedAt, details: `Bulk publish completed: ${published.length} succeeded, ${failures.length} failed.` }) });
+  return json({ data: { requested: profileIds.length, published, failures, complete: failures.length === 0, completedAt }, requestId: crypto.randomUUID() });
+}
+
 type ScheduledProfileRow = {
   id: string;
   username: string;
@@ -4585,6 +4622,10 @@ export default {
     if (url.pathname === '/api/profile/publish') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishDashboardProfile(request, env); } catch (error) { return internalApiError('Publish profile failed', error, 'Unable to publish profile.'); }
+    }
+    if (url.pathname === '/api/profile/bulk-publish') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await bulkPublishDashboardProfiles(request, env); } catch (error) { return internalApiError('Bulk publish failed', error, 'Unable to publish selected profiles.'); }
     }
     if (url.pathname === '/api/profile/unpublish') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
