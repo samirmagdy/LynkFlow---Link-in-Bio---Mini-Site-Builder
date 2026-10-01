@@ -48,6 +48,8 @@ interface Env {
   X_CLIENT_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  THREADS_CLIENT_ID?: string;
+  THREADS_CLIENT_SECRET?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   PEXELS_API_KEY?: string;
@@ -89,7 +91,7 @@ function deploymentHealth(env: Env): Response {
     email: requiredBindings.email.every(binding => Boolean(envValues[binding])),
     stripe: requiredBindings.stripe.every(binding => Boolean(envValues[binding])),
     webhooks: requiredBindings.webhooks.every(binding => Boolean(envValues[binding])),
-    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET) || (envValues.META_APP_ID && envValues.META_APP_SECRET) || (envValues.X_CLIENT_ID && envValues.X_CLIENT_SECRET) || (envValues.GOOGLE_CLIENT_ID && envValues.GOOGLE_CLIENT_SECRET))),
+    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET) || (envValues.META_APP_ID && envValues.META_APP_SECRET) || (envValues.X_CLIENT_ID && envValues.X_CLIENT_SECRET) || (envValues.GOOGLE_CLIENT_ID && envValues.GOOGLE_CLIENT_SECRET) || (envValues.THREADS_CLIENT_ID && envValues.THREADS_CLIENT_SECRET))),
     instagramAutomations: Boolean(envValues.META_APP_ID && envValues.META_APP_SECRET && envValues.META_VERIFY_TOKEN && envValues.SOCIAL_OAUTH_ENCRYPTION_KEY),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
     supportRouting: requiredBindings.supportRouting.every(binding => Boolean(envValues[binding])),
@@ -1791,6 +1793,12 @@ async function executeScheduledSocialPublications(env: Env, scheduledTime = Date
         const result = await publishXWithConnection(connection, publication.content, publication.target_url || '', env);
         await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
         if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+      } else if (publication.provider === 'threads') {
+        const connection = await activeThreadsConnection(publication.workspace_id, env);
+        if (!connection) throw new Error('Threads connection is unavailable.');
+        const result = await publishThreadsWithConnection(connection, publication.content, publication.target_url || '', env);
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
       } else if (publication.provider === 'youtube') {
         const connection = await activeYouTubeConnection(publication.workspace_id, env);
         if (!connection) throw new Error('YouTube connection is unavailable.');
@@ -1801,10 +1809,10 @@ async function executeScheduledSocialPublications(env: Env, scheduledTime = Date
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Scheduled social publication failed.';
       if (reason === 'CONNECTION_EXPIRED') {
-        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : publication.provider === 'instagram' ? await activeInstagramConnection(publication.workspace_id, env) : publication.provider === 'facebook' ? await activeFacebookConnection(publication.workspace_id, env) : publication.provider === 'x' ? await activeXConnection(publication.workspace_id, env) : publication.provider === 'youtube' ? await activeYouTubeConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
+        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : publication.provider === 'instagram' ? await activeInstagramConnection(publication.workspace_id, env) : publication.provider === 'facebook' ? await activeFacebookConnection(publication.workspace_id, env) : publication.provider === 'x' ? await activeXConnection(publication.workspace_id, env) : publication.provider === 'threads' ? await activeThreadsConnection(publication.workspace_id, env) : publication.provider === 'youtube' ? await activeYouTubeConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
         if (expiredConnection) await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(expiredConnection.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
       }
-      const expiredMessage = publication.provider === 'facebook' ? 'Facebook connection expired. Reconnect and retry.' : publication.provider === 'x' ? 'X connection expired. Reconnect and retry.' : publication.provider === 'youtube' ? 'YouTube connection expired. Reconnect and retry.' : publication.provider === 'tiktok' ? 'TikTok connection expired. Reconnect and retry.' : publication.provider === 'instagram' ? 'Instagram connection expired. Reconnect and retry.' : 'LinkedIn connection expired. Reconnect and retry.';
+      const expiredMessage = publication.provider === 'facebook' ? 'Facebook connection expired. Reconnect and retry.' : publication.provider === 'x' ? 'X connection expired. Reconnect and retry.' : publication.provider === 'threads' ? 'Threads connection expired. Reconnect and retry.' : publication.provider === 'youtube' ? 'YouTube connection expired. Reconnect and retry.' : publication.provider === 'tiktok' ? 'TikTok connection expired. Reconnect and retry.' : publication.provider === 'instagram' ? 'Instagram connection expired. Reconnect and retry.' : 'LinkedIn connection expired. Reconnect and retry.';
       await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: reason === 'CONNECTION_EXPIRED' ? expiredMessage : reason, updated_at: new Date().toISOString() }) });
       if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed' }) });
       console.error(`Scheduled social publication failed for ${publication.id}`, error);
@@ -2445,7 +2453,7 @@ function socialOAuthRedirect(request: Request, env: Env, path: string): string {
   return new URL(path, `${base.replace(/\/$/, '')}/`).toString();
 }
 
-type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'x';
+type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x';
 
 function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean {
   const providerConfigured = provider === 'linkedin'
@@ -2457,8 +2465,10 @@ function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean
         : provider === 'facebook'
           ? Boolean(env.META_APP_ID && env.META_APP_SECRET)
           : provider === 'youtube'
-            ? Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
-            : Boolean(env.X_CLIENT_ID && env.X_CLIENT_SECRET);
+          ? Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
+            : provider === 'threads'
+              ? Boolean(env.THREADS_CLIENT_ID && env.THREADS_CLIENT_SECRET)
+              : Boolean(env.X_CLIENT_ID && env.X_CLIENT_SECRET);
   return Boolean(providerConfigured && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
@@ -2771,6 +2781,64 @@ async function finishYouTubeOAuth(request: Request, env: Env): Promise<Response>
   return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?youtube=connected`, 302);
 }
 
+async function startThreadsOAuth(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
+  if (!socialOAuthConfigured(env, 'threads')) return apiError('SERVICE_UNAVAILABLE', 'Threads publishing is not configured yet.', 503);
+  const state = randomSecret(32);
+  const stateResponse = await supabaseRequest('social_oauth_states', env, {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id: `oauth_${crypto.randomUUID()}`, workspace_id: user.id, provider: 'threads', state_hash: await sha256(state), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }),
+  });
+  if (!stateResponse.ok) return apiError('PERSISTENCE_ERROR', 'Threads connection could not be started. Please retry.', 503);
+  const authorize = new URL('https://threads.net/oauth/authorize');
+  authorize.searchParams.set('client_id', env.THREADS_CLIENT_ID!);
+  authorize.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/threads/callback'));
+  authorize.searchParams.set('scope', 'threads_basic,threads_content_publish');
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('state', state);
+  return Response.redirect(authorize.toString(), 302);
+}
+
+async function finishThreadsOAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?threads=error&reason=${encodeURIComponent(reason)}`, 302);
+  if (!code || !state || !socialOAuthConfigured(env, 'threads')) return failure('configuration');
+  const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.threads&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id`, env);
+  const states = await stateResponse.json() as Array<{ id: string; workspace_id: string }>;
+  const oauthState = states[0];
+  if (!oauthState) return failure('expired');
+  const markUsed = await supabaseRequest(`social_oauth_states?id=eq.${encodeURIComponent(oauthState.id)}&used_at=is.null`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
+  if (!(await markUsed.json() as unknown[]).length) return failure('replayed');
+
+  const tokenResponse = await fetch('https://graph.threads.net/oauth/access_token', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: env.THREADS_CLIENT_ID!, client_secret: env.THREADS_CLIENT_SECRET!, code, grant_type: 'authorization_code', redirect_uri: socialOAuthRedirect(request, env, '/api/social/threads/callback') }),
+  });
+  if (!tokenResponse.ok) return failure('token_exchange');
+  const shortLived = await tokenResponse.json() as { access_token?: string; user_id?: string };
+  if (!shortLived.access_token || !shortLived.user_id) return failure('token_exchange');
+
+  const longLivedResponse = await fetch(`https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(env.THREADS_CLIENT_SECRET!)}&access_token=${encodeURIComponent(shortLived.access_token)}`);
+  if (!longLivedResponse.ok) return failure('long_lived_token');
+  const longLived = await longLivedResponse.json() as { access_token?: string; expires_in?: number };
+  if (!longLived.access_token) return failure('long_lived_token');
+  const profileResponse = await fetch(`https://graph.threads.net/v1.0/${encodeURIComponent(shortLived.user_id)}?fields=id,username&access_token=${encodeURIComponent(longLived.access_token)}`);
+  if (!profileResponse.ok) return failure('profile_lookup');
+  const profile = await profileResponse.json() as { id?: string; username?: string };
+  if (!profile.id) return failure('profile_lookup');
+  const now = new Date();
+  await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, {
+    method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ id: `social_${oauthState.workspace_id}_threads_${profile.id}`, workspace_id: oauthState.workspace_id, provider: 'threads', provider_account_id: profile.id, account_name: profile.username ? `@${profile.username}` : 'Threads account', access_token_ciphertext: await encryptSocialToken(longLived.access_token, env), refresh_token_ciphertext: null, token_expires_at: longLived.expires_in ? new Date(now.getTime() + longLived.expires_in * 1000).toISOString() : null, scopes: ['threads_basic', 'threads_content_publish'], status: 'active', updated_at: now.toISOString() }),
+  });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: 'threads-oauth', action: 'social.threads.connected', target: profile.id, occurred_at: now.toISOString(), details: 'Threads publishing connection established.' }) });
+  return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?threads=connected`, 302);
+}
+
 async function listSocialConnections(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2972,6 +3040,12 @@ async function activeYouTubeConnection(workspaceId: string, env: Env): Promise<L
   return rows[0] || null;
 }
 
+async function activeThreadsConnection(workspaceId: string, env: Env): Promise<LinkedInConnectionRow | null> {
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(workspaceId)}&provider=eq.threads&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const rows = await response.json() as LinkedInConnectionRow[];
+  return rows[0] || null;
+}
+
 async function publishFacebookWithConnection(connection: LinkedInConnectionRow, content: string, targetUrl: string, env: Env): Promise<{ providerPostId: string }> {
   if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
   const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
@@ -2999,6 +3073,30 @@ async function publishXWithConnection(connection: LinkedInConnectionRow, content
   const body = await response.json() as { data?: { id?: string } };
   if (!body.data?.id) throw new Error('PROVIDER_ERROR');
   return { providerPostId: body.data.id };
+}
+
+async function publishThreadsWithConnection(connection: LinkedInConnectionRow, content: string, targetUrl: string, env: Env): Promise<{ providerPostId: string }> {
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const text = `${content}${targetUrl ? `\n${targetUrl}` : ''}`.trim();
+  if (text.length > 500) throw new Error('CONTENT_TOO_LONG');
+  const createResponse = await fetch(`https://graph.threads.net/v1.0/${encodeURIComponent(connection.provider_account_id)}/threads`, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ media_type: 'TEXT', text, access_token: accessToken }),
+  });
+  if (createResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!createResponse.ok) throw new Error('PROVIDER_ERROR');
+  const container = await createResponse.json() as { id?: string };
+  if (!container.id) throw new Error('PROVIDER_ERROR');
+  const publishResponse = await fetch(`https://graph.threads.net/v1.0/${encodeURIComponent(connection.provider_account_id)}/threads_publish`, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ creation_id: container.id, access_token: accessToken }),
+  });
+  if (publishResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!publishResponse.ok) throw new Error('PROVIDER_ERROR');
+  const published = await publishResponse.json() as { id?: string };
+  if (!published.id) throw new Error('PROVIDER_ERROR');
+  return { providerPostId: published.id };
 }
 
 async function publishYouTubeWithConnection(connection: LinkedInConnectionRow, content: string, mediaUrl: string, env: Env): Promise<{ providerPostId: string }> {
@@ -3244,6 +3342,39 @@ async function publishXPost(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function publishThreadsPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish to social accounts.', 403);
+  let input: { content?: string; targetUrl?: string; profileId?: string; shareEventId?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 500) return apiError('VALIDATION_ERROR', 'Threads posts must be between 1 and 500 characters.', 422);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  }
+  const connection = await activeThreadsConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect Threads before publishing.', 409);
+  try {
+    const result = await publishThreadsWithConnection(connection, content, targetUrl, env);
+    const now = new Date().toISOString();
+    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'threads', content, target_url: targetUrl || null, media_url: null, media_type: 'image', scheduled_at: now, status: 'published', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: now, updated_at: now }) });
+    if (input.shareEventId) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(input.shareEventId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+    return json({ data: { provider: 'threads', providerPostId: result.providerPostId, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
+      await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+      return apiError('CONNECTION_EXPIRED', 'Threads rejected this connection. Reconnect and try again.', 401);
+    }
+    if (error instanceof Error && error.message === 'CONTENT_TOO_LONG') return apiError('VALIDATION_ERROR', 'The Threads post plus page URL must be 500 characters or fewer.', 422);
+    return apiError('PROVIDER_ERROR', 'Threads could not publish this post. No success was recorded.', 502);
+  }
+}
+
 async function publishYouTubePost(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -3385,7 +3516,7 @@ async function scheduleYouTubePost(request: Request, env: Env): Promise<Response
   return json({ data: publication, requestId: crypto.randomUUID() }, 201);
 }
 
-type ScheduledSimpleProvider = 'facebook' | 'x';
+type ScheduledSimpleProvider = 'facebook' | 'threads' | 'x';
 
 async function scheduleSimpleSocialPost(request: Request, env: Env, provider: ScheduledSimpleProvider): Promise<Response> {
   const user = await getSupabaseUser(request, env);
@@ -3398,16 +3529,16 @@ async function scheduleSimpleSocialPost(request: Request, env: Env, provider: Sc
   const targetUrl = String(input.targetUrl || '').trim();
   const scheduledAt = Date.parse(String(input.scheduledAt || ''));
   if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
-  const maxLength = provider === 'x' ? 280 : 63206;
-  if (!content || content.length > maxLength) return apiError('VALIDATION_ERROR', `${provider === 'x' ? 'X posts' : 'Facebook messages'} must be between 1 and ${maxLength} characters.`, 422);
+  const maxLength = provider === 'x' ? 280 : provider === 'threads' ? 500 : 63206;
+  if (!content || content.length > maxLength) return apiError('VALIDATION_ERROR', `${provider === 'x' ? 'X posts' : provider === 'threads' ? 'Threads posts' : 'Facebook messages'} must be between 1 and ${maxLength} characters.`, 422);
   if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now() + 60_000) return apiError('VALIDATION_ERROR', 'Choose a future publish time at least one minute from now.', 422);
   if (targetUrl) {
     const targetCheck = validateUrl(targetUrl);
     if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
   }
   if (provider === 'x' && `${content}${targetUrl ? ` ${targetUrl}` : ''}`.trim().length > 280) return apiError('VALIDATION_ERROR', 'The X post plus page URL must be 280 characters or fewer.', 422);
-  const connection = provider === 'x' ? await activeXConnection(user.id, env) : await activeFacebookConnection(user.id, env);
-  if (!connection) return apiError('CONNECTION_REQUIRED', `Connect ${provider === 'x' ? 'X' : 'a Facebook Page'} before scheduling.`, 409);
+  const connection = provider === 'x' ? await activeXConnection(user.id, env) : provider === 'threads' ? await activeThreadsConnection(user.id, env) : await activeFacebookConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', `Connect ${provider === 'x' ? 'X' : provider === 'threads' ? 'Threads' : 'a Facebook Page'} before scheduling.`, 409);
   const now = new Date().toISOString();
   const shareEvent = { id: `share_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider, content, target_url: targetUrl, status: 'initiated', created_at: now };
   const shareResponse = await supabaseRequest('social_share_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(shareEvent) });
@@ -3427,7 +3558,7 @@ async function cancelSocialPublication(request: Request, env: Env, publicationId
   if (user instanceof Response) return user;
   if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot cancel social posts.', 403);
   const existingResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,status,profile_id,provider`, env);
-  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string; provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'x' }>;
+  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string; provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'threads' | 'x' }>;
   if (!existing[0] || !canManageProfile(user, existing[0].profile_id)) return apiError('NOT_FOUND', 'Scheduled post not found.', 404);
   if (existing[0].status !== 'scheduled') return apiError('CONFLICT', 'Only scheduled posts can be cancelled.', 409);
   await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }) });
@@ -4408,6 +4539,14 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await finishYouTubeOAuth(request, env); } catch (error) { console.error('Finish YouTube OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?youtube=error&reason=server`, 302); }
     }
+    if (url.pathname === '/api/social/threads/start') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await startThreadsOAuth(request, env); } catch (error) { return internalApiError('Start Threads OAuth failed', error, 'Unable to connect Threads.'); }
+    }
+    if (url.pathname === '/api/social/threads/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await finishThreadsOAuth(request, env); } catch (error) { console.error('Finish Threads OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?threads=error&reason=server`, 302); }
+    }
     if (url.pathname === '/api/webhooks/instagram') {
       try { return await handleInstagramWebhook(request, env); } catch (error) { console.error('Instagram webhook failed', error); return apiError('WEBHOOK_FAILED', 'Instagram webhook could not be processed.', 500); }
     }
@@ -4462,6 +4601,10 @@ export default {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishYouTubePost(request, env); } catch (error) { return internalApiError('Publish YouTube post failed', error, 'Unable to publish to YouTube.'); }
     }
+    if (url.pathname === '/api/social/threads/post') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await publishThreadsPost(request, env); } catch (error) { return internalApiError('Publish Threads post failed', error, 'Unable to publish to Threads.'); }
+    }
     if (url.pathname === '/api/social/publications') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialPublications(request, env); } catch (error) { return internalApiError('List social publications failed', error, 'Unable to load scheduled posts.'); }
@@ -4489,6 +4632,10 @@ export default {
     if (url.pathname === '/api/social/youtube/schedule') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await scheduleYouTubePost(request, env); } catch (error) { return internalApiError('Schedule YouTube post failed', error, 'Unable to schedule YouTube video.'); }
+    }
+    if (url.pathname === '/api/social/threads/schedule') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await scheduleSimpleSocialPost(request, env, 'threads'); } catch (error) { return internalApiError('Schedule Threads post failed', error, 'Unable to schedule Threads post.'); }
     }
     if (url.pathname.startsWith('/api/social/publications/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

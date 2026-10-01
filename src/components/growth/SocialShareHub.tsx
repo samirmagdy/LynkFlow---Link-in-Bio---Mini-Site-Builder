@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AtSign, Check, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter, Youtube } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, recordSocialShare, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, ShareProvider, SocialConnection, SocialPublication, startFacebookOAuth, startInstagramOAuth, startLinkedInOAuth, startTikTokOAuth, startXOAuth, startYouTubeOAuth, SocialShareEvent } from '../../services/socialShareService';
+import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, publishThreadsPost, recordSocialShare, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, scheduleThreadsPost, ShareProvider, SocialConnection, SocialPublication, startFacebookOAuth, startInstagramOAuth, startLinkedInOAuth, startTikTokOAuth, startXOAuth, startYouTubeOAuth, startThreadsOAuth, SocialShareEvent } from '../../services/socialShareService';
 
 const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode; hint: string }> = [
   { id: 'x', label: 'X', icon: <Twitter className="h-4 w-4" />, hint: 'Post with a pre-filled message' },
@@ -18,7 +18,7 @@ const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode
 const BROADCAST_PROVIDERS = PROVIDERS.filter(provider => provider.id !== 'email');
 
 type BroadcastResult = {
-  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'x';
+  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x';
   status: 'published' | 'processing' | 'skipped' | 'failed';
   message: string;
 };
@@ -67,6 +67,7 @@ export const SocialShareHub: React.FC = () => {
   const [xConnection, setXConnection] = useState<SocialConnection | null>(null);
   const [xPublishing, setXPublishing] = useState(false);
   const [youtubeConnection, setYouTubeConnection] = useState<SocialConnection | null>(null);
+  const [threadsConnection, setThreadsConnection] = useState<SocialConnection | null>(null);
   const [youtubePublishing, setYouTubePublishing] = useState(false);
   const [instagramMediaType, setInstagramMediaType] = useState<'image' | 'video'>('image');
   const [mediaUrl, setMediaUrl] = useState('');
@@ -80,7 +81,7 @@ export const SocialShareHub: React.FC = () => {
     setTargetUrl(`${window.location.origin}/@${activeProfile.username}`);
     let cancelled = false;
     setLoading(true);
-    void Promise.all([loadSocialShareEvents(activeProfile.id), loadSocialConnections(), loadSocialPublications(activeProfile.id)]).then(([shareEvents, connections, scheduledPosts]) => { if (!cancelled) { setEvents(shareEvents); setLinkedinConnection(connections.find(connection => connection.provider === 'linkedin' && connection.status === 'active') || null); setTiktokConnection(connections.find(connection => connection.provider === 'tiktok' && connection.status === 'active') || null); setInstagramConnection(connections.find(connection => connection.provider === 'instagram' && connection.status === 'active') || null); setFacebookConnection(connections.find(connection => connection.provider === 'facebook' && connection.status === 'active') || null); setXConnection(connections.find(connection => connection.provider === 'x' && connection.status === 'active') || null); setYouTubeConnection(connections.find(connection => connection.provider === 'youtube' && connection.status === 'active') || null); setPublications(scheduledPosts); } }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load share activity.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    void Promise.all([loadSocialShareEvents(activeProfile.id), loadSocialConnections(), loadSocialPublications(activeProfile.id)]).then(([shareEvents, connections, scheduledPosts]) => { if (!cancelled) { setEvents(shareEvents); setLinkedinConnection(connections.find(connection => connection.provider === 'linkedin' && connection.status === 'active') || null); setTiktokConnection(connections.find(connection => connection.provider === 'tiktok' && connection.status === 'active') || null); setInstagramConnection(connections.find(connection => connection.provider === 'instagram' && connection.status === 'active') || null); setFacebookConnection(connections.find(connection => connection.provider === 'facebook' && connection.status === 'active') || null); setXConnection(connections.find(connection => connection.provider === 'x' && connection.status === 'active') || null); setYouTubeConnection(connections.find(connection => connection.provider === 'youtube' && connection.status === 'active') || null); setThreadsConnection(connections.find(connection => connection.provider === 'threads' && connection.status === 'active') || null); setPublications(scheduledPosts); } }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load share activity.'); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [activeProfile.id, activeProfile.username]);
 
@@ -165,6 +166,19 @@ export const SocialShareHub: React.FC = () => {
       finally { setYouTubePublishing(false); }
       return;
     }
+    if (provider === 'threads' && !threadsConnection) { startThreadsOAuth(); return; }
+    if (provider === 'threads' && threadsConnection) {
+      setBusyProvider('threads'); setError(null);
+      try {
+        const event = await recordSocialShare(activeProfile.id, provider, content.trim(), targetUrl.trim());
+        setEvents(previous => [event, ...previous].slice(0, 20));
+        await publishThreadsPost(content.trim(), targetUrl.trim(), activeProfile.id, event.id);
+        await completeSocialShare(event.id, 'completed');
+        setEvents(previous => previous.map(item => item.id === event.id ? { ...item, status: 'completed' } : item));
+      } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to publish to Threads.'); }
+      finally { setBusyProvider(null); }
+      return;
+    }
     setBusyProvider(provider); setError(null);
     try {
       const event = await recordSocialShare(activeProfile.id, provider, content.trim(), targetUrl.trim());
@@ -197,7 +211,7 @@ export const SocialShareHub: React.FC = () => {
 
   const publishToConnected = async () => {
     if (!valid) { setError('Add a message and a valid page URL before publishing.'); return; }
-    const connected = [linkedinConnection, tiktokConnection, instagramConnection, facebookConnection, youtubeConnection, xConnection].filter(Boolean);
+    const connected = [linkedinConnection, tiktokConnection, instagramConnection, facebookConnection, youtubeConnection, threadsConnection, xConnection].filter(Boolean);
     if (connected.length === 0) {
       setError('Connect at least one publishing account before using Publish to connected.');
       return;
@@ -211,7 +225,7 @@ export const SocialShareHub: React.FC = () => {
     setError(null);
     setBroadcastResults([]);
     const results: BroadcastResult[] = [];
-    const publish = async (provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'x') => {
+    const publish = async (provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x') => {
       const event = await recordSocialShare(activeProfile.id, provider, content.trim(), provider === 'linkedin' || provider === 'facebook' || provider === 'x' ? targetUrl.trim() : mediaUrl.trim());
       setEvents(previous => [event, ...previous].slice(0, 20));
       try {
@@ -234,6 +248,10 @@ export const SocialShareHub: React.FC = () => {
           await publishYouTubePost(content.trim(), mediaUrl.trim(), activeProfile.id, event.id);
           await completeSocialShare(event.id, 'completed');
           results.push({ provider, status: 'published', message: 'Published and confirmed by YouTube.' });
+        } else if (provider === 'threads') {
+          await publishThreadsPost(content.trim(), targetUrl.trim(), activeProfile.id, event.id);
+          await completeSocialShare(event.id, 'completed');
+          results.push({ provider, status: 'published', message: 'Published and confirmed by Threads.' });
         } else {
           await publishXPost(content.trim(), targetUrl.trim(), activeProfile.id, event.id);
           await completeSocialShare(event.id, 'completed');
@@ -251,6 +269,7 @@ export const SocialShareHub: React.FC = () => {
       instagramConnection ? publish('instagram') : Promise.resolve(results.push({ provider: 'instagram', status: 'skipped', message: 'Connect Instagram to publish there.' })),
       facebookConnection ? publish('facebook') : Promise.resolve(results.push({ provider: 'facebook', status: 'skipped', message: 'Connect a Facebook Page to publish there.' })),
       youtubeConnection ? publish('youtube') : Promise.resolve(results.push({ provider: 'youtube', status: 'skipped', message: 'Connect YouTube to publish there.' })),
+      threadsConnection ? publish('threads') : Promise.resolve(results.push({ provider: 'threads', status: 'skipped', message: 'Connect Threads to publish there.' })),
       xConnection ? publish('x') : Promise.resolve(results.push({ provider: 'x', status: 'skipped', message: 'Connect X to publish there.' }))
     ]);
     setBroadcastResults(results);
@@ -311,6 +330,15 @@ export const SocialShareHub: React.FC = () => {
     finally { setScheduling(false); }
   };
 
+  const scheduleThreads = async () => {
+    if (!valid) { setError('Add a message and a valid page URL before scheduling Threads.'); return; }
+    if (!threadsConnection) { startThreadsOAuth(); return; }
+    setScheduling(true); setError(null);
+    try { const publication = await scheduleThreadsPost(content.trim(), targetUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to schedule Threads post.'); }
+    finally { setScheduling(false); }
+  };
+
   const scheduleYouTube = async () => {
     if (!valid || !mediaUrl.trim()) { setError('Add a message, page URL, and public HTTPS video URL before scheduling YouTube.'); return; }
     if (!youtubeConnection) { startYouTubeOAuth(); return; }
@@ -355,6 +383,7 @@ export const SocialShareHub: React.FC = () => {
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div><p className="text-xs font-semibold text-ink">Facebook Page publishing</p><p className="mt-1 text-[11px] text-muted">{facebookConnection ? `Connected as ${facebookConnection.account_name || 'your Facebook Page'}. Link posts are confirmed by Facebook.` : 'Connect a Facebook Page to publish your message and LynkFlow page link directly.'}</p></div>{facebookConnection ? <div className="flex items-center gap-2"><span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span><button type="button" disabled={scheduling || busyProvider !== null || facebookPublishing} onClick={() => void scheduleFacebook()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">Schedule</button></div> : <button type="button" onClick={() => startFacebookOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect Facebook</button>}</section>
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div><p className="text-xs font-semibold text-ink">X publishing</p><p className="mt-1 text-[11px] text-muted">{xConnection ? `Connected as ${xConnection.account_name || 'your X account'}. Posts are confirmed by X.` : 'Connect X to publish short updates with your page link directly.'}</p></div>{xConnection ? <div className="flex items-center gap-2"><span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span><button type="button" disabled={scheduling || busyProvider !== null || xPublishing} onClick={() => void scheduleX()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">Schedule</button></div> : <button type="button" onClick={() => startXOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect X</button>}</section>
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div><p className="text-xs font-semibold text-ink">YouTube publishing</p><p className="mt-1 text-[11px] text-muted">{youtubeConnection ? `Connected as ${youtubeConnection.account_name || 'your YouTube channel'}. Videos are uploaded and confirmed by YouTube.` : 'Connect YouTube to upload a public video URL directly to your channel.'}</p></div>{youtubeConnection ? <div className="flex items-center gap-2"><span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span><button type="button" disabled={scheduling || busyProvider !== null || youtubePublishing} onClick={() => void scheduleYouTube()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">Schedule</button></div> : <button type="button" onClick={() => startYouTubeOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect YouTube</button>}</section>
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div><p className="text-xs font-semibold text-ink">Threads publishing</p><p className="mt-1 text-[11px] text-muted">{threadsConnection ? `Connected as ${threadsConnection.account_name || 'your Threads account'}. Posts are uploaded and confirmed by Threads.` : 'Connect Threads to publish directly from the shared composer.'}</p></div>{threadsConnection ? <div className="flex items-center gap-2"><span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span><button type="button" disabled={scheduling || busyProvider !== null} onClick={() => void scheduleThreads()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">Schedule</button></div> : <button type="button" onClick={() => startThreadsOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect Threads</button>}</section>
     {publicationPanel}
     <section className="rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-ink">LinkedIn publishing</p><p className="mt-1 text-[11px] text-muted">{linkedinConnection ? `Connected as ${linkedinConnection.account_name || 'your LinkedIn account'}. Posts are confirmed by LinkedIn before they are marked complete.` : 'Connect LinkedIn to publish directly. Other networks continue through their native composer.'}</p></div>{linkedinConnection ? <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span> : <button type="button" onClick={() => startLinkedInOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect LinkedIn</button>}</div>{linkedinConnection && <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-end"><label className="min-w-0 flex-1 text-[11px] font-semibold text-body">Schedule a LinkedIn post<input type="datetime-local" value={scheduledAt} min={defaultScheduleTime()} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-10 w-full rounded-xl border border-line bg-canvas px-3 text-xs font-normal text-ink" /></label><button type="button" disabled={scheduling || busyProvider !== null || linkedinPublishing} onClick={() => void schedulePost()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">{scheduling ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Schedule post'}</button></div>}</section>
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
