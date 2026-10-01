@@ -42,6 +42,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
     saveDraftNow,
     revertDraftToPublished,
     addBlock, 
+    addLinkBlocks,
     updateBlock, 
     removeBlock, 
     reorderBlocks, 
@@ -70,6 +71,11 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
   const handleSelectBlockType = (type: BlockType) => {
     setPreviewSource('draft');
     addBlock(currentTab?.id || activeProfile.tabs[0]?.id, type);
+  };
+
+  const handleImportLinks = (links: Array<{ title: string; url: string }>) => {
+    setPreviewSource('draft');
+    addLinkBlocks(currentTab?.id || activeProfile.tabs[0]?.id, links);
   };
 
   const activateDraftPreview = () => setPreviewSource('draft');
@@ -435,6 +441,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
         isOpen={isAddBlockOpen}
         onClose={() => setIsAddBlockOpen(false)}
         onSelectType={handleSelectBlockType}
+        onImportLinks={handleImportLinks}
       />
 
       <BlockEditModal

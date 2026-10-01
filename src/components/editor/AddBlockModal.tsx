@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BlockType } from '../../types';
+import { parseBulkLinks } from '../../services/profileMutationService';
 import { 
   Link2, 
   Video, 
@@ -26,9 +27,35 @@ interface AddBlockModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectType: (type: BlockType) => void;
+  onImportLinks: (links: Array<{ title: string; url: string }>) => void;
 }
 
-export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, onSelectType }) => {
+export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, onSelectType, onImportLinks }) => {
+  const [isImporting, setIsImporting] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkError, setBulkError] = useState('');
+
+  const close = () => {
+    setIsImporting(false);
+    setBulkText('');
+    setBulkError('');
+    onClose();
+  };
+
+  const importLinks = () => {
+    const result = parseBulkLinks(bulkText);
+    if (result.links.length === 0) {
+      setBulkError('Add at least one valid http:// or https:// link.');
+      return;
+    }
+    if (result.invalidLines.length > 0) {
+      setBulkError(`Fix line${result.invalidLines.length === 1 ? '' : 's'} ${result.invalidLines.join(', ')} before importing.`);
+      return;
+    }
+    onImportLinks(result.links);
+    close();
+  };
+
   if (!isOpen) return null;
 
   const blockCategories: Array<{
@@ -164,7 +191,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
             <p className="text-xs text-muted">Choose a block type to add to your current profile tab</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={close}
             aria-label="Close add block dialog"
             className="touch-target p-1 rounded-lg text-muted hover:text-ink hover:bg-surface-2 transition-colors cursor-pointer"
           >
@@ -172,13 +199,23 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
           </button>
         </div>
 
+        {!isImporting ? <>
+        <div className="mb-3 rounded-xl border border-accent/20 bg-accent/5 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-ink">Have several links already?</p>
+              <p className="mt-0.5 text-[11px] text-muted">Paste them all at once and we’ll build the buttons for you.</p>
+            </div>
+            <button type="button" onClick={() => setIsImporting(true)} className="shrink-0 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:bg-accent/90">Paste links</button>
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 overflow-y-auto pr-1">
           {blockCategories.map((item) => (
             <button
               key={item.type}
               onClick={() => {
                 onSelectType(item.type);
-                onClose();
+                close();
               }}
               className="p-3.5 rounded-xl border border-line bg-canvas/60 hover:bg-surface-2/80 hover:border-line-strong text-left transition-all duration-150 flex items-start gap-3 group cursor-pointer"
             >
@@ -203,6 +240,25 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
             </button>
           ))}
         </div>
+        </> : <div className="space-y-3">
+          <div>
+            <h4 className="text-sm font-semibold text-ink">Paste your links</h4>
+            <p className="mt-1 text-xs text-muted">One URL per line, or use <span className="font-medium">Title | URL</span>. Up to 50 links.</p>
+          </div>
+          <textarea
+            autoFocus
+            value={bulkText}
+            onChange={(event) => { setBulkText(event.target.value); setBulkError(''); }}
+            placeholder={'Portfolio | https://example.com\nhttps://instagram.com/yourname'}
+            className="min-h-48 w-full resize-y rounded-xl border border-line bg-canvas p-3 text-sm text-ink outline-none placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+            aria-label="Links to import"
+          />
+          {bulkError && <p role="alert" className="text-xs font-medium text-danger">{bulkError}</p>}
+          <div className="flex justify-end gap-2 border-t border-line pt-3">
+            <button type="button" onClick={() => { setIsImporting(false); setBulkError(''); }} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-body hover:bg-surface-2">Back</button>
+            <button type="button" onClick={importLinks} className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:bg-accent/90">Add links</button>
+          </div>
+        </div>}
     </Dialog>
   );
 };

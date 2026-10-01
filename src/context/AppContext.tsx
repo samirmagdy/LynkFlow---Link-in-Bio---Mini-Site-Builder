@@ -42,6 +42,7 @@ import { reportRecoverableError } from '../utils/reportError';
 import { useLocalStoragePersistence } from '../hooks/useLocalStoragePersistence';
 import {
   addBlock as addProfileBlock,
+  addLinkBlocks as addProfileLinkBlocks,
   updateBlock as updateProfileBlock,
   removeBlock as removeProfileBlock,
   duplicateBlock as duplicateProfileBlock,
@@ -201,6 +202,7 @@ interface AppContextType {
 
   // Block Actions
   addBlock: (tabId: string, blockType: BlockType, customTitle?: string) => void;
+  addLinkBlocks: (tabId: string, links: Array<{ title: string; url: string }>) => void;
   updateBlock: (tabId: string, blockId: string, updates: Partial<Block>) => void;
   removeBlock: (tabId: string, blockId: string) => void;
   reorderBlocks: (tabId: string, fromIndex: number, toIndex: number) => void;
@@ -1239,6 +1241,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
   const addBlock = (tabId: string, blockType: BlockType, customTitle?: string) => {
     updateDraftProfile(prev => addProfileBlock(prev, tabId, blockType, customTitle));
     showToast(`Added ${blockType} block`);
+  };
+
+  const addLinkBlocks = (tabId: string, links: Array<{ title: string; url: string }>) => {
+    if (links.length === 0) return;
+    updateDraftProfile(prev => addProfileLinkBlocks(prev, tabId, links));
+    showToast(`${links.length} link${links.length === 1 ? '' : 's'} added`);
   };
 
   const updateBlock = (tabId: string, blockId: string, updates: Partial<Block>) => {
@@ -2344,6 +2352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         deleteProfile,
 
         addBlock,
+        addLinkBlocks,
         updateBlock,
         removeBlock,
         reorderBlocks,

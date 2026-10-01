@@ -18,6 +18,59 @@ import type {
 
 type IdFactory = () => string;
 
+export interface ImportedLink {
+  title: string;
+  url: string;
+}
+
+export interface BulkLinkParseResult {
+  links: ImportedLink[];
+  invalidLines: number[];
+  truncated: boolean;
+}
+
+const MAX_IMPORTED_LINKS = 50;
+
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const titleFromUrl = (value: string): string => {
+  try {
+    const hostname = new URL(value).hostname.replace(/^www\./, '');
+    return hostname.split('.')[0].replace(/[-_]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+  } catch {
+    return 'New link';
+  }
+};
+
+/** Parse one URL per line, or `Title | URL`, without accepting unsafe protocols. */
+export function parseBulkLinks(raw: string): BulkLinkParseResult {
+  const links: ImportedLink[] = [];
+  const invalidLines: number[] = [];
+  const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
+  lines.forEach((line, index) => {
+    const separator = line.indexOf('|');
+    const suppliedTitle = separator >= 0 ? line.slice(0, separator).trim() : '';
+    const url = (separator >= 0 ? line.slice(separator + 1) : line).trim();
+    if (!isHttpUrl(url)) {
+      invalidLines.push(index + 1);
+      return;
+    }
+    if (links.length < MAX_IMPORTED_LINKS) {
+      links.push({ title: suppliedTitle || titleFromUrl(url), url });
+    }
+  });
+
+  return { links, invalidLines, truncated: lines.length > MAX_IMPORTED_LINKS };
+}
+
 const createIdFactory = (prefix: string): IdFactory => {
   let sequence = 0;
   return () => `${prefix}-${Date.now()}-${sequence++}`;
@@ -134,6 +187,17 @@ export function addBlock(profile: Profile, tabId: string, blockType: BlockType, 
   if (!target) return profile;
   const block = { ...createDefaultBlock(blockType, customTitle), position: target.blocks.length };
   return updateTabBlocks(profile, target.id, tab => ({ ...tab, blocks: [...tab.blocks, block] }));
+}
+
+export function addLinkBlocks(profile: Profile, tabId: string, links: ImportedLink[]): Profile {
+  const target = profile.tabs.find(tab => tab.id === tabId) || profile.tabs[0];
+  if (!target || links.length === 0) return profile;
+  const blocks = links.map(({ title, url }, index) => ({
+    ...createDefaultBlock('link', title),
+    payload: { url, subtitle: '', highlightBadge: '', animation: 'none', openInNewTab: true } as LinkBlockPayload,
+    position: target.blocks.length + index
+  }));
+  return updateTabBlocks(profile, target.id, tab => ({ ...tab, blocks: [...tab.blocks, ...blocks] }));
 }
 
 export function updateBlock(profile: Profile, tabId: string, blockId: string, updates: Partial<Block>): Profile {
