@@ -624,13 +624,13 @@ export const API_V1_ENDPOINTS: ApiEndpointDef[] = [
     responseSchema: '{ snapshotId, publishedVersion, publishedAt }'
   },
   {
-    method: 'GET', path: '/v1/profiles/{username}/theme',
+    method: 'GET', path: '/v1/profiles/{username}/themes',
     description: 'Read the current draft theme configuration.',
     scope: 'themes:read',
     responseSchema: '{ id, name, bgColor, accentColor, ... }'
   },
   {
-    method: 'PATCH', path: '/v1/profiles/{username}/theme',
+    method: 'PATCH', path: '/v1/profiles/{username}/themes',
     description: 'Apply a theme update to the draft state.',
     scope: 'themes:write',
     requestBody: '{ accentColor?, cardStyle?, fontDisplay?, ... }',

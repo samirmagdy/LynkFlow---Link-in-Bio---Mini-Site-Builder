@@ -10,8 +10,10 @@ Implemented resources:
 - POST /api/public/newsletter/unsubscribe
 - `GET /api/v1/profiles`
 - `GET/PATCH /api/v1/profiles/{profileId}`
-- `GET/PATCH /api/v1/profiles/{profileId}/blocks/{blockId}`
+- `GET/POST /api/v1/profiles/{profileId}/blocks` and `GET/PATCH/DELETE /api/v1/profiles/{profileId}/blocks/{blockId}`
 - `GET/PATCH /api/v1/profiles/{profileId}/themes`
 - `POST /api/v1/profiles/{profileId}/publish`
+
+All API mutations require an `Idempotency-Key` header containing 8–128 safe characters. Reusing a key with the same request returns the original authoritative response; reusing it for a different request returns `409 Conflict`.
 
 Management endpoints for keys and billing are documented in the OpenAPI file under `/api/api-keys` and `/api/stripe`.

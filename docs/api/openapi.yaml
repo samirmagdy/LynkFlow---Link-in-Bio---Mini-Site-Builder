@@ -72,14 +72,33 @@ paths:
     get:
       operationId: listBlocks
       responses: {'200': {description: Blocks returned}}
+    post:
+      operationId: createBlock
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateBlockRequest'}}}}
+      responses:
+        '201': {description: Block created}
+        '404': {description: Target tab or profile not found}
+        '409': {description: Idempotency key conflict}
+        '422': {description: Invalid block payload}
   /api/v1/profiles/{profileId}/blocks/{blockId}:
     parameters:
       - {name: profileId, in: path, required: true, schema: {type: string}}
       - {name: blockId, in: path, required: true, schema: {type: string}}
     patch:
       operationId: updateBlock
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DataPatch'}}}}
       responses: {'200': {description: Block updated}, '404': {description: Not found}}
+    delete:
+      operationId: deleteBlock
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses:
+        '200': {description: Block deleted}
+        '404': {description: Not found}
   /api/v1/profiles/{profileId}/themes:
     parameters: [{name: profileId, in: path, required: true, schema: {type: string}}]
     get:
@@ -87,12 +106,16 @@ paths:
       responses: {'200': {description: Theme returned}}
     patch:
       operationId: updateTheme
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DataPatch'}}}}
       responses: {'200': {description: Theme updated}}
   /api/v1/profiles/{profileId}/publish:
     parameters: [{name: profileId, in: path, required: true, schema: {type: string}}]
     post:
       operationId: publishProfile
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       responses: {'200': {description: Published}, '403': {description: Missing scope}}
   /api/webhooks:
     post:
@@ -302,3 +325,17 @@ components:
       required: [data]
       properties:
         data: {type: object, additionalProperties: true}
+    CreateBlockRequest:
+      type: object
+      required: [tabId, type, title, payload]
+      properties:
+        tabId: {type: string}
+        type: {type: string}
+        title: {type: string, minLength: 1}
+        payload: {type: object, additionalProperties: true}
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8, maxLength: 128}
