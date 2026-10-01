@@ -1786,6 +1786,87 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
+function campaignHtml(body: string): string {
+  return escapeHtml(body).replace(/\r?\n/g, '<br>');
+}
+
+async function listEmailCampaigns(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot manage email campaigns.', 403);
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  const response = await supabaseRequest(`email_campaigns?workspace_id=eq.${encodeURIComponent(access.user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,subject,body,status,recipient_count,sent_count,created_by,created_at,sent_at&order=created_at.desc&limit=100`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function createEmailCampaign(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot create email campaigns.', 403);
+  let input: { profileId?: string; subject?: string; body?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const subject = String(input.subject || '').trim();
+  const body = String(input.body || '').trim();
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  if (!subject || subject.length > 160 || !body || body.length > 10000) return apiError('VALIDATION_ERROR', 'Subject and message are required; subject must be 160 characters or fewer and message 10,000 characters or fewer.', 422);
+  const campaign = { id: `cmp_${crypto.randomUUID()}`, workspace_id: access.user.id, profile_id: profileId, subject, body, status: 'draft', recipient_count: 0, sent_count: 0, created_by: access.user.email, created_at: new Date().toISOString() };
+  await supabaseRequest('email_campaigns', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(campaign) });
+  return json({ data: campaign, requestId: crypto.randomUUID() }, 201);
+}
+
+async function sendResendCampaignBatch(env: Env, emails: Array<{ to: string; subject: string; html: string }>): Promise<number> {
+  if (!env.RESEND_API_KEY || !emails.length) return 0;
+  let sent = 0;
+  for (let index = 0; index < emails.length; index += 100) {
+    const batch = emails.slice(index, index + 100).map(email => ({ from: 'onboarding@resend.dev', ...email }));
+    const response = await fetch('https://api.resend.com/emails/batch', { method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify(batch) });
+    if (response.ok) sent += batch.length;
+    else console.error('Email campaign batch failed', await response.text());
+  }
+  return sent;
+}
+
+async function sendEmailCampaign(request: Request, env: Env, campaignId: string): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot send email campaigns.', 403);
+  const campaignResponse = await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaignId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=*`, env);
+  const campaigns = await campaignResponse.json() as Array<{ id: string; profile_id: string; subject: string; body: string; status: string }>;
+  const campaign = campaigns[0];
+  if (!campaign) return apiError('NOT_FOUND', 'Campaign not found.', 404);
+  if (!canManageProfile(access.user, campaign.profile_id)) return apiError('FORBIDDEN', 'You do not have permission to send this campaign.', 403);
+  if (campaign.status === 'sending') return apiError('CONFLICT', 'This campaign is already sending.', 409);
+  if (campaign.status === 'sent') return apiError('CONFLICT', 'This campaign has already been sent.', 409);
+  if (!env.RESEND_API_KEY) return apiError('SERVICE_UNAVAILABLE', 'Email delivery is not configured.', 503);
+  const subscribersResponse = await supabaseRequest(`subscribers?workspace_id=eq.${encodeURIComponent(access.user.id)}&profile_id=eq.${encodeURIComponent(campaign.profile_id)}&status=eq.active&consent_given=eq.true&select=email,name&order=subscribed_at.asc&limit=500`, env);
+  const subscribers = await subscribersResponse.json() as Array<{ email?: string; name?: string | null }>;
+  if (!subscribers.length) return apiError('VALIDATION_ERROR', 'There are no consented active subscribers for this profile.', 422);
+  await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaignId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'sending', recipient_count: subscribers.length }) });
+  const origin = env.APP_URL || 'https://lynkflow.samirmagdy80.workers.dev';
+  const emails = await Promise.all(subscribers.filter(subscriber => typeof subscriber.email === 'string').map(async subscriber => {
+    const email = subscriber.email!;
+    const token = await hashValue(`audience-unsubscribe:${campaign.profile_id}:${email}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL || 'lynkflow-audience-unsubscribe');
+    return { to: email, subject: campaign.subject, html: `<p>Hi ${escapeHtml(subscriber.name || 'there')},</p><p>${campaignHtml(campaign.body)}</p><hr><p style="font-size:12px;color:#666"><a href="${origin}/api/public/audience/unsubscribe?profileId=${encodeURIComponent(campaign.profile_id)}&email=${encodeURIComponent(email)}&token=${token}">Unsubscribe</a></p>` };
+  }));
+  const sentCount = await sendResendCampaignBatch(env, emails);
+  const sentAt = new Date().toISOString();
+  await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaignId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: sentCount === emails.length ? 'sent' : sentCount ? 'sent' : 'failed', sent_count: sentCount, sent_at: sentCount ? sentAt : null }) });
+  return json({ data: { id: campaignId, recipientCount: emails.length, sentCount, status: sentCount === emails.length ? 'sent' : sentCount ? 'sent' : 'failed' }, requestId: crypto.randomUUID() });
+}
+
+async function unsubscribeAudienceFromCampaign(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const profileId = url.searchParams.get('profileId')?.trim();
+  const email = url.searchParams.get('email')?.trim().toLowerCase();
+  const token = url.searchParams.get('token')?.trim();
+  const expectedToken = profileId && email ? await hashValue(`audience-unsubscribe:${profileId}:${email}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL || 'lynkflow-audience-unsubscribe') : '';
+  if (!profileId || !email || !token || token !== expectedToken || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return new Response('Invalid unsubscribe link.', { status: 400, headers: { 'content-type': 'text/plain;charset=UTF-8' } });
+  await supabaseRequest(`subscribers?profile_id=eq.${encodeURIComponent(profileId)}&email=eq.${encodeURIComponent(email)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'unsubscribed', last_engagement_at: new Date().toISOString() }) });
+  return new Response('<!doctype html><html><body style="font-family:system-ui;max-width:560px;margin:64px auto;padding:24px"><h1>You are unsubscribed</h1><p>You will not receive future emails from this creator through LynkFlow.</p></body></html>', { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store' } });
+}
+
 async function rotateApiKey(request: Request, env: Env, keyId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2458,9 +2539,27 @@ export default {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await createPublicProductCheckout(request, env); } catch (error) { return internalApiError('Create product checkout failed', error, 'Unable to start secure checkout.', 502); }
     }
+    if (url.pathname === '/api/public/audience/unsubscribe') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await unsubscribeAudienceFromCampaign(request, env); } catch (error) { console.error('Audience unsubscribe failed', error); return new Response('Unsubscribe temporarily unavailable.', { status: 503 }); }
+    }
     if (url.pathname === '/api/sales/orders') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listProductOrders(request, env); } catch (error) { return internalApiError('List product orders failed', error, 'Unable to load sales data.'); }
+    }
+    if (url.pathname === '/api/campaigns') {
+      if (request.method === 'GET') {
+        try { return await listEmailCampaigns(request, env); } catch (error) { return internalApiError('List email campaigns failed', error, 'Unable to load campaigns.'); }
+      }
+      if (request.method === 'POST') {
+        try { return await createEmailCampaign(request, env); } catch (error) { return internalApiError('Create email campaign failed', error, 'Unable to create campaign.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+    }
+    if (url.pathname.startsWith('/api/campaigns/') && url.pathname.endsWith('/send')) {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      const campaignId = url.pathname.slice('/api/campaigns/'.length, -'/send'.length);
+      try { return await sendEmailCampaign(request, env, decodeURIComponent(campaignId)); } catch (error) { return internalApiError('Send email campaign failed', error, 'Unable to send campaign.'); }
     }
     if (url.pathname === '/api/stripe/cancel') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);

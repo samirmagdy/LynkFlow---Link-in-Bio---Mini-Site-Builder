@@ -16,6 +16,9 @@ const checks = [
   ['subscription cancel', '/api/stripe/cancel', 'POST'],
   ['billing portal', '/api/stripe/portal', 'POST'],
   ['sales orders', '/api/sales/orders', 'GET'],
+  ['campaigns list', '/api/campaigns?profileId=example', 'GET'],
+  ['campaigns create', '/api/campaigns', 'POST'],
+  ['campaign send', '/api/campaigns/cmp_example/send', 'POST'],
 ] as const;
 let failed = 0;
 for (const [name, path, method] of checks) {

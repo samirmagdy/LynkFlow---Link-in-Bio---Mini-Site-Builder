@@ -14,14 +14,16 @@ import {
   AlertCircle,
   UserCheck,
   UserX,
+  Send,
 } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
+import { CampaignsPanel } from './CampaignsPanel';
 
 export const FormInboxView: React.FC = () => {
   const { submissions, deleteSubmission, unsubscribeSubscriber, activeProfile, user, showToast, appendAuditLog } = useApp();
   
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers' | 'campaigns'>('submissions');
   
   // Submissions State
   const [searchTerm, setSearchTerm] = useState('');
@@ -201,6 +203,17 @@ export const FormInboxView: React.FC = () => {
           >
             <Users className="w-3.5 h-3.5 text-accent" />
             <span>Subscriber Audience ({subscribers.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('campaigns')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'campaigns'
+                ? 'bg-surface-2 text-ink shadow-xs'
+                : 'text-muted hover:text-ink-strong'
+            }`}
+          >
+            <Send className="w-3.5 h-3.5 text-accent" />
+            <span>Campaigns</span>
           </button>
         </div>
       </div>
@@ -505,6 +518,8 @@ export const FormInboxView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {activeTab === 'campaigns' && <CampaignsPanel />}
 
       {/* MODAL 1: Submission Detail Drawer / Dialog */}
       {selectedSubmission && (
