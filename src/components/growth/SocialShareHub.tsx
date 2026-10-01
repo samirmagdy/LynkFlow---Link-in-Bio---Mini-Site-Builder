@@ -108,6 +108,7 @@ export const SocialShareHub: React.FC = () => {
       const uploaded = await uploadBlockAsset(file, activeProfile.id);
       setMediaUrl(uploaded.url);
       if (file.type.startsWith('video/')) setInstagramMediaType('video');
+      else if (file.type.startsWith('image/')) setInstagramMediaType('image');
     } catch (reason) {
       setMediaUploadError(reason instanceof Error ? reason.message : 'Media upload failed.');
     } finally {
