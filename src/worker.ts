@@ -985,13 +985,17 @@ async function ingestPublicAnalytics(request: Request, env: Env): Promise<Respon
   else if (/mobile|iphone|android/i.test(userAgent)) device = 'mobile';
   let referrer = 'Direct';
   try { referrer = new URL(String(input.referrer || request.headers.get('referer') || '')).hostname || 'Direct'; } catch { referrer = String(input.referrer || 'Direct').split('?')[0].split('#')[0].slice(0, 120) || 'Direct'; }
+  // Cloudflare exposes a country code without exposing the visitor's IP to the
+  // application. Keep the value coarse and bounded for privacy-safe analytics.
+  const countryHeader = String(request.headers.get('cf-ipcountry') || '').trim().toUpperCase();
+  const country = /^[A-Z]{2}$/.test(countryHeader) ? countryHeader : 'Unknown';
   const occurredAt = new Date().toISOString();
   const visitorHash = await hashValue(`${occurredAt.slice(0, 10)}:${ip}:${userAgent.slice(0, 120)}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL);
   await supabaseRequest('analytics_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({
     id: `ana_${crypto.randomUUID()}`, workspace_id: profile.workspace_id, profile_id: profileId,
     event_type: type, block_id: input.blockId || null, block_title: null, tab_id: null,
     snapshot_version: Number(snapshot.publishedVersion || 0) || null, visitor_hash: `vh_${visitorHash}`,
-    occurred_at: occurredAt, referrer, country: 'Unknown', device, campaign: String(input.campaign || '').slice(0, 64) || null,
+    occurred_at: occurredAt, referrer, country, device, campaign: String(input.campaign || '').slice(0, 64) || null,
     is_bot: isBot, consent_granted: input.consentGranted !== false
   }) });
   return json({ data: { accepted: true }, requestId: crypto.randomUUID() });
@@ -1300,8 +1304,8 @@ async function handleApiAnalytics(request: Request, env: Env, profileId: string)
   const requestedDays = Number(new URL(request.url).searchParams.get('days') || 7);
   if (!Number.isInteger(requestedDays) || requestedDays < 1 || requestedDays > maxDays) return apiError('VALIDATION_ERROR', `days must be an integer between 1 and ${maxDays} for this plan.`, 422);
   const since = new Date(Date.now() - requestedDays * 24 * 60 * 60 * 1000).toISOString();
-  const response = await supabaseRequest(`analytics_events?workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&profile_id=eq.${encodeURIComponent(profileId)}&occurred_at=gte.${encodeURIComponent(since)}&is_bot=eq.false&select=event_type,visitor_hash,referrer`, env);
-  const events = await response.json() as Array<{ event_type?: string; visitor_hash?: string; referrer?: string }>;
+  const response = await supabaseRequest(`analytics_events?workspace_id=eq.${encodeURIComponent(auth.workspaceId)}&profile_id=eq.${encodeURIComponent(profileId)}&occurred_at=gte.${encodeURIComponent(since)}&is_bot=eq.false&select=event_type,visitor_hash,referrer,country`, env);
+  const events = await response.json() as Array<{ event_type?: string; visitor_hash?: string; referrer?: string; country?: string }>;
   const views = events.filter(event => event.event_type === 'page_view').length;
   const clicks = events.filter(event => event.event_type === 'block_click').length;
   const uniqueVisitors = new Set(events.filter(event => event.event_type === 'page_view').map(event => event.visitor_hash).filter(Boolean)).size;
@@ -1310,7 +1314,12 @@ async function handleApiAnalytics(request: Request, env: Env, profileId: string)
     const referrer = event.referrer || 'Direct';
     referrers.set(referrer, (referrers.get(referrer) || 0) + 1);
   }
-  return json({ data: { profileId, username: profile.username, period: `${requestedDays}d`, pageViews: views, uniqueVisitors, clicks, ctr: views ? Math.round((clicks / views) * 1000) / 10 : 0, topReferrers: [...referrers.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([referrer, count]) => ({ referrer, count })) }, requestId: crypto.randomUUID() });
+  const countries = new Map<string, number>();
+  for (const event of events.filter(event => event.event_type === 'page_view')) {
+    const country = /^[A-Z]{2}$/.test(String(event.country || '').toUpperCase()) ? String(event.country).toUpperCase() : 'Unknown';
+    countries.set(country, (countries.get(country) || 0) + 1);
+  }
+  return json({ data: { profileId, username: profile.username, period: `${requestedDays}d`, pageViews: views, uniqueVisitors, clicks, ctr: views ? Math.round((clicks / views) * 1000) / 10 : 0, topReferrers: [...referrers.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([referrer, count]) => ({ referrer, count })), topCountries: [...countries.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([country, count]) => ({ country, count })) }, requestId: crypto.randomUUID() });
 }
 
 async function handleApiFormSubmissions(request: Request, env: Env, profileId: string): Promise<Response> {
