@@ -401,7 +401,7 @@ async function publishedProductDelivery(env: Env, profileId: string, blockId: st
   const response = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(profileId)}&select=snapshot`, env);
   const rows = await response.json() as Array<{ snapshot?: PublicSnapshot }>;
   const blocks = (rows[0]?.snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
-  const block = blocks.find(candidate => candidate.id === blockId && candidate.type === 'product');
+  const block = blocks.find(candidate => candidate.id === blockId && (candidate.type === 'product' || candidate.type === 'tip'));
   const rawDeliveryUrl = String(block?.payload?.deliveryUrl || '').trim();
   if (!block || !rawDeliveryUrl) return null;
   try {
@@ -2474,11 +2474,11 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
   const blocks = (snapshot.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
   const block = blocks.find(candidate => candidate.id === blockId && candidate.type === 'product');
   const payload = block?.payload || {};
-  if (!block || payload.checkoutEnabled !== true) return json({ error: 'This product does not offer secure checkout.' }, 404);
-  const price = parseProductPrice(payload.price);
+  if (!block || payload.checkoutEnabled !== true) return json({ error: 'This block does not offer secure checkout.' }, 404);
+  const price = parseProductPrice(block.type === 'tip' ? payload.amount : payload.price);
   const currency = normalizeProductCurrency(payload.currency);
   if (!price || !currency) return json({ error: 'This product has incomplete checkout details.' }, 422);
-  const productName = String(block.title || 'LynkFlow product').trim().slice(0, 120) || 'LynkFlow product';
+  const productName = String(block.title || (block.type === 'tip' ? 'Creator support' : 'LynkFlow product')).trim().slice(0, 120) || 'Creator support';
   const description = String(payload.description || '').trim().slice(0, 500);
   const params = new URLSearchParams({
     mode: 'payment',
@@ -2493,6 +2493,7 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
     'metadata[workspace_id]': String(profileRow?.workspace_id || ''),
     'metadata[profile_id]': String(profileRow?.profile_id || ''),
     'metadata[product_order]': 'true',
+    'metadata[commerce_type]': block.type === 'tip' ? 'tip' : 'product',
   });
   if (description) params.set('line_items[0][price_data][product_data][description]', description);
   const image = safePublicHref(payload.image);

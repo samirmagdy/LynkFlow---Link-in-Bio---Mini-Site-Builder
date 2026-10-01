@@ -57,6 +57,10 @@ function createDefaultBlock(blockType: BlockType, customTitle?: string): Block {
       title = customTitle || 'Featured Product';
       payload = { image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1200', description: 'Add a product description', price: '49', currency: 'USD', url: 'https://example.com', buttonLabel: 'Shop now', checkoutEnabled: false };
       break;
+    case 'tip':
+      title = customTitle || 'Support my work';
+      payload = { description: 'If you enjoy what I make, you can leave a small tip.', amount: '5', currency: 'USD', buttonLabel: 'Leave a tip', checkoutEnabled: true };
+      break;
     case 'event':
       title = customTitle || 'Upcoming Event';
       payload = { date: '2026-06-15', time: '7:00 PM', location: 'Add venue or online details', description: 'Share what visitors can expect.', url: 'https://example.com', buttonLabel: 'Get tickets' } as EventBlockPayload;

@@ -28,6 +28,7 @@ export type BlockType =
   | 'carousel'
   | 'event'
   | 'product'
+  | 'tip'
   | 'text' 
   | 'divider' 
   | 'folder' 
@@ -312,6 +313,14 @@ export interface ContactBlockPayload {
   presetSubject?: string;
 }
 
+export interface TipBlockPayload {
+  description?: string;
+  amount: string;
+  currency: string;
+  buttonLabel?: string;
+  checkoutEnabled?: boolean;
+}
+
 type BlockPayload =
   | LinkBlockPayload 
   | MediaBlockPayload 
@@ -319,6 +328,7 @@ type BlockPayload =
   | CarouselBlockPayload
   | EventBlockPayload
   | ProductBlockPayload
+  | TipBlockPayload
   | TextBlockPayload 
   | DividerBlockPayload 
   | FolderBlockPayload 

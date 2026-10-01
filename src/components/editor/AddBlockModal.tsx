@@ -14,6 +14,7 @@ import {
   Images,
   GalleryHorizontal,
   ShoppingBag,
+  HandCoins,
   CalendarDays,
   X 
 } from 'lucide-react';
@@ -73,6 +74,13 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
       description: 'Feature an item with image, price, description, and purchase link',
       icon: <ShoppingBag className="w-5 h-5 text-lime-400" />,
       badge: 'Commerce'
+    },
+    {
+      type: 'tip',
+      title: 'Support / Tips',
+      description: 'Let visitors support your work with a secure one-time tip',
+      icon: <HandCoins className="w-5 h-5 text-warning" />,
+      badge: 'Monetization'
     },
     {
       type: 'event',

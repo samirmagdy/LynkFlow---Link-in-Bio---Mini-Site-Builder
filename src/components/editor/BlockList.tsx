@@ -34,6 +34,7 @@ import {
   ,Images
   ,GalleryHorizontal
   ,ShoppingBag
+  ,HandCoins
 } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
@@ -239,6 +240,7 @@ export const BlockList: React.FC<BlockListProps> = ({
       case 'gallery': return <Images {...props} className="w-4 h-4 text-accent-soft" />;
       case 'carousel': return <GalleryHorizontal {...props} className="w-4 h-4 text-warning" />;
       case 'product': return <ShoppingBag {...props} className="w-4 h-4 text-lime-400" />;
+      case 'tip': return <HandCoins {...props} className="w-4 h-4 text-warning" />;
       case 'text': return <Type {...props} className="w-4 h-4 text-body" />;
       case 'folder': return <FolderTree {...props} className="w-4 h-4 text-warning" />;
       case 'faq': return <HelpCircle {...props} className="w-4 h-4 text-accent-soft" />;

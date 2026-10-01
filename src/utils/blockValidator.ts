@@ -184,6 +184,14 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       break;
     }
 
+    case 'tip': {
+      const amount = Number(getString(payload, 'amount'));
+      const currency = getString(payload, 'currency');
+      if (!Number.isFinite(amount) || amount <= 0) errors.push('Tip block requires a valid positive amount.');
+      if (!/^[A-Za-z]{3}$/.test(currency)) errors.push('Tip block requires a three-letter currency code.');
+      break;
+    }
+
     case 'event': {
       const date = getString(payload, 'date');
       const url = getString(payload, 'url');

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Profile, ThemeConfig, Block, FormBlockPayload, FolderBlockPayload, FaqBlockPayload, LinkBlockPayload, MediaBlockPayload, GalleryBlockPayload, CarouselBlockPayload, ProductBlockPayload, EventBlockPayload, TextBlockPayload, DividerBlockPayload, TestimonialBlockPayload, FileBlockPayload, ContactBlockPayload } from '../../types';
+import { Profile, ThemeConfig, Block, FormBlockPayload, FolderBlockPayload, FaqBlockPayload, LinkBlockPayload, MediaBlockPayload, GalleryBlockPayload, CarouselBlockPayload, ProductBlockPayload, TipBlockPayload, EventBlockPayload, TextBlockPayload, DividerBlockPayload, TestimonialBlockPayload, FileBlockPayload, ContactBlockPayload } from '../../types';
 import { Avatar } from '../common/Avatar';
 import { 
   ExternalLink, 
@@ -875,6 +875,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     {productContent}
                   </a>
                 );
+              }
+
+              case 'tip': {
+                const payload = block.payload as TipBlockPayload;
+                const checkoutLoading = productCheckoutStatus[block.id] === 'loading';
+                const checkoutError = productCheckoutErrors[block.id];
+                return <div key={block.id} className={`${cardClasses} p-4`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}><div className="flex items-start justify-between gap-3"><div><h4 className="font-semibold text-sm">{block.title}</h4>{payload.description && <p className="mt-1 text-xs" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{payload.description}</p>}</div><span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || 'USD'} {payload.amount}</span></div>{payload.checkoutEnabled !== false && <><button type="button" disabled={checkoutLoading} onClick={() => void handleProductCheckout(block.id)} className="mt-3 inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-semibold disabled:cursor-wait disabled:opacity-70" style={{ backgroundColor: 'var(--theme-accent, #6366F1)', color: 'var(--theme-accent-text, #FFFFFF)' }}>{checkoutLoading ? 'Opening checkout…' : payload.buttonLabel || 'Leave a tip'}</button>{checkoutError && <p role="alert" className="mt-2 text-xs" style={{ color: 'var(--theme-danger, #B42318)' }}>{checkoutError}</p>}</>}</div>;
               }
 
               case 'event': {
