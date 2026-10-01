@@ -14,7 +14,7 @@ export interface SocialShareEvent {
 
 export interface SocialConnection {
   id: string;
-  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'x';
+  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'x';
   provider_account_id: string;
   account_name: string | null;
   token_expires_at: string | null;
@@ -27,7 +27,7 @@ export interface SocialConnection {
 export interface SocialPublication {
   id: string;
   profile_id: string;
-  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook';
+  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'x';
   content: string;
   target_url: string | null;
   media_url: string | null;
@@ -98,6 +98,10 @@ export function startXOAuth(): void {
   window.location.assign('/api/social/x/start');
 }
 
+export function startYouTubeOAuth(): void {
+  window.location.assign('/api/social/youtube/start');
+}
+
 export async function publishFacebookPost(content: string, targetUrl: string, profileId: string, shareEventId?: string): Promise<{ providerPostId: string | null }> {
   const response = await authorizedRequest('/api/social/facebook/post', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, shareEventId }) });
   const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
@@ -109,6 +113,13 @@ export async function publishXPost(content: string, targetUrl: string, profileId
   const response = await authorizedRequest('/api/social/x/post', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, shareEventId }) });
   const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
   if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to X.');
+  return { providerPostId: body.data.providerPostId || null };
+}
+
+export async function publishYouTubePost(content: string, mediaUrl: string, profileId: string, shareEventId?: string): Promise<{ providerPostId: string | null }> {
+  const response = await authorizedRequest('/api/social/youtube/post', { method: 'POST', body: JSON.stringify({ content, mediaUrl, profileId, shareEventId }) });
+  const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to YouTube.');
   return { providerPostId: body.data.providerPostId || null };
 }
 
@@ -165,6 +176,13 @@ export async function scheduleXPost(content: string, targetUrl: string, profileI
   const response = await authorizedRequest('/api/social/x/schedule', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, scheduledAt }) });
   const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
   if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule X post.');
+  return body.data;
+}
+
+export async function scheduleYouTubePost(content: string, mediaUrl: string, profileId: string, scheduledAt: string): Promise<SocialPublication> {
+  const response = await authorizedRequest('/api/social/youtube/schedule', { method: 'POST', body: JSON.stringify({ content, mediaUrl, profileId, scheduledAt }) });
+  const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule YouTube video.');
   return body.data;
 }
 
