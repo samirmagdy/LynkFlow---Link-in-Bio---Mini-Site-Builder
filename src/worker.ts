@@ -1261,6 +1261,7 @@ function createPublicSnapshot(data: Record<string, unknown>, profileId: string, 
     category: String(data.category || 'Creator'),
     starterSiteId: typeof data.starterSiteId === 'string' ? data.starterSiteId : undefined,
     verified: Boolean(data.verified),
+    ...(Number.isFinite(Number(data.followerCount)) && Number(data.followerCount) > 0 ? { followerCount: Math.floor(Number(data.followerCount)) } : {}),
     socialPosition: data.socialPosition || 'top',
     socialLinks: Array.isArray(data.socialLinks) ? (data.socialLinks as Array<Record<string, unknown>>).filter(link => link.active && link.url) : [],
     theme: data.theme || {},
@@ -1683,11 +1684,12 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
   let input: { data?: Record<string, unknown> };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   if (!input.data || typeof input.data !== 'object' || Array.isArray(input.data)) return apiError('VALIDATION_ERROR', 'data must be an object.', 422);
-  const mutableProfileFields = new Set(['username', 'displayName', 'bio', 'avatarUrl', 'category', 'socialLinks', 'seo', 'qrConfig', 'directLinkMode', 'socialPosition']);
+  const mutableProfileFields = new Set(['username', 'displayName', 'bio', 'avatarUrl', 'category', 'followerCount', 'socialLinks', 'seo', 'qrConfig', 'directLinkMode', 'socialPosition']);
   const invalidFields = Object.keys(input.data).filter(field => !mutableProfileFields.has(field) && field !== 'theme' && field !== 'standardTheme');
   if (invalidFields.length) return apiError('VALIDATION_ERROR', `Fields cannot be changed through this endpoint: ${invalidFields.join(', ')}.`, 422);
   if (input.data.username !== undefined && typeof input.data.username !== 'string') return apiError('VALIDATION_ERROR', 'username must be a string.', 422);
   if (typeof input.data.username === 'string' && !/^[a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?$/i.test(input.data.username.trim())) return apiError('VALIDATION_ERROR', 'Username must use 3-30 letters, numbers, underscores, or hyphens.', 422);
+  if (input.data.followerCount !== undefined && (!Number.isInteger(input.data.followerCount) || Number(input.data.followerCount) < 0 || Number(input.data.followerCount) > 1_000_000_000)) return apiError('VALIDATION_ERROR', 'followerCount must be an integer between 0 and 1000000000.', 422);
   for (const field of ['displayName', 'bio', 'category', 'avatarUrl'] as const) {
     if (field in input.data && typeof input.data[field] !== 'string') return apiError('VALIDATION_ERROR', `${field} must be a string.`, 422);
   }

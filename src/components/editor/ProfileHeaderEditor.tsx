@@ -135,6 +135,19 @@ export const ProfileHeaderEditor: React.FC<ProfileHeaderEditorProps> = ({ onOpen
               />
             </div>
 
+            <div>
+              <label className="block text-[11px] font-medium text-body mb-1">Total Followers (optional)</label>
+              <input
+                type="number"
+                min="0"
+                max="1000000000"
+                value={activeProfile.followerCount || ''}
+                onChange={(e) => handleFieldChange('followerCount', e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="e.g. 12500"
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-canvas border border-line text-ink focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
             <div className="flex items-center gap-3 pt-5">
               <label className="flex items-center gap-2 text-xs text-body cursor-pointer select-none">
                 <input

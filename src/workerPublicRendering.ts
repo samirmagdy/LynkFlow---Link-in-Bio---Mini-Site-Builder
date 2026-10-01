@@ -31,6 +31,7 @@ export interface PublicSnapshot extends PublicJson {
   handle?: string;
   displayName?: string;
   bio?: string;
+  followerCount?: number;
   version?: number;
   publishedVersion?: number;
   publishedAt?: string;

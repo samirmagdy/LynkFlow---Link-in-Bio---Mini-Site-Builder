@@ -450,6 +450,7 @@ export interface PublishedProfileSnapshot {
   category: string;
   starterSiteId?: string;
   verified: boolean;
+  followerCount?: number;
   socialPosition: 'top' | 'bottom';
   socialLinks: SocialLink[];
   theme: ThemeConfig;
@@ -496,6 +497,7 @@ export interface Profile {
   avatarUrl: string;
   category: string;
   verified: boolean;
+  followerCount?: number;
   status: 'draft' | 'published' | 'suspended' | 'deleted';
   publishedVersion: number;
   publishedSnapshot?: PublishedProfileSnapshot;

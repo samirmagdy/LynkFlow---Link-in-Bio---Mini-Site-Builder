@@ -563,6 +563,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </p>
           )}
 
+          {(profile.verified || Number(profile.followerCount) > 0) && <div className="mb-4 flex flex-wrap items-center justify-center gap-2 text-[11px]" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
+            {profile.verified && <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))' }}><ShieldCheck className="h-3.5 w-3.5 text-blue-500" /> Verified</span>}
+            {Number(profile.followerCount) > 0 && <span className="rounded-full border px-2.5 py-1" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))' }}>{new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(Number(profile.followerCount))} followers</span>}
+          </div>}
+
           <button type="button" onClick={handleDownloadVCard} className="mb-4 inline-flex min-h-9 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition hover:scale-[1.02]" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
             <Download className="h-3.5 w-3.5" /> Save contact
           </button>
