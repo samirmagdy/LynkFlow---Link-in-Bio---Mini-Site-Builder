@@ -1491,8 +1491,8 @@ async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.n
 
 async function executeScheduledSocialPublications(env: Env, scheduledTime = Date.now()): Promise<void> {
   await pollTikTokPublications(env);
-  const dueResponse = await supabaseRequest(`social_publications?status=eq.scheduled&scheduled_at=lte.${encodeURIComponent(new Date(scheduledTime).toISOString())}&select=id,workspace_id,profile_id,provider,content,target_url,media_url,share_event_id,attempt_count&order=scheduled_at.asc&limit=100`, env);
-  const due = await dueResponse.json() as Array<{ id: string; workspace_id: string; profile_id: string; provider: string; content: string; target_url?: string | null; media_url?: string | null; share_event_id?: string | null; attempt_count?: number }>;
+  const dueResponse = await supabaseRequest(`social_publications?status=eq.scheduled&scheduled_at=lte.${encodeURIComponent(new Date(scheduledTime).toISOString())}&select=id,workspace_id,profile_id,provider,content,target_url,media_url,media_type,share_event_id,attempt_count&order=scheduled_at.asc&limit=100`, env);
+  const due = await dueResponse.json() as Array<{ id: string; workspace_id: string; profile_id: string; provider: string; content: string; target_url?: string | null; media_url?: string | null; media_type?: string | null; share_event_id?: string | null; attempt_count?: number }>;
   for (const publication of due) {
     const marked = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: 'publishing', attempt_count: Number(publication.attempt_count || 0) + 1, updated_at: new Date().toISOString() }) });
     const claimed = await marked.json() as unknown[];
@@ -1509,11 +1509,17 @@ async function executeScheduledSocialPublications(env: Env, scheduledTime = Date
         if (!connection) throw new Error('TikTok connection is unavailable.');
         const result = await publishTikTokVideoWithConnection(connection, publication.content, publication.media_url || '', env);
         await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'publishing', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+      } else if (publication.provider === 'instagram') {
+        const connection = await activeInstagramConnection(publication.workspace_id, env);
+        if (!connection) throw new Error('Instagram connection is unavailable.');
+        const result = await publishInstagramMediaWithConnection(connection, publication.content, publication.media_url || '', publication.media_type === 'image' ? 'image' : 'video', env);
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
       } else throw new Error('Unsupported social provider.');
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Scheduled social publication failed.';
       if (reason === 'CONNECTION_EXPIRED') {
-        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
+        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : publication.provider === 'instagram' ? await activeInstagramConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
         if (expiredConnection) await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(expiredConnection.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
       }
       await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: reason === 'CONNECTION_EXPIRED' ? 'LinkedIn connection expired. Reconnect and retry.' : reason, updated_at: new Date().toISOString() }) });
@@ -2050,7 +2056,7 @@ async function updateProductOrderFulfillment(request: Request, env: Env, orderId
   return json({ data: rows[0] || { id: orderId, fulfillment_status: status }, requestId: crypto.randomUUID() });
 }
 
-const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email', 'tiktok']);
+const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email', 'tiktok', 'instagram']);
 
 async function listSocialShareEvents(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
@@ -2451,6 +2457,49 @@ async function activeTikTokConnection(workspaceId: string, env: Env): Promise<Li
   return rows[0] || null;
 }
 
+async function activeInstagramConnection(workspaceId: string, env: Env): Promise<LinkedInConnectionRow | null> {
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(workspaceId)}&provider=eq.instagram&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const rows = await response.json() as LinkedInConnectionRow[];
+  return rows[0] || null;
+}
+
+async function publishInstagramMediaWithConnection(connection: LinkedInConnectionRow, content: string, mediaUrl: string, mediaType: 'image' | 'video', env: Env): Promise<{ providerPostId: string }> {
+  if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) throw new Error('MEDIA_REQUIRED');
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const createParams = new URLSearchParams({ access_token: accessToken, caption: content.slice(0, 2200) });
+  if (mediaType === 'image') {
+    createParams.set('image_url', mediaUrl);
+    createParams.set('media_type', 'IMAGE');
+  } else {
+    createParams.set('video_url', mediaUrl);
+    createParams.set('media_type', 'REELS');
+  }
+  const containerResponse = await fetch(`${metaGraphBase(env)}/${encodeURIComponent(connection.provider_account_id)}/media`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: createParams });
+  if (containerResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!containerResponse.ok) throw new Error('PROVIDER_ERROR');
+  const container = await containerResponse.json() as { id?: string };
+  if (!container.id) throw new Error('PROVIDER_ERROR');
+  if (mediaType === 'video') {
+    let ready = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 750));
+      const statusResponse = await fetch(`${metaGraphBase(env)}/${encodeURIComponent(container.id)}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`);
+      if (!statusResponse.ok) throw new Error('PROVIDER_ERROR');
+      const statusBody = await statusResponse.json() as { status_code?: string };
+      if (statusBody.status_code === 'FINISHED') { ready = true; break; }
+      if (statusBody.status_code === 'ERROR' || statusBody.status_code === 'EXPIRED') throw new Error('PROVIDER_ERROR');
+    }
+    if (!ready) throw new Error('PROVIDER_TIMEOUT');
+  }
+  const publishResponse = await fetch(`${metaGraphBase(env)}/${encodeURIComponent(connection.provider_account_id)}/media_publish`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ creation_id: container.id, access_token: accessToken }) });
+  if (publishResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!publishResponse.ok) throw new Error('PROVIDER_ERROR');
+  const published = await publishResponse.json() as { id?: string };
+  if (!published.id) throw new Error('PROVIDER_ERROR');
+  return { providerPostId: published.id };
+}
+
 async function publishTikTokVideoWithConnection(connection: LinkedInConnectionRow, content: string, mediaUrl: string, env: Env): Promise<{ providerPostId: string }> {
   if (!mediaUrl) throw new Error('MEDIA_REQUIRED');
   if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
@@ -2527,12 +2576,43 @@ async function publishTikTokPost(request: Request, env: Env): Promise<Response> 
   }
 }
 
+async function publishInstagramPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish to social accounts.', 403);
+  let input: { content?: string; mediaUrl?: string; mediaType?: string; profileId?: string; shareEventId?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const mediaUrl = String(input.mediaUrl || '').trim();
+  const mediaType = input.mediaType === 'image' ? 'image' : 'video';
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 2200) return apiError('VALIDATION_ERROR', 'Instagram caption must be between 1 and 2200 characters.', 422);
+  if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) return apiError('VALIDATION_ERROR', 'A public HTTPS image or video URL is required for Instagram.', 422);
+  const connection = await activeInstagramConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect Instagram before publishing.', 409);
+  try {
+    const result = await publishInstagramMediaWithConnection(connection, content, mediaUrl, mediaType, env);
+    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'instagram', content, target_url: null, media_url: mediaUrl, media_type: mediaType, scheduled_at: new Date().toISOString(), status: 'published', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
+    if (input.shareEventId) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(input.shareEventId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+    return json({ data: { provider: 'instagram', providerPostId: result.providerPostId, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
+      await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+      return apiError('CONNECTION_EXPIRED', 'Instagram rejected this connection. Reconnect and try again.', 401);
+    }
+    if (error instanceof Error && error.message === 'MEDIA_REQUIRED') return apiError('VALIDATION_ERROR', 'A public HTTPS image or video URL is required for Instagram.', 422);
+    if (error instanceof Error && error.message === 'PROVIDER_TIMEOUT') return apiError('PROVIDER_TIMEOUT', 'Instagram is still processing this media. Try again shortly.', 504);
+    return apiError('PROVIDER_ERROR', 'Instagram could not publish this media. No success was recorded.', 502);
+  }
+}
+
 async function listSocialPublications(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   const profileId = new URL(request.url).searchParams.get('profileId');
   if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
-  const response = await supabaseRequest(`social_publications?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,content,target_url,media_url,scheduled_at,status,provider_post_id,last_error,attempt_count,share_event_id,created_at,updated_at&order=scheduled_at.desc&limit=50`, env);
+  const response = await supabaseRequest(`social_publications?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,content,target_url,media_url,media_type,scheduled_at,status,provider_post_id,last_error,attempt_count,share_event_id,created_at,updated_at&order=scheduled_at.desc&limit=50`, env);
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
@@ -2582,6 +2662,29 @@ async function scheduleTikTokPost(request: Request, env: Env): Promise<Response>
   const publication = { id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'tiktok', content, target_url: null, media_url: mediaUrl, scheduled_at: new Date(scheduledAt).toISOString(), status: 'scheduled', provider_post_id: null, last_error: null, attempt_count: 0, share_event_id: shareEvent.id, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(publication) });
   await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.tiktok.scheduled', target: publication.id, occurred_at: publication.created_at, details: `Scheduled TikTok publication for ${publication.scheduled_at}.` }) });
+  return json({ data: publication, requestId: crypto.randomUUID() }, 201);
+}
+
+async function scheduleInstagramPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot schedule social posts.', 403);
+  let input: { content?: string; mediaUrl?: string; mediaType?: string; profileId?: string; scheduledAt?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const mediaUrl = String(input.mediaUrl || '').trim();
+  const mediaType = input.mediaType === 'image' ? 'image' : 'video';
+  const scheduledAt = Date.parse(String(input.scheduledAt || ''));
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 2200) return apiError('VALIDATION_ERROR', 'Instagram caption must be between 1 and 2200 characters.', 422);
+  if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) return apiError('VALIDATION_ERROR', 'A public HTTPS image or video URL is required for Instagram.', 422);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now() + 60_000) return apiError('VALIDATION_ERROR', 'Choose a future publish time at least one minute from now.', 422);
+  if (!await activeInstagramConnection(user.id, env)) return apiError('CONNECTION_REQUIRED', 'Connect Instagram before scheduling.', 409);
+  const shareEvent = { id: `share_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'instagram', content, target_url: mediaUrl, status: 'initiated', created_at: new Date().toISOString() };
+  await supabaseRequest('social_share_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(shareEvent) });
+  const publication = { id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'instagram', content, target_url: null, media_url: mediaUrl, media_type: mediaType, scheduled_at: new Date(scheduledAt).toISOString(), status: 'scheduled', provider_post_id: null, last_error: null, attempt_count: 0, share_event_id: shareEvent.id, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(publication) });
   return json({ data: publication, requestId: crypto.randomUUID() }, 201);
 }
 
@@ -3581,6 +3684,10 @@ export default {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishTikTokPost(request, env); } catch (error) { return internalApiError('Publish TikTok post failed', error, 'Unable to publish to TikTok.'); }
     }
+    if (url.pathname === '/api/social/instagram/post') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await publishInstagramPost(request, env); } catch (error) { return internalApiError('Publish Instagram post failed', error, 'Unable to publish to Instagram.'); }
+    }
     if (url.pathname === '/api/social/publications') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialPublications(request, env); } catch (error) { return internalApiError('List social publications failed', error, 'Unable to load scheduled posts.'); }
@@ -3592,6 +3699,10 @@ export default {
     if (url.pathname === '/api/social/tiktok/schedule') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await scheduleTikTokPost(request, env); } catch (error) { return internalApiError('Schedule TikTok post failed', error, 'Unable to schedule TikTok post.'); }
+    }
+    if (url.pathname === '/api/social/instagram/schedule') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await scheduleInstagramPost(request, env); } catch (error) { return internalApiError('Schedule Instagram post failed', error, 'Unable to schedule Instagram post.'); }
     }
     if (url.pathname.startsWith('/api/social/publications/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-export type ShareProvider = 'x' | 'linkedin' | 'facebook' | 'whatsapp' | 'telegram' | 'email' | 'tiktok';
+export type ShareProvider = 'x' | 'linkedin' | 'facebook' | 'whatsapp' | 'telegram' | 'email' | 'tiktok' | 'instagram';
 
 export interface SocialShareEvent {
   id: string;
@@ -27,10 +27,11 @@ export interface SocialConnection {
 export interface SocialPublication {
   id: string;
   profile_id: string;
-  provider: 'linkedin' | 'tiktok';
+  provider: 'linkedin' | 'tiktok' | 'instagram';
   content: string;
   target_url: string | null;
   media_url: string | null;
+  media_type?: 'image' | 'video';
   scheduled_at: string;
   status: 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
   provider_post_id: string | null;
@@ -87,6 +88,20 @@ export function startTikTokOAuth(): void {
 
 export function startInstagramOAuth(): void {
   window.location.assign('/api/social/instagram/start');
+}
+
+export async function publishInstagramPost(content: string, mediaUrl: string, mediaType: 'image' | 'video', profileId: string, shareEventId?: string): Promise<{ providerPostId: string | null }> {
+  const response = await authorizedRequest('/api/social/instagram/post', { method: 'POST', body: JSON.stringify({ content, mediaUrl, mediaType, profileId, shareEventId }) });
+  const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to Instagram.');
+  return { providerPostId: body.data.providerPostId || null };
+}
+
+export async function scheduleInstagramPost(content: string, mediaUrl: string, mediaType: 'image' | 'video', profileId: string, scheduledAt: string): Promise<SocialPublication> {
+  const response = await authorizedRequest('/api/social/instagram/schedule', { method: 'POST', body: JSON.stringify({ content, mediaUrl, mediaType, profileId, scheduledAt }) });
+  const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule Instagram post.');
+  return body.data;
 }
 
 export async function publishLinkedInPost(content: string, targetUrl: string, profileId: string): Promise<{ providerPostId: string | null }> {
