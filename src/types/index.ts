@@ -221,6 +221,7 @@ export interface CourseLesson {
   description?: string;
   duration?: string;
   preview?: boolean;
+  contentUrl?: string;
 }
 
 export interface CourseBlockPayload extends ProductBlockPayload {
