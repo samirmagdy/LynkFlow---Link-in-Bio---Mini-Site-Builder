@@ -210,6 +210,7 @@ export interface ProductBlockPayload {
   url: string;
   buttonLabel?: string;
   checkoutEnabled?: boolean;
+  deliveryUrl?: string;
 }
 
 export interface EventBlockPayload {

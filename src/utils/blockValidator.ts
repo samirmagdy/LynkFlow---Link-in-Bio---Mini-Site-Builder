@@ -170,10 +170,12 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
     case 'product': {
       const url = getString(payload, 'url');
       const image = getString(payload, 'image');
+      const deliveryUrl = getString(payload, 'deliveryUrl');
       const checkoutEnabled = payload.checkoutEnabled === true;
       if (!checkoutEnabled && !url) errors.push('Product block requires a destination URL.');
       if (url && !validateUrl(url).isValid) errors.push('Product destination URL is invalid.');
       if (image && !validateUrl(image).isValid) errors.push('Product image URL is invalid.');
+      if (deliveryUrl && !validateUrl(deliveryUrl).isValid) errors.push('Digital delivery URL is invalid.');
       if (checkoutEnabled) {
         const price = Number(getString(payload, 'price'));
         if (!Number.isFinite(price) || price <= 0) errors.push('Product checkout requires a valid positive price.');

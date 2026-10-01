@@ -10,6 +10,8 @@ export interface ProductOrder {
   currency: string;
   customer_email?: string | null;
   customer_name?: string | null;
+  delivery_url?: string | null;
+  delivery_sent_at?: string | null;
   created_at: string;
   paid_at?: string | null;
 }

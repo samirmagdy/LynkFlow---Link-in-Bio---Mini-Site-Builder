@@ -380,6 +380,39 @@ async function sendTestEmail(request: Request, env: Env): Promise<Response> {
   return json(result, resendResponse.status);
 }
 
+async function sendDigitalDeliveryEmail(env: Env, to: string, customerName: string | undefined, productName: string, deliveryUrl: string): Promise<boolean> {
+  if (!env.RESEND_API_KEY) return false;
+  const greeting = customerName ? `Hi ${escapeHtml(customerName)},` : 'Hi,';
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev',
+      to,
+      subject: `Your ${productName} is ready`,
+      html: `<p>${greeting}</p><p>Thanks for your purchase. Your download is ready:</p><p><a href="${escapeHtml(deliveryUrl)}">Download ${escapeHtml(productName)}</a></p><p>If you have any questions, reply to the creator who sold this product.</p>`,
+    }),
+  });
+  if (!response.ok) console.error('Digital delivery email failed', await response.text());
+  return response.ok;
+}
+
+async function publishedProductDelivery(env: Env, profileId: string, blockId: string): Promise<{ productName: string; deliveryUrl: string } | null> {
+  const response = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(profileId)}&select=snapshot`, env);
+  const rows = await response.json() as Array<{ snapshot?: PublicSnapshot }>;
+  const blocks = (rows[0]?.snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
+  const block = blocks.find(candidate => candidate.id === blockId && candidate.type === 'product');
+  const rawDeliveryUrl = String(block?.payload?.deliveryUrl || '').trim();
+  if (!block || !rawDeliveryUrl) return null;
+  try {
+    const parsed = new URL(rawDeliveryUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    return { productName: String(block.title || 'your digital product').trim().slice(0, 120), deliveryUrl: parsed.toString() };
+  } catch {
+    return null;
+  }
+}
+
 async function hashValue(value: string, secret: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${secret}:${value}`));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -1749,7 +1782,7 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   const profileId = new URL(request.url).searchParams.get('profileId');
   const profileFilter = profileId ? `&profile_id=eq.${encodeURIComponent(profileId)}` : '';
   if (profileId && !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
-  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,payment_status,amount_total,currency,customer_email,customer_name,created_at,paid_at&order=created_at.desc&limit=500`, env);
+  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,payment_status,amount_total,currency,customer_email,customer_name,delivery_url,delivery_sent_at,created_at,paid_at&order=created_at.desc&limit=500`, env);
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
@@ -2275,6 +2308,9 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
   if (event.type === 'checkout.session.completed' && metadata.product_order === 'true' && metadata.workspace_id && metadata.profile_id && metadata.block_id) {
     const customerDetails = (object.customer_details || {}) as Record<string, unknown>;
     const paymentStatus = ['paid', 'unpaid', 'no_payment_required'].includes(String(object.payment_status)) ? String(object.payment_status) : 'unpaid';
+    const customerEmail = typeof customerDetails.email === 'string' ? customerDetails.email : null;
+    const customerName = typeof customerDetails.name === 'string' ? customerDetails.name : undefined;
+    const delivery = paymentStatus === 'paid' ? await publishedProductDelivery(env, metadata.profile_id, metadata.block_id) : null;
     await supabaseRequest('product_orders?on_conflict=stripe_session_id', env, {
       method: 'POST',
       headers: { prefer: 'resolution=ignore-duplicates,return=minimal' },
@@ -2287,12 +2323,16 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         payment_status: paymentStatus,
         amount_total: Math.max(0, Number(object.amount_total || 0)),
         currency: String(object.currency || 'usd').toLowerCase(),
-        customer_email: typeof customerDetails.email === 'string' ? customerDetails.email : null,
-        customer_name: typeof customerDetails.name === 'string' ? customerDetails.name : null,
+        customer_email: customerEmail,
+        customer_name: customerName || null,
+        delivery_url: delivery?.deliveryUrl || null,
         created_at: new Date(Number(object.created || Date.now() / 1000) * 1000).toISOString(),
         paid_at: paymentStatus === 'paid' ? new Date().toISOString() : null,
       }),
     });
+    if (delivery && customerEmail && await sendDigitalDeliveryEmail(env, customerEmail, customerName, delivery.productName, delivery.deliveryUrl)) {
+      await supabaseRequest(`product_orders?stripe_session_id=eq.${encodeURIComponent(String(object.id || event.id))}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ delivery_sent_at: new Date().toISOString() }) });
+    }
     await supabaseRequest('stripe_events', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify({ id: event.id, event_type: event.type }) });
     return json({ received: true });
   }
