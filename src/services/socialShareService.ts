@@ -51,6 +51,10 @@ export interface SocialFollowerSync {
   syncedAt?: string;
 }
 
+export type SocialOAuthProvider = SocialConnection['provider'];
+
+export type SocialProviderConfiguration = Record<SocialOAuthProvider, boolean>;
+
 async function authorizedRequest(path: string, init?: RequestInit): Promise<Response> {
   if (!supabase) throw new Error('Sharing requires a signed-in workspace.');
   const { data: { session } } = await supabase.auth.getSession();
@@ -85,6 +89,21 @@ export async function loadSocialConnections(): Promise<SocialConnection[]> {
   const body = await response.json() as { data?: SocialConnection[]; error?: string | { message?: string } };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to load social connections.');
   return Array.isArray(body.data) ? body.data : [];
+}
+
+export async function loadSocialProviderConfiguration(): Promise<SocialProviderConfiguration> {
+  const response = await authorizedRequest('/api/social/config');
+  const body = await response.json() as { data?: Partial<SocialProviderConfiguration>; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to check social provider configuration.');
+  return {
+    linkedin: body.data.linkedin === true,
+    tiktok: body.data.tiktok === true,
+    instagram: body.data.instagram === true,
+    facebook: body.data.facebook === true,
+    youtube: body.data.youtube === true,
+    threads: body.data.threads === true,
+    x: body.data.x === true,
+  };
 }
 
 export async function syncSocialFollowers(profileId: string): Promise<SocialFollowerSync> {

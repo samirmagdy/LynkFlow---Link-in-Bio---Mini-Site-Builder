@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AtSign, CalendarDays, Check, ChevronLeft, ChevronRight, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter, Upload, Youtube } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { uploadBlockAsset } from '../../services/backgroundAssetService';
-import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, publishThreadsPost, recordSocialShare, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, scheduleThreadsPost, syncSocialFollowers, ShareProvider, SocialConnection, SocialPublication, SocialFollowerSync, startFacebookOAuth, startInstagramOAuth, startLinkedInOAuth, startTikTokOAuth, startXOAuth, startYouTubeOAuth, startThreadsOAuth, SocialShareEvent } from '../../services/socialShareService';
+import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialProviderConfiguration, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, publishThreadsPost, recordSocialShare, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, scheduleThreadsPost, syncSocialFollowers, ShareProvider, SocialConnection, SocialPublication, SocialFollowerSync, SocialProviderConfiguration, startFacebookOAuth as startFacebookOAuthRaw, startInstagramOAuth as startInstagramOAuthRaw, startLinkedInOAuth as startLinkedInOAuthRaw, startTikTokOAuth as startTikTokOAuthRaw, startXOAuth as startXOAuthRaw, startYouTubeOAuth as startYouTubeOAuthRaw, startThreadsOAuth as startThreadsOAuthRaw, SocialShareEvent } from '../../services/socialShareService';
 
 const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode; hint: string }> = [
   { id: 'x', label: 'X', icon: <Twitter className="h-4 w-4" />, hint: 'Post with a pre-filled message' },
@@ -85,13 +85,14 @@ export const SocialShareHub: React.FC = () => {
   const [captionOverrides, setCaptionOverrides] = useState<Partial<Record<'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x', string>>>({});
   const [followerSync, setFollowerSync] = useState<SocialFollowerSync | null>(null);
   const [syncingFollowers, setSyncingFollowers] = useState(false);
+  const [providerConfiguration, setProviderConfiguration] = useState<SocialProviderConfiguration | null>(null);
 
   useEffect(() => {
     setContent(`I just published a new page — take a look at @${activeProfile.username}.`);
     setTargetUrl(`${window.location.origin}/@${activeProfile.username}`);
     let cancelled = false;
     setLoading(true);
-    void Promise.all([loadSocialShareEvents(activeProfile.id), loadSocialConnections(), loadSocialPublications(activeProfile.id)]).then(([shareEvents, connections, scheduledPosts]) => { if (!cancelled) { setEvents(shareEvents); setLinkedinConnection(connections.find(connection => connection.provider === 'linkedin' && connection.status === 'active') || null); setTiktokConnection(connections.find(connection => connection.provider === 'tiktok' && connection.status === 'active') || null); setInstagramConnection(connections.find(connection => connection.provider === 'instagram' && connection.status === 'active') || null); setFacebookConnection(connections.find(connection => connection.provider === 'facebook' && connection.status === 'active') || null); setXConnection(connections.find(connection => connection.provider === 'x' && connection.status === 'active') || null); setYouTubeConnection(connections.find(connection => connection.provider === 'youtube' && connection.status === 'active') || null); setThreadsConnection(connections.find(connection => connection.provider === 'threads' && connection.status === 'active') || null); setPublications(scheduledPosts); } }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load share activity.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    void Promise.all([loadSocialShareEvents(activeProfile.id), loadSocialConnections(), loadSocialPublications(activeProfile.id), loadSocialProviderConfiguration()]).then(([shareEvents, connections, scheduledPosts, configuration]) => { if (!cancelled) { setEvents(shareEvents); setLinkedinConnection(connections.find(connection => connection.provider === 'linkedin' && connection.status === 'active') || null); setTiktokConnection(connections.find(connection => connection.provider === 'tiktok' && connection.status === 'active') || null); setInstagramConnection(connections.find(connection => connection.provider === 'instagram' && connection.status === 'active') || null); setFacebookConnection(connections.find(connection => connection.provider === 'facebook' && connection.status === 'active') || null); setXConnection(connections.find(connection => connection.provider === 'x' && connection.status === 'active') || null); setYouTubeConnection(connections.find(connection => connection.provider === 'youtube' && connection.status === 'active') || null); setThreadsConnection(connections.find(connection => connection.provider === 'threads' && connection.status === 'active') || null); setPublications(scheduledPosts); setProviderConfiguration(configuration); } }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load share activity.'); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [activeProfile.id, activeProfile.username]);
 
@@ -120,9 +121,31 @@ export const SocialShareHub: React.FC = () => {
     }
   };
 
+  const connectProvider = (provider: Exclude<ShareProvider, 'whatsapp' | 'telegram' | 'email'>) => {
+    if (providerConfiguration && !providerConfiguration[provider]) {
+      setError(`${provider[0].toUpperCase()}${provider.slice(1)} connection is not configured for this LynkFlow workspace yet.`);
+      return;
+    }
+    if (provider === 'linkedin') startLinkedInOAuthRaw();
+    else if (provider === 'tiktok') startTikTokOAuthRaw();
+    else if (provider === 'instagram') startInstagramOAuthRaw();
+    else if (provider === 'facebook') startFacebookOAuthRaw();
+    else if (provider === 'x') startXOAuthRaw();
+    else if (provider === 'youtube') startYouTubeOAuthRaw();
+    else startThreadsOAuthRaw();
+  };
+
+  const startLinkedInOAuth = () => connectProvider('linkedin');
+  const startTikTokOAuth = () => connectProvider('tiktok');
+  const startInstagramOAuth = () => connectProvider('instagram');
+  const startFacebookOAuth = () => connectProvider('facebook');
+  const startXOAuth = () => connectProvider('x');
+  const startYouTubeOAuth = () => connectProvider('youtube');
+  const startThreadsOAuth = () => connectProvider('threads');
+
   const openProvider = async (provider: ShareProvider) => {
     if (!valid) { setError('Add a message and a valid page URL before sharing.'); return; }
-    if (provider === 'linkedin' && !linkedinConnection) { startLinkedInOAuth(); return; }
+    if (provider === 'linkedin' && !linkedinConnection) { connectProvider('linkedin'); return; }
     if (provider === 'linkedin' && linkedinConnection) {
       setLinkedinPublishing(true); setError(null);
       try {
@@ -135,7 +158,7 @@ export const SocialShareHub: React.FC = () => {
       finally { setLinkedinPublishing(false); }
       return;
     }
-    if (provider === 'tiktok' && !tiktokConnection) { startTikTokOAuth(); return; }
+    if (provider === 'tiktok' && !tiktokConnection) { connectProvider('tiktok'); return; }
     if (provider === 'tiktok' && tiktokConnection) {
       if (!mediaUrl.trim()) { setError('Upload a video or add a public HTTPS URL before publishing to TikTok.'); return; }
       setTiktokPublishing(true); setError(null);
@@ -148,7 +171,7 @@ export const SocialShareHub: React.FC = () => {
       finally { setTiktokPublishing(false); }
       return;
     }
-    if (provider === 'instagram' && !instagramConnection) { startInstagramOAuth(); return; }
+    if (provider === 'instagram' && !instagramConnection) { connectProvider('instagram'); return; }
     if (provider === 'instagram' && instagramConnection) {
       if (!mediaUrl.trim()) { setError('Upload an image or video, or add a public HTTPS URL before publishing to Instagram.'); return; }
       setInstagramPublishing(true); setError(null);
@@ -161,7 +184,7 @@ export const SocialShareHub: React.FC = () => {
       finally { setInstagramPublishing(false); }
       return;
     }
-    if (provider === 'facebook' && !facebookConnection) { startFacebookOAuth(); return; }
+    if (provider === 'facebook' && !facebookConnection) { connectProvider('facebook'); return; }
     if (provider === 'facebook' && facebookConnection) {
       setFacebookPublishing(true); setError(null);
       try {
@@ -173,7 +196,7 @@ export const SocialShareHub: React.FC = () => {
       finally { setFacebookPublishing(false); }
       return;
     }
-    if (provider === 'x' && !xConnection) { startXOAuth(); return; }
+    if (provider === 'x' && !xConnection) { connectProvider('x'); return; }
     if (provider === 'x' && xConnection) {
       setXPublishing(true); setError(null);
       try {
@@ -185,7 +208,7 @@ export const SocialShareHub: React.FC = () => {
       finally { setXPublishing(false); }
       return;
     }
-    if (provider === 'youtube' && !youtubeConnection) { startYouTubeOAuth(); return; }
+    if (provider === 'youtube' && !youtubeConnection) { connectProvider('youtube'); return; }
     if (provider === 'youtube' && youtubeConnection) {
       if (!mediaUrl.trim()) { setError('Upload a video or add a public HTTPS URL before publishing to YouTube.'); return; }
       setYouTubePublishing(true); setError(null);
@@ -199,7 +222,7 @@ export const SocialShareHub: React.FC = () => {
       finally { setYouTubePublishing(false); }
       return;
     }
-    if (provider === 'threads' && !threadsConnection) { startThreadsOAuth(); return; }
+    if (provider === 'threads' && !threadsConnection) { connectProvider('threads'); return; }
     if (provider === 'threads' && threadsConnection) {
       setBusyProvider('threads'); setError(null);
       try {
@@ -363,7 +386,7 @@ export const SocialShareHub: React.FC = () => {
 
   const schedulePost = async () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling.'); return; }
-    if (!linkedinConnection) { startLinkedInOAuth(); return; }
+    if (!linkedinConnection) { connectProvider('linkedin'); return; }
     setScheduling(true); setError(null);
     try {
       const publication = await scheduleLinkedInPost(content.trim(), targetUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString());
@@ -374,7 +397,7 @@ export const SocialShareHub: React.FC = () => {
 
   const scheduleTikTok = async () => {
     if (!valid || !mediaUrl.trim()) { setError('Add a message and page URL, then upload a video or provide a public HTTPS URL before scheduling TikTok.'); return; }
-    if (!tiktokConnection) { startTikTokOAuth(); return; }
+    if (!tiktokConnection) { connectProvider('tiktok'); return; }
     setScheduling(true); setError(null);
     try {
       const publication = await scheduleTikTokPost(content.trim(), mediaUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString());
@@ -385,7 +408,7 @@ export const SocialShareHub: React.FC = () => {
 
   const scheduleInstagram = async () => {
     if (!valid || !mediaUrl.trim()) { setError('Add a message and page URL, then upload media or provide a public HTTPS URL before scheduling Instagram.'); return; }
-    if (!instagramConnection) { startInstagramOAuth(); return; }
+    if (!instagramConnection) { connectProvider('instagram'); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleInstagramPost(content.trim(), mediaUrl.trim(), instagramMediaType, activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to schedule Instagram post.'); }
@@ -394,7 +417,7 @@ export const SocialShareHub: React.FC = () => {
 
   const scheduleFacebook = async () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling Facebook.'); return; }
-    if (!facebookConnection) { startFacebookOAuth(); return; }
+    if (!facebookConnection) { connectProvider('facebook'); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleFacebookPost(content.trim(), targetUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to schedule Facebook post.'); }
@@ -403,7 +426,7 @@ export const SocialShareHub: React.FC = () => {
 
   const scheduleX = async () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling X.'); return; }
-    if (!xConnection) { startXOAuth(); return; }
+    if (!xConnection) { connectProvider('x'); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleXPost(content.trim(), targetUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to schedule X post.'); }
@@ -412,7 +435,7 @@ export const SocialShareHub: React.FC = () => {
 
   const scheduleThreads = async () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling Threads.'); return; }
-    if (!threadsConnection) { startThreadsOAuth(); return; }
+    if (!threadsConnection) { connectProvider('threads'); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleThreadsPost(content.trim(), targetUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to schedule Threads post.'); }
@@ -421,7 +444,7 @@ export const SocialShareHub: React.FC = () => {
 
   const scheduleYouTube = async () => {
     if (!valid || !mediaUrl.trim()) { setError('Add a message and page URL, then upload a video or provide a public HTTPS URL before scheduling YouTube.'); return; }
-    if (!youtubeConnection) { startYouTubeOAuth(); return; }
+    if (!youtubeConnection) { connectProvider('youtube'); return; }
     setScheduling(true); setError(null);
     try { const publication = await scheduleYouTubePost(content.trim(), mediaUrl.trim(), activeProfile.id, new Date(scheduledAt).toISOString()); setPublications(previous => [publication, ...previous].slice(0, 50)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to schedule YouTube video.'); }

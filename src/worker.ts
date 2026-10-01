@@ -2832,6 +2832,11 @@ function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean
   return Boolean(providerConfigured && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function socialConfigurationResponse(env: Env): Response {
+  const providers: SocialOAuthProvider[] = ['linkedin', 'tiktok', 'instagram', 'facebook', 'youtube', 'threads', 'x'];
+  return json({ data: Object.fromEntries(providers.map(provider => [provider, socialOAuthConfigured(env, provider)])), checkedAt: new Date().toISOString() });
+}
+
 async function startLinkedInOAuth(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -5054,6 +5059,10 @@ export default {
     if (url.pathname === '/api/social/connections') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialConnections(request, env); } catch (error) { return internalApiError('List social connections failed', error, 'Unable to load social connections.'); }
+    }
+    if (url.pathname === '/api/social/config') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      return socialConfigurationResponse(env);
     }
     if (url.pathname === '/api/social/followers/sync') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
