@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AtSign, Check, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter, Upload, Youtube } from 'lucide-react';
+import { AtSign, CalendarDays, Check, ChevronLeft, ChevronRight, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter, Upload, Youtube } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { uploadBlockAsset } from '../../services/backgroundAssetService';
 import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, publishThreadsPost, recordSocialShare, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, scheduleThreadsPost, syncSocialFollowers, ShareProvider, SocialConnection, SocialPublication, SocialFollowerSync, startFacebookOAuth, startInstagramOAuth, startLinkedInOAuth, startTikTokOAuth, startXOAuth, startYouTubeOAuth, startThreadsOAuth, SocialShareEvent } from '../../services/socialShareService';
@@ -77,6 +77,10 @@ export const SocialShareHub: React.FC = () => {
   const [scheduledAt, setScheduledAt] = useState(defaultScheduleTime);
   const [scheduling, setScheduling] = useState(false);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
+  const [calendarCursor, setCalendarCursor] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [broadcastResults, setBroadcastResults] = useState<BroadcastResult[]>([]);
   const [captionOverrides, setCaptionOverrides] = useState<Partial<Record<'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'youtube' | 'threads' | 'x', string>>>({});
   const [followerSync, setFollowerSync] = useState<SocialFollowerSync | null>(null);
@@ -443,6 +447,46 @@ export const SocialShareHub: React.FC = () => {
     finally { setBusyProvider(null); }
   };
 
+  const calendarCells = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: Array<{ date: Date | null; items: SocialPublication[] }> = [];
+    for (let index = 0; index < firstWeekday; index += 1) cells.push({ date: null, items: [] });
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const items = publications.filter(publication => {
+        const scheduled = new Date(publication.scheduled_at);
+        return scheduled.getFullYear() === year && scheduled.getMonth() === month && scheduled.getDate() === day;
+      });
+      cells.push({ date, items });
+    }
+    while (cells.length % 7 !== 0) cells.push({ date: null, items: [] });
+    return cells;
+  }, [calendarCursor, publications]);
+
+  const calendarPanel = <section className="overflow-hidden rounded-2xl border border-line bg-surface">
+    <div className="flex flex-col gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-accent" /><div><h3 className="text-sm font-semibold text-ink">Content calendar</h3><p className="mt-1 text-xs text-muted">See every scheduled channel in one campaign view.</p></div></div>
+      <div className="flex items-center gap-1.5">
+        <button type="button" onClick={() => setCalendarCursor(previous => new Date(previous.getFullYear(), previous.getMonth() - 1, 1))} className="grid h-9 w-9 place-items-center rounded-lg border border-line text-muted hover:border-accent hover:text-accent" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
+        <p className="min-w-32 text-center text-xs font-semibold text-ink">{calendarCursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
+        <button type="button" onClick={() => setCalendarCursor(previous => new Date(previous.getFullYear(), previous.getMonth() + 1, 1))} className="grid h-9 w-9 place-items-center rounded-lg border border-line text-muted hover:border-accent hover:text-accent" aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { const now = new Date(); setCalendarCursor(new Date(now.getFullYear(), now.getMonth(), 1)); }} className="ml-1 min-h-9 rounded-lg border border-line px-2.5 text-[11px] font-semibold text-body hover:border-accent hover:text-accent">Today</button>
+      </div>
+    </div>
+    <div className="grid grid-cols-7 border-b border-line bg-canvas/60 text-center text-[10px] font-semibold uppercase tracking-wide text-subtle">
+      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div key={day} className="px-1 py-2">{day}</div>)}
+    </div>
+    <div className="grid grid-cols-7">
+      {calendarCells.map((cell, index) => <div key={cell.date ? cell.date.toISOString() : `empty-${index}`} className={`min-h-20 border-b border-r border-line p-1.5 sm:min-h-24 ${cell.date ? 'bg-surface' : 'bg-canvas/35'}`}>
+        {cell.date && <><div className="flex items-center justify-between"><span className={`text-[11px] font-semibold ${cell.date.toDateString() === new Date().toDateString() ? 'grid h-5 w-5 place-items-center rounded-full bg-accent text-white' : 'text-muted'}`}>{cell.date.getDate()}</span>{cell.items.length > 0 && <span className="text-[9px] font-semibold text-subtle">{cell.items.length}</span>}</div><div className="mt-1 space-y-1">{cell.items.slice(0, 3).map(item => <div key={item.id} title={`${item.provider} · ${new Date(item.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`} className={`truncate rounded-md px-1.5 py-1 text-[9px] font-semibold capitalize ${item.status === 'failed' ? 'bg-danger/10 text-danger' : item.status === 'published' ? 'bg-success/10 text-success' : item.status === 'cancelled' ? 'bg-surface-2 text-muted' : 'bg-accent/10 text-accent'}`}>{item.provider} · {new Date(item.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>)}{cell.items.length > 3 && <p className="px-1 text-[9px] text-subtle">+{cell.items.length - 3} more</p>}</div></>}
+      </div>)}
+    </div>
+    {publications.length === 0 && <div className="border-t border-line px-5 py-8 text-center"><p className="text-sm font-semibold text-body">Your calendar is clear</p><p className="mt-1 text-xs text-muted">Schedule a campaign and its channel-by-channel delivery will appear here.</p></div>}
+  </section>;
+
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(targetUrl.trim()); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }
     catch { setError('Copy is unavailable in this browser.'); }
@@ -463,6 +507,7 @@ export const SocialShareHub: React.FC = () => {
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><details><summary className="cursor-pointer text-sm font-semibold text-ink">Customize captions by platform <span className="font-normal text-muted">(optional)</span></summary><div className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">{(['instagram', 'tiktok', 'youtube', 'threads', 'x', 'linkedin'] as const).map(provider => <label key={provider} className="text-[11px] font-semibold capitalize text-body">{provider} <span className="font-normal text-muted">{provider === 'x' ? '280' : provider === 'threads' ? '500' : provider === 'youtube' ? '5000' : provider === 'linkedin' ? '3000' : '2200'} max</span><textarea value={captionOverrides[provider] || ''} onChange={event => setCaptionOverrides(previous => ({ ...previous, [provider]: event.target.value }))} placeholder={content} rows={3} className="mt-1 w-full resize-y rounded-lg border border-line bg-canvas px-2.5 py-2 text-xs font-normal text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" /></label>)}</div><p className="mt-3 text-[11px] text-muted">Empty fields reuse the main message. Captions are validated per network before publishing.</p></details></section>
     <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-ink">Schedule this campaign</p><p className="mt-1 text-[11px] text-muted">Create one schedule across every connected channel using each platform’s caption.</p></div><div className="flex flex-wrap items-center gap-2"><label className="text-[11px] font-semibold text-body">Publish at<input aria-label="Campaign publish time" type="datetime-local" value={scheduledAt} min={defaultScheduleTime()} onChange={event => setScheduledAt(event.target.value)} className="ml-2 min-h-10 rounded-xl border border-line bg-canvas px-2 text-xs font-normal text-ink" /></label><button type="button" disabled={scheduling || busyProvider !== null} onClick={() => void scheduleToConnected()} className="min-h-10 rounded-xl bg-accent px-3 text-xs font-bold text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60">{scheduling ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Schedule to connected'}</button></div></section>
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-ink">Audience growth</p><p className="mt-1 text-[11px] text-muted">Sync follower totals from connected social accounts. The total is saved only when every connected provider returns a verified metric.</p></div><button type="button" disabled={syncingFollowers} onClick={() => void syncFollowers()} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">{syncingFollowers ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sync followers'}</button></div>{followerSync && <div className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-3"><div><p className="text-[10px] font-semibold uppercase tracking-wide text-subtle">Verified total</p><p className="mt-1 text-xl font-bold text-ink">{followerSync.total === null ? '—' : followerSync.total.toLocaleString()}</p></div><div className="sm:col-span-2"><div className="flex flex-wrap gap-2">{followerSync.counts.map(item => <span key={`${item.provider}-${item.accountName}`} className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold capitalize text-success">{item.provider}: {item.count.toLocaleString()}</span>)}{followerSync.failures.map(item => <span key={`${item.provider}-${item.accountName}`} className="rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-semibold capitalize text-warning">{item.provider}: {item.status}</span>)}</div>{!followerSync.complete && <p className="mt-2 text-[11px] text-warning">The profile number was not changed because one or more connected providers could not verify their metric.</p>}</div></div>}</section>
+    {calendarPanel}
     {publicationPanel}
     <section className="rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-ink">LinkedIn publishing</p><p className="mt-1 text-[11px] text-muted">{linkedinConnection ? `Connected as ${linkedinConnection.account_name || 'your LinkedIn account'}. Posts are confirmed by LinkedIn before they are marked complete.` : 'Connect LinkedIn to publish directly. Other networks continue through their native composer.'}</p></div>{linkedinConnection ? <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span> : <button type="button" onClick={() => startLinkedInOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect LinkedIn</button>}</div>{linkedinConnection && <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-end"><label className="min-w-0 flex-1 text-[11px] font-semibold text-body">Schedule a LinkedIn post<input type="datetime-local" value={scheduledAt} min={defaultScheduleTime()} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-10 w-full rounded-xl border border-line bg-canvas px-3 text-xs font-normal text-ink" /></label><button type="button" disabled={scheduling || busyProvider !== null || linkedinPublishing} onClick={() => void schedulePost()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">{scheduling ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Schedule post'}</button></div>}</section>
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
