@@ -15,6 +15,12 @@ const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode
 ];
 const BROADCAST_PROVIDERS = PROVIDERS.filter(provider => provider.id !== 'email');
 
+type BroadcastResult = {
+  provider: 'linkedin' | 'tiktok' | 'instagram';
+  status: 'published' | 'processing' | 'skipped' | 'failed';
+  message: string;
+};
+
 function defaultScheduleTime(): string {
   const value = new Date(Date.now() + 60 * 60_000);
   value.setSeconds(0, 0);
@@ -57,6 +63,7 @@ export const SocialShareHub: React.FC = () => {
   const [scheduledAt, setScheduledAt] = useState(defaultScheduleTime);
   const [scheduling, setScheduling] = useState(false);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
+  const [broadcastResults, setBroadcastResults] = useState<BroadcastResult[]>([]);
 
   useEffect(() => {
     setContent(`I just published a new page — take a look at @${activeProfile.username}.`);
@@ -140,6 +147,58 @@ export const SocialShareHub: React.FC = () => {
     finally { setBusyProvider(null); }
   };
 
+  const publishToConnected = async () => {
+    if (!valid) { setError('Add a message and a valid page URL before publishing.'); return; }
+    const connected = [linkedinConnection, tiktokConnection, instagramConnection].filter(Boolean);
+    if (connected.length === 0) {
+      setError('Connect at least one publishing account before using Publish to connected.');
+      return;
+    }
+    if ((tiktokConnection || instagramConnection) && !mediaUrl.trim()) {
+      setError('Add a public HTTPS media URL to publish to TikTok or Instagram. LinkedIn can publish without media.');
+      return;
+    }
+
+    setBusyProvider('all');
+    setError(null);
+    setBroadcastResults([]);
+    const results: BroadcastResult[] = [];
+    const publish = async (provider: 'linkedin' | 'tiktok' | 'instagram') => {
+      const event = await recordSocialShare(activeProfile.id, provider, content.trim(), provider === 'linkedin' ? targetUrl.trim() : mediaUrl.trim());
+      setEvents(previous => [event, ...previous].slice(0, 20));
+      try {
+        if (provider === 'linkedin') {
+          await publishLinkedInPost(content.trim(), targetUrl.trim(), activeProfile.id);
+          await completeSocialShare(event.id, 'completed');
+          results.push({ provider, status: 'published', message: 'Published and confirmed by LinkedIn.' });
+        } else if (provider === 'tiktok') {
+          await publishTikTokPost(content.trim(), mediaUrl.trim(), activeProfile.id, event.id);
+          results.push({ provider, status: 'processing', message: 'Accepted by TikTok; processing continues asynchronously.' });
+        } else {
+          await publishInstagramPost(content.trim(), mediaUrl.trim(), instagramMediaType, activeProfile.id, event.id);
+          await completeSocialShare(event.id, 'completed');
+          results.push({ provider, status: 'published', message: 'Published and confirmed by Instagram.' });
+        }
+      } catch (reason) {
+        await completeSocialShare(event.id, 'failed').catch(() => undefined);
+        results.push({ provider, status: 'failed', message: reason instanceof Error ? reason.message : 'Provider rejected the post.' });
+      }
+    };
+
+    await Promise.all([
+      linkedinConnection ? publish('linkedin') : Promise.resolve(results.push({ provider: 'linkedin', status: 'skipped', message: 'Connect LinkedIn to publish there.' })),
+      tiktokConnection ? publish('tiktok') : Promise.resolve(results.push({ provider: 'tiktok', status: 'skipped', message: 'Connect TikTok to publish there.' })),
+      instagramConnection ? publish('instagram') : Promise.resolve(results.push({ provider: 'instagram', status: 'skipped', message: 'Connect Instagram to publish there.' }))
+    ]);
+    setBroadcastResults(results);
+    setEvents(previous => previous.map(item => {
+      const result = results.find(candidate => candidate.provider === item.provider);
+      return result?.status === 'failed' && item.status === 'initiated' ? { ...item, status: 'failed' } : item;
+    }));
+    if (results.some(result => result.status === 'failed')) setError('One or more providers rejected the post. Review the delivery results below and retry the failed provider.');
+    setBusyProvider(null);
+  };
+
   const schedulePost = async () => {
     if (!valid) { setError('Add a message and a valid page URL before scheduling.'); return; }
     if (!linkedinConnection) { startLinkedInOAuth(); return; }
@@ -207,8 +266,9 @@ export const SocialShareHub: React.FC = () => {
     <section className="rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-ink">LinkedIn publishing</p><p className="mt-1 text-[11px] text-muted">{linkedinConnection ? `Connected as ${linkedinConnection.account_name || 'your LinkedIn account'}. Posts are confirmed by LinkedIn before they are marked complete.` : 'Connect LinkedIn to publish directly. Other networks continue through their native composer.'}</p></div>{linkedinConnection ? <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">Connected</span> : <button type="button" onClick={() => startLinkedInOAuth()} className="min-h-10 rounded-xl bg-ink px-3 text-xs font-semibold text-canvas hover:opacity-90">Connect LinkedIn</button>}</div>{linkedinConnection && <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-end"><label className="min-w-0 flex-1 text-[11px] font-semibold text-body">Schedule a LinkedIn post<input type="datetime-local" value={scheduledAt} min={defaultScheduleTime()} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-10 w-full rounded-xl border border-line bg-canvas px-3 text-xs font-normal text-ink" /></label><button type="button" disabled={scheduling || busyProvider !== null || linkedinPublishing} onClick={() => void schedulePost()} className="min-h-10 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">{scheduling ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Schedule post'}</button></div>}</section>
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
       <div className="space-y-4"><div><label htmlFor="share-copy" className="text-xs font-semibold text-body">Your message</label><textarea id="share-copy" value={content} onChange={event => setContent(event.target.value)} maxLength={2800} rows={6} className="mt-2 w-full resize-y rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm leading-relaxed text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" placeholder="Tell people what you are sharing…" /><p className="mt-1 text-right text-[11px] text-muted">{content.length}/2800</p></div><div><label htmlFor="share-url" className="text-xs font-semibold text-body">Page to share</label><div className="mt-2 flex gap-2"><input id="share-url" value={targetUrl} onChange={event => setTargetUrl(event.target.value)} type="url" className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" /><button type="button" onClick={() => void copyLink()} className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent">{copied ? <Check className="h-4 w-4 text-success" /> : <Clipboard className="h-4 w-4" />}{copied ? 'Copied' : 'Copy'}</button></div></div></div>
-      <div><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-body">Share everywhere</p><button type="button" disabled={busyProvider !== null || linkedinPublishing || tiktokPublishing || instagramPublishing} onClick={() => void openAllProviders()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-[11px] font-semibold text-canvas transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60">{busyProvider === 'all' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Open all composers</button></div><div className="mt-2 grid gap-2 sm:grid-cols-2">{PROVIDERS.map(provider => <button key={provider.id} type="button" disabled={busyProvider !== null || linkedinPublishing || tiktokPublishing || instagramPublishing} onClick={() => void openProvider(provider.id)} className="flex min-h-16 items-center gap-3 rounded-xl border border-line bg-canvas px-3 text-left transition hover:border-accent hover:bg-accent-surface/30 disabled:cursor-wait disabled:opacity-60"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-surface text-accent">{busyProvider === provider.id || (provider.id === 'linkedin' && linkedinPublishing) || (provider.id === 'tiktok' && tiktokPublishing) || (provider.id === 'instagram' && instagramPublishing) ? <Loader2 className="h-4 w-4 animate-spin" /> : provider.icon}</span><span className="min-w-0"><span className="block text-xs font-semibold text-ink">{provider.label}</span><span className="mt-0.5 block truncate text-[11px] text-muted">{provider.id === 'linkedin' && linkedinConnection ? 'Publish directly with confirmation' : provider.id === 'linkedin' ? 'Connect for direct publishing' : provider.id === 'tiktok' && tiktokConnection ? 'Publish a video with status tracking' : provider.id === 'tiktok' ? 'Connect for direct video publishing' : provider.id === 'instagram' && instagramConnection ? 'Publish media directly with confirmation' : provider.id === 'instagram' ? 'Connect for direct publishing' : provider.hint}</span></span><ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-subtle" /></button>)}</div><p className="mt-3 text-[11px] leading-5 text-muted">LinkedIn and Instagram publish directly after connection; TikTok accepts a public video and reports processing status. Other providers open their native composer.</p></div>
+      <div><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-body">Publish once</p><p className="mt-1 text-[11px] text-muted">Send to every connected direct channel and keep each result visible.</p></div><div className="flex flex-wrap gap-2"><button type="button" disabled={busyProvider !== null || linkedinPublishing || tiktokPublishing || instagramPublishing} onClick={() => void publishToConnected()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-[11px] font-bold text-white transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60">{busyProvider === 'all' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Publish to connected</button><button type="button" disabled={busyProvider !== null || linkedinPublishing || tiktokPublishing || instagramPublishing} onClick={() => void openAllProviders()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[11px] font-semibold text-body transition hover:border-accent hover:text-accent disabled:cursor-wait disabled:opacity-60">{busyProvider === 'all' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Open composers</button></div></div><div className="mt-2 grid gap-2 sm:grid-cols-2">{PROVIDERS.map(provider => <button key={provider.id} type="button" disabled={busyProvider !== null || linkedinPublishing || tiktokPublishing || instagramPublishing} onClick={() => void openProvider(provider.id)} className="flex min-h-16 items-center gap-3 rounded-xl border border-line bg-canvas px-3 text-left transition hover:border-accent hover:bg-accent-surface/30 disabled:cursor-wait disabled:opacity-60"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-surface text-accent">{busyProvider === provider.id || (provider.id === 'linkedin' && linkedinPublishing) || (provider.id === 'tiktok' && tiktokPublishing) || (provider.id === 'instagram' && instagramPublishing) ? <Loader2 className="h-4 w-4 animate-spin" /> : provider.icon}</span><span className="min-w-0"><span className="block text-xs font-semibold text-ink">{provider.label}</span><span className="mt-0.5 block truncate text-[11px] text-muted">{provider.id === 'linkedin' && linkedinConnection ? 'Publish directly with confirmation' : provider.id === 'linkedin' ? 'Connect for direct publishing' : provider.id === 'tiktok' && tiktokConnection ? 'Publish a video with status tracking' : provider.id === 'tiktok' ? 'Connect for direct video publishing' : provider.id === 'instagram' && instagramConnection ? 'Publish media directly with confirmation' : provider.id === 'instagram' ? 'Connect for direct publishing' : provider.hint}</span></span><ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-subtle" /></button>)}</div><p className="mt-3 text-[11px] leading-5 text-muted">Direct publishing is available for connected LinkedIn, TikTok, and Instagram accounts. Other networks remain explicit native-composer handoffs.</p></div>
     </div></section>
+    {broadcastResults.length > 0 && <section className="rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm"><div className="flex items-center gap-2"><Check className="h-4 w-4 text-accent" /><h3 className="text-sm font-semibold text-ink">Delivery results</h3></div><div className="mt-3 grid gap-2 sm:grid-cols-3">{broadcastResults.map(result => <div key={result.provider} className="rounded-xl border border-line bg-canvas p-3"><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold capitalize text-ink">{result.provider}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${result.status === 'published' ? 'bg-success/10 text-success' : result.status === 'processing' ? 'bg-warning/10 text-warning' : result.status === 'failed' ? 'bg-danger/10 text-danger' : 'bg-surface-2 text-muted'}`}>{result.status}</span></div><p className="mt-1 text-[11px] leading-4 text-muted">{result.message}</p></div>)}</div></section>}
     <section className="overflow-hidden rounded-2xl border border-line bg-surface"><div className="border-b border-line px-5 py-4"><h3 className="text-sm font-semibold text-ink">Recent share activity</h3><p className="mt-1 text-xs text-muted">A private record of publishing handoffs for @{activeProfile.username}.</p></div>{loading ? <div className="flex items-center justify-center gap-2 p-10 text-xs text-muted"><Loader2 className="h-4 w-4 animate-spin" />Loading activity…</div> : events.length === 0 ? <div className="p-10 text-center text-xs text-muted">No shares yet. Your first handoff will appear here.</div> : <div className="divide-y divide-line">{events.map(event => <div key={event.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><div className="flex items-center gap-2"><p className="text-xs font-semibold capitalize text-ink">{event.provider}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${event.status === 'completed' ? 'bg-success/10 text-success' : event.status === 'failed' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'}`}>{event.status}</span></div><p className="mt-1 truncate text-[11px] text-muted">{event.content}</p></div><div className="flex shrink-0 items-center gap-3"><time className="text-[10px] text-subtle">{new Date(event.created_at).toLocaleDateString()}</time>{event.status === 'failed' && <button type="button" disabled={busyProvider !== null} onClick={() => void retryShare(event)} className="text-[11px] font-semibold text-accent hover:underline disabled:cursor-wait disabled:opacity-60">Retry</button>}</div></div>)}</div>}</section>
   </div></div>;
 };
