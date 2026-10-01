@@ -432,29 +432,32 @@ async function publishedProductDelivery(env: Env, profileId: string, blockId: st
 
 async function courseAccessResponse(request: Request, env: Env): Promise<Response> {
   const token = new URL(request.url).searchParams.get('token')?.trim() || '';
-  if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return new Response('Course access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return new Response('Paid access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
   const tokenHash = await sha256(token);
   const orderResponse = await supabaseRequest(`product_orders?access_token_hash=eq.${encodeURIComponent(tokenHash)}&payment_status=eq.paid&select=profile_id,block_id,customer_name,access_token_expires_at`, env);
   const orders = await orderResponse.json() as Array<{ profile_id?: string; block_id?: string; customer_name?: string; access_token_expires_at?: string }>;
   const order = orders[0];
-  if (!order?.profile_id || !order.block_id || (order.access_token_expires_at && new Date(order.access_token_expires_at).getTime() <= Date.now())) return new Response('Course access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
+  if (!order?.profile_id || !order.block_id || (order.access_token_expires_at && new Date(order.access_token_expires_at).getTime() <= Date.now())) return new Response('Paid access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
   const profileResponse = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(order.profile_id)}&select=username,snapshot`, env);
   const profiles = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
   const snapshot = profiles[0]?.snapshot;
-  const block = (snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []).find(candidate => candidate.id === order.block_id && candidate.type === 'course');
-  if (!block) return new Response('This course is no longer available.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
+  const block = (snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []).find(candidate => candidate.id === order.block_id && (candidate.type === 'course' || candidate.type === 'product'));
+  if (!block) return new Response('This paid content is no longer available.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
   const payload = block.payload || {};
-  const lessons = Array.isArray(payload.lessons) ? payload.lessons as Array<Record<string, unknown>> : [];
+  const isCourse = block.type === 'course';
+  const lessons = isCourse && Array.isArray(payload.lessons) ? payload.lessons as Array<Record<string, unknown>> : [];
   const lessonMarkup = lessons.map((lesson, index) => {
     const href = safePublicHref(lesson.contentUrl);
     const title = escapeHtml(lesson.title || `Lesson ${index + 1}`);
     const detail = [lesson.duration, lesson.description].filter(Boolean).map(escapeHtml).join(' · ');
     return `<li><span class="number">${index + 1}</span><span class="lesson"><strong>${title}</strong>${detail ? `<small>${detail}</small>` : ''}</span>${href ? `<a href="${escapeHtml(href)}" rel="noopener noreferrer">Open lesson</a>` : '<span class="locked">Included</span>'}</li>`;
   }).join('');
-  const title = escapeHtml(block.title || 'Your course');
-  const description = escapeHtml(payload.description || 'Your course access is ready.');
+  const title = escapeHtml(block.title || (isCourse ? 'Your course' : 'Your purchase'));
+  const description = escapeHtml(payload.description || (isCourse ? 'Your course access is ready.' : 'Your paid content is ready.'));
   const customer = escapeHtml(order.customer_name || 'there');
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title} · Course access</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:0 auto;padding:48px 20px 80px}.eyebrow{color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.card{margin-top:20px;padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(30px,6vw,52px);line-height:1.05;letter-spacing:-.04em}p{color:#5b5b6b}ul{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:10px}li{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e4e4ec;border-radius:14px}.number{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#eeeaff;color:#5848ec;font-weight:800;font-size:13px}.lesson{min-width:0;flex:1}.lesson small{display:block;color:#777789;margin-top:2px}a{color:#5142e8;font-weight:700;text-decoration:none}.locked{color:#747486;font-size:12px}</style></head><body><main class="shell"><div class="eyebrow">LynkFlow course access</div><section class="card"><p>Welcome, ${customer}.</p><h1>${title}</h1><p>${description}</p><ul>${lessonMarkup || '<li>Your course lessons will appear here.</li>'}</ul></section></main></body></html>`;
+  const contentHref = !isCourse ? safePublicHref(payload.deliveryUrl) : null;
+  const contentMarkup = !isCourse ? (contentHref ? `<p><a class="primary" href="${escapeHtml(contentHref)}" rel="noopener noreferrer">Open your purchase</a></p>` : '<p>Your purchase is confirmed, but its delivery link is temporarily unavailable.</p>') : `<ul>${lessonMarkup || '<li>Your course lessons will appear here.</li>'}</ul>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title} · Paid access</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:0 auto;padding:48px 20px 80px}.eyebrow{color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.card{margin-top:20px;padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(30px,6vw,52px);line-height:1.05;letter-spacing:-.04em}p{color:#5b5b6b}ul{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:10px}li{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e4e4ec;border-radius:14px}.number{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#eeeaff;color:#5848ec;font-weight:800;font-size:13px}.lesson{min-width:0;flex:1}.lesson small{display:block;color:#777789;margin-top:2px}a{color:#5142e8;font-weight:700;text-decoration:none}.primary{display:inline-flex;padding:12px 16px;border-radius:12px;background:#5142e8;color:#fff}</style></head><body><main class="shell"><div class="eyebrow">LynkFlow paid access</div><section class="card"><p>Welcome, ${customer}.</p><h1>${title}</h1><p>${description}</p>${contentMarkup}</section></main></body></html>`;
   return new Response(html, { status: 200, headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'private,no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" } });
 }
 
@@ -2701,10 +2704,10 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     const customerEmail = typeof customerDetails.email === 'string' ? customerDetails.email : null;
     const customerName = typeof customerDetails.name === 'string' ? customerDetails.name : undefined;
     const delivery = paymentStatus === 'paid' ? await publishedProductDelivery(env, metadata.profile_id, metadata.block_id) : null;
-    const courseAccessToken = delivery?.isCourse && paymentStatus === 'paid' ? randomSecret(48) : undefined;
-    const courseAccessUrl = courseAccessToken ? `${env.APP_URL || new URL(request.url).origin}/course-access?token=${encodeURIComponent(courseAccessToken)}` : undefined;
-    const deliveryUrl = courseAccessUrl || delivery?.deliveryUrl || null;
     const commerceType = ['product', 'course', 'tip', 'membership'].includes(metadata.commerce_type) ? metadata.commerce_type : 'product';
+    const protectedAccessToken = delivery && paymentStatus === 'paid' && ['product', 'course'].includes(commerceType) ? randomSecret(48) : undefined;
+    const protectedAccessUrl = protectedAccessToken ? `${env.APP_URL || new URL(request.url).origin}/course-access?token=${encodeURIComponent(protectedAccessToken)}` : undefined;
+    const deliveryUrl = protectedAccessUrl || delivery?.deliveryUrl || null;
     const subscriptionId = String(object.subscription || '').startsWith('sub_') ? String(object.subscription) : null;
     await supabaseRequest('product_orders?on_conflict=stripe_session_id', env, {
       method: 'POST',
@@ -2724,8 +2727,8 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         customer_email: customerEmail,
         customer_name: customerName || null,
         delivery_url: deliveryUrl,
-        access_token_hash: courseAccessToken ? await sha256(courseAccessToken) : null,
-        access_token_expires_at: courseAccessToken ? new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() : null,
+        access_token_hash: protectedAccessToken ? await sha256(protectedAccessToken) : null,
+        access_token_expires_at: protectedAccessToken ? new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() : null,
         created_at: new Date(Number(object.created || Date.now() / 1000) * 1000).toISOString(),
         paid_at: paymentStatus === 'paid' ? new Date().toISOString() : null,
       }),
