@@ -2,6 +2,7 @@
 const baseUrl = process.env.LYNKFLOW_API_URL || 'https://lynkflow.samirmagdy80.workers.dev';
 const checks = [
   ['deployment health', '/api/health', 'GET'],
+  ['social provider configuration', '/api/social/config', 'GET'],
   ['profile list', '/api/v1/profiles', 'GET'],
   ['profile update', '/api/v1/profiles/example', 'PATCH'],
   ['blocks list', '/api/v1/profiles/example/blocks', 'GET'],
@@ -36,6 +37,8 @@ for (const [name, path, method] of checks) {
   const errorCode = typeof body.error === 'object' ? body.error?.code : undefined;
   const passed = name === 'deployment health'
     ? (response.status === 503 && !body.error && typeof body === 'object')
+    : name === 'social provider configuration'
+      ? response.status === 200 && Boolean((body as { data?: Record<string, unknown> }).data) && ['linkedin', 'tiktok', 'instagram', 'facebook', 'youtube', 'threads', 'x'].every(provider => typeof (body as { data: Record<string, unknown> }).data?.[provider] === 'boolean')
     : response.status === 401 && (errorCode === 'UNAUTHORIZED' || body.error === 'Authentication required.');
   console.log(`${passed ? 'PASS' : 'FAIL'} ${name}: HTTP ${response.status}`);
   if (!passed) failed += 1;
