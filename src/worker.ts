@@ -34,6 +34,10 @@ interface Env {
   STRIPE_PRICE_AGENCY_ANNUAL?: string;
   FORM_IP_HASH_SECRET?: string;
   WEBHOOK_ENCRYPTION_KEY?: string;
+  SOCIAL_OAUTH_ENCRYPTION_KEY?: string;
+  LINKEDIN_CLIENT_ID?: string;
+  LINKEDIN_CLIENT_SECRET?: string;
+  LINKEDIN_VERSION?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   PEXELS_API_KEY?: string;
@@ -62,6 +66,7 @@ function deploymentHealth(env: Env): Response {
     email: ['RESEND_API_KEY'],
     stripe: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PRO_MONTHLY', 'STRIPE_PRICE_PRO_ANNUAL', 'STRIPE_PRICE_AGENCY_MONTHLY', 'STRIPE_PRICE_AGENCY_ANNUAL'],
     webhooks: ['WEBHOOK_ENCRYPTION_KEY'],
+    socialOAuth: ['LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET', 'SOCIAL_OAUTH_ENCRYPTION_KEY'],
     customDomains: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID'],
   } as const;
   const envValues = env as unknown as Record<string, unknown>;
@@ -70,6 +75,7 @@ function deploymentHealth(env: Env): Response {
     email: requiredBindings.email.every(binding => Boolean(envValues[binding])),
     stripe: requiredBindings.stripe.every(binding => Boolean(envValues[binding])),
     webhooks: requiredBindings.webhooks.every(binding => Boolean(envValues[binding])),
+    socialOAuth: requiredBindings.socialOAuth.every(binding => Boolean(envValues[binding])),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
   };
   const missing = Object.values(requiredBindings).flat().filter(binding => !envValues[binding]);
@@ -482,6 +488,27 @@ async function webhookCryptoKey(env: Env, usage: KeyUsage[]): Promise<CryptoKey>
   if (!env.WEBHOOK_ENCRYPTION_KEY) throw new Error('Webhook encryption is not configured.');
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.WEBHOOK_ENCRYPTION_KEY));
   return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, usage);
+}
+
+async function socialOAuthCryptoKey(env: Env, usage: KeyUsage[]): Promise<CryptoKey> {
+  if (!env.SOCIAL_OAUTH_ENCRYPTION_KEY) throw new Error('Social OAuth encryption is not configured.');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.SOCIAL_OAUTH_ENCRYPTION_KEY));
+  return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, usage);
+}
+
+async function encryptSocialToken(token: string, env: Env): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await socialOAuthCryptoKey(env, ['encrypt']);
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as unknown as BufferSource }, key, new TextEncoder().encode(token));
+  return `${toBase64(iv)}.${toBase64(new Uint8Array(encrypted))}`;
+}
+
+async function decryptSocialToken(ciphertext: string, env: Env): Promise<string> {
+  const [ivValue, encryptedValue] = ciphertext.split('.', 2);
+  if (!ivValue || !encryptedValue) throw new Error('Stored social token is invalid.');
+  const key = await socialOAuthCryptoKey(env, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(ivValue) as unknown as BufferSource }, key, fromBase64(encryptedValue) as unknown as BufferSource);
+  return new TextDecoder().decode(plain);
 }
 
 async function encryptWebhookSecret(secret: string, env: Env): Promise<string> {
@@ -1980,6 +2007,129 @@ async function updateSocialShareEvent(request: Request, env: Env, shareId: strin
   return json({ data: rows[0] || { id: shareId, status: input.status }, requestId: crypto.randomUUID() });
 }
 
+function socialOAuthRedirect(request: Request, env: Env, path: string): string {
+  const base = env.APP_URL || new URL(request.url).origin;
+  return new URL(path, `${base.replace(/\/$/, '')}/`).toString();
+}
+
+function socialOAuthConfigured(env: Env): boolean {
+  return Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+async function startLinkedInOAuth(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
+  if (!socialOAuthConfigured(env)) return apiError('SERVICE_UNAVAILABLE', 'LinkedIn publishing is not configured yet.', 503);
+  const state = randomSecret(32);
+  await supabaseRequest('social_oauth_states', env, {
+    method: 'POST',
+    headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id: `oauth_${crypto.randomUUID()}`, workspace_id: user.id, provider: 'linkedin', state_hash: await sha256(state), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }),
+  });
+  const authorize = new URL('https://www.linkedin.com/oauth/v2/authorization');
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('client_id', env.LINKEDIN_CLIENT_ID!);
+  authorize.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/linkedin/callback'));
+  authorize.searchParams.set('state', state);
+  authorize.searchParams.set('scope', 'openid profile email w_member_social');
+  return Response.redirect(authorize.toString(), 302);
+}
+
+async function finishLinkedInOAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?linkedin=error&reason=${encodeURIComponent(reason)}`, 302);
+  if (!code || !state || !socialOAuthConfigured(env)) return failure('configuration');
+  const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.linkedin&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id`, env);
+  const states = await stateResponse.json() as Array<{ id: string; workspace_id: string }>;
+  const oauthState = states[0];
+  if (!oauthState) return failure('expired');
+  const markUsed = await supabaseRequest(`social_oauth_states?id=eq.${encodeURIComponent(oauthState.id)}&used_at=is.null`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
+  const markedRows = await markUsed.json() as unknown[];
+  if (!markedRows.length) return failure('replayed');
+  const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: socialOAuthRedirect(request, env, '/api/social/linkedin/callback'), client_id: env.LINKEDIN_CLIENT_ID!, client_secret: env.LINKEDIN_CLIENT_SECRET! }),
+  });
+  if (!tokenResponse.ok) return failure('token_exchange');
+  const token = await tokenResponse.json() as { access_token?: string; expires_in?: number; refresh_token?: string; refresh_token_expires_in?: number; scope?: string };
+  if (!token.access_token) return failure('token_exchange');
+  const profileResponse = await fetch('https://api.linkedin.com/v2/userinfo', { headers: { authorization: `Bearer ${token.access_token}` } });
+  if (!profileResponse.ok) return failure('profile_lookup');
+  const profile = await profileResponse.json() as { sub?: string; name?: string; email?: string };
+  if (!profile.sub) return failure('profile_lookup');
+  const now = new Date();
+  await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, {
+    method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      id: `social_${oauthState.workspace_id}_linkedin_${profile.sub}`,
+      workspace_id: oauthState.workspace_id,
+      provider: 'linkedin', provider_account_id: profile.sub, account_name: profile.name || profile.email || 'LinkedIn account',
+      access_token_ciphertext: await encryptSocialToken(token.access_token, env),
+      refresh_token_ciphertext: token.refresh_token ? await encryptSocialToken(token.refresh_token, env) : null,
+      token_expires_at: token.expires_in ? new Date(now.getTime() + token.expires_in * 1000).toISOString() : null,
+      scopes: String(token.scope || 'openid profile email w_member_social').split(/[ ,]+/).filter(Boolean), status: 'active', updated_at: now.toISOString(),
+    }),
+  });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: profile.email || 'linkedin-oauth', action: 'social.linkedin.connected', target: profile.sub, occurred_at: now.toISOString(), details: 'LinkedIn publishing connection established.' }) });
+  return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?linkedin=connected`, 302);
+}
+
+async function listSocialConnections(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(user.id)}&select=id,provider,provider_account_id,account_name,token_expires_at,scopes,status,created_at,updated_at&order=created_at.desc`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function disconnectSocialConnection(request: Request, env: Env, connectionId: string): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can disconnect social accounts.', 403);
+  const response = await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connectionId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'revoked', updated_at: new Date().toISOString() }) });
+  if (!response.ok) return apiError('PERSISTENCE_ERROR', 'Social connection could not be revoked.', 503);
+  return json({ success: true });
+}
+
+async function publishLinkedInPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish to social accounts.', 403);
+  let input: { content?: string; targetUrl?: string; profileId?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  if (!content || content.length > 2800) return apiError('VALIDATION_ERROR', 'Message must be between 1 and 2800 characters.', 422);
+  if (input.profileId && !canManageProfile(user, input.profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  }
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(user.id)}&provider=eq.linkedin&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const connections = await response.json() as Array<{ id: string; provider_account_id: string; access_token_ciphertext: string; token_expires_at?: string | null }>;
+  const connection = connections[0];
+  if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect LinkedIn before publishing.', 409);
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) {
+    await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+    return apiError('CONNECTION_EXPIRED', 'Reconnect LinkedIn before publishing.', 401);
+  }
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const commentary = targetUrl ? `${content}\n${targetUrl}` : content;
+  const linkedinResponse = await fetch('https://api.linkedin.com/rest/posts', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', 'linkedin-version': env.LINKEDIN_VERSION || '202603', 'x-restli-protocol-version': '2.0.0' },
+    body: JSON.stringify({ author: `urn:li:person:${connection.provider_account_id}`, commentary, visibility: 'PUBLIC', distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] }, lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false }),
+  });
+  if (linkedinResponse.status === 401) {
+    await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+    return apiError('CONNECTION_EXPIRED', 'LinkedIn rejected this connection. Reconnect and try again.', 401);
+  }
+  if (!linkedinResponse.ok) return apiError('PROVIDER_ERROR', 'LinkedIn could not publish this post. No success was recorded.', 502);
+  return json({ data: { provider: 'linkedin', providerPostId: linkedinResponse.headers.get('x-restli-id') || null, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+}
+
 async function listBookingRequests(request: Request, env: Env): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
@@ -2884,6 +3034,26 @@ export default {
     if (url.pathname === '/api/sales/orders') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listProductOrders(request, env); } catch (error) { return internalApiError('List product orders failed', error, 'Unable to load sales data.'); }
+    }
+    if (url.pathname === '/api/social/linkedin/start') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await startLinkedInOAuth(request, env); } catch (error) { return internalApiError('Start LinkedIn OAuth failed', error, 'Unable to connect LinkedIn.'); }
+    }
+    if (url.pathname === '/api/social/linkedin/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await finishLinkedInOAuth(request, env); } catch (error) { console.error('Finish LinkedIn OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?linkedin=error&reason=server`, 302); }
+    }
+    if (url.pathname === '/api/social/connections') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await listSocialConnections(request, env); } catch (error) { return internalApiError('List social connections failed', error, 'Unable to load social connections.'); }
+    }
+    if (url.pathname.startsWith('/api/social/connections/')) {
+      if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await disconnectSocialConnection(request, env, decodeURIComponent(url.pathname.slice('/api/social/connections/'.length))); } catch (error) { return internalApiError('Disconnect social connection failed', error, 'Unable to disconnect social account.'); }
+    }
+    if (url.pathname === '/api/social/linkedin/post') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await publishLinkedInPost(request, env); } catch (error) { return internalApiError('Publish LinkedIn post failed', error, 'Unable to publish to LinkedIn.'); }
     }
     if (url.pathname === '/api/social/shares') {
       if (request.method === 'GET') {

@@ -12,6 +12,18 @@ export interface SocialShareEvent {
   created_at: string;
 }
 
+export interface SocialConnection {
+  id: string;
+  provider: 'linkedin';
+  provider_account_id: string;
+  account_name: string | null;
+  token_expires_at: string | null;
+  scopes: string[];
+  status: 'active' | 'expired' | 'revoked';
+  created_at: string;
+  updated_at: string;
+}
+
 async function authorizedRequest(path: string, init?: RequestInit): Promise<Response> {
   if (!supabase) throw new Error('Sharing requires a signed-in workspace.');
   const { data: { session } } = await supabase.auth.getSession();
@@ -39,4 +51,22 @@ export async function completeSocialShare(id: string, status: 'completed' | 'fai
     const body = await response.json() as { error?: string | { message?: string } };
     throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to update share status.');
   }
+}
+
+export async function loadSocialConnections(): Promise<SocialConnection[]> {
+  const response = await authorizedRequest('/api/social/connections');
+  const body = await response.json() as { data?: SocialConnection[]; error?: string | { message?: string } };
+  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to load social connections.');
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+export function startLinkedInOAuth(): void {
+  window.location.assign('/api/social/linkedin/start');
+}
+
+export async function publishLinkedInPost(content: string, targetUrl: string, profileId: string): Promise<{ providerPostId: string | null }> {
+  const response = await authorizedRequest('/api/social/linkedin/post', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId }) });
+  const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to LinkedIn.');
+  return { providerPostId: body.data.providerPostId || null };
 }
