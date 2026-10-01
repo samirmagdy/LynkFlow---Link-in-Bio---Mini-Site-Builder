@@ -47,6 +47,8 @@ interface Env {
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   PEXELS_API_KEY?: string;
+  SUPPORT_EMAIL?: string;
+  SUPPORT_FROM_EMAIL?: string;
 }
 
 const JSON_HEADERS = {
@@ -75,6 +77,7 @@ function deploymentHealth(env: Env): Response {
     socialOAuth: ['SOCIAL_OAUTH_ENCRYPTION_KEY'],
     instagramAutomations: ['META_APP_ID', 'META_APP_SECRET', 'META_VERIFY_TOKEN'],
     customDomains: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID'],
+    supportRouting: ['RESEND_API_KEY', 'SUPPORT_EMAIL'],
   } as const;
   const envValues = env as unknown as Record<string, unknown>;
   const checks = {
@@ -85,6 +88,7 @@ function deploymentHealth(env: Env): Response {
     socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET))),
     instagramAutomations: Boolean(envValues.META_APP_ID && envValues.META_APP_SECRET && envValues.META_VERIFY_TOKEN && envValues.SOCIAL_OAUTH_ENCRYPTION_KEY),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
+    supportRouting: requiredBindings.supportRouting.every(binding => Boolean(envValues[binding])),
   };
   const missing = Object.values(requiredBindings).flat().filter(binding => !envValues[binding]);
   const requiredCore = checks.supabase && checks.email && checks.webhooks;
@@ -426,6 +430,28 @@ async function sendMembershipWelcomeEmail(env: Env, to: string, customerName: st
   });
   if (!response.ok) console.error('Membership welcome email failed', await response.text());
   return response.ok;
+}
+
+async function routeSupportTicket(env: Env, ticket: Record<string, unknown>): Promise<{ status: 'sent' | 'failed' | 'pending'; error?: string }> {
+  if (!env.RESEND_API_KEY || !env.SUPPORT_EMAIL) return { status: 'pending' };
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from: env.SUPPORT_FROM_EMAIL || 'onboarding@resend.dev',
+        to: env.SUPPORT_EMAIL,
+        reply_to: String(ticket.requester_email),
+        subject: `[LynkFlow support] ${String(ticket.subject)}`,
+        html: `<h2>${escapeHtml(String(ticket.subject))}</h2><p><strong>Requester:</strong> ${escapeHtml(String(ticket.requester_email))}</p><p><strong>Plan:</strong> ${escapeHtml(String(ticket.plan))} · <strong>SLA:</strong> ${escapeHtml(String(ticket.sla_hours))} hours</p><p>${escapeHtml(String(ticket.message)).replace(/\n/g, '<br>')}</p><p><strong>Ticket ID:</strong> ${escapeHtml(String(ticket.id))}</p>`,
+      }),
+    });
+    if (response.ok) return { status: 'sent' };
+    const body = await response.text();
+    return { status: 'failed', error: body.slice(0, 500) || `Resend returned HTTP ${response.status}` };
+  } catch (error) {
+    return { status: 'failed', error: error instanceof Error ? error.message.slice(0, 500) : 'Support routing request failed.' };
+  }
 }
 
 async function publishedProductDelivery(env: Env, profileId: string, blockId: string): Promise<{ productName: string; deliveryUrl: string; isCourse: boolean } | null> {
@@ -1915,7 +1941,7 @@ async function handleSupportTickets(request: Request, env: Env, ticketId?: strin
     const response = await supabaseRequest(query, env);
     return json({ data: await response.json(), requestId: crypto.randomUUID() });
   }
-  if (request.method === 'POST') {
+  if (request.method === 'POST' && !ticketId) {
     let input: { subject?: string; message?: string };
     try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
     const subject = typeof input.subject === 'string' ? input.subject.trim() : '';
@@ -1937,13 +1963,30 @@ async function handleSupportTickets(request: Request, env: Env, ticketId?: strin
       status: 'open',
       sla_hours: entitlement.slaHours,
       due_at: new Date(now.getTime() + entitlement.slaHours * 3600_000).toISOString(),
+      routing_status: 'pending',
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
     };
     const response = await supabaseRequest('support_tickets', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(ticket) });
     if (!response.ok) return apiError('SERVICE_UNAVAILABLE', 'Support ticket could not be created.', 503);
+    const storedTicket = (await response.json() as unknown[])[0] || ticket;
+    const routing = await routeSupportTicket(env, ticket);
+    const routingPatch = { routing_status: routing.status, routed_at: routing.status === 'sent' ? new Date().toISOString() : null, routing_error: routing.error || null, updated_at: new Date().toISOString() };
+    await supabaseRequest(`support_tickets?id=eq.${encodeURIComponent(ticket.id)}&workspace_id=eq.${encodeURIComponent(access.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify(routingPatch) });
     await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: access.id, actor: access.email, action: 'support.ticket.created', target: ticket.id, occurred_at: now.toISOString(), details: `${plan} plan; ${entitlement.slaHours}h SLA` }) });
-    return json({ data: (await response.json() as unknown[])[0] || ticket, requestId: crypto.randomUUID() }, 201);
+    return json({ data: { ...(storedTicket as Record<string, unknown>), ...routingPatch }, requestId: crypto.randomUUID() }, 201);
+  }
+  if (request.method === 'POST' && ticketId) {
+    const ticketResponse = await supabaseRequest(`support_tickets?id=eq.${encodeURIComponent(ticketId)}&workspace_id=eq.${encodeURIComponent(access.id)}&select=*`, env);
+    const tickets = await ticketResponse.json() as Array<Record<string, unknown>>;
+    const ticket = tickets[0];
+    if (!ticket) return apiError('NOT_FOUND', 'Support ticket not found.', 404);
+    if (ticket.routing_status === 'sent') return json({ data: ticket, requestId: crypto.randomUUID() });
+    const routing = await routeSupportTicket(env, ticket);
+    const routingPatch = { routing_status: routing.status, routed_at: routing.status === 'sent' ? new Date().toISOString() : null, routing_error: routing.error || null, updated_at: new Date().toISOString() };
+    const updateResponse = await supabaseRequest(`support_tickets?id=eq.${encodeURIComponent(ticketId)}&workspace_id=eq.${encodeURIComponent(access.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify(routingPatch) });
+    const updated = (await updateResponse.json() as unknown[])[0] || { ...ticket, ...routingPatch };
+    return json({ data: updated, requestId: crypto.randomUUID() });
   }
   if (!ticketId || access.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can update support tickets.', 403);
   let input: { status?: string; assignedTo?: string };
@@ -3842,7 +3885,7 @@ export default {
     }
     if (url.pathname.startsWith('/api/support/tickets/')) {
       const ticketId = url.pathname.split('/').pop() || '';
-      if (request.method !== 'PATCH' && request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      if (request.method !== 'PATCH' && request.method !== 'GET' && request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await handleSupportTickets(request, env, ticketId); } catch (error) { return internalApiError('Support ticket mutation failed', error, 'Support ticket update failed.'); }
     }
     if (url.pathname === '/api/webhooks') {

@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { LifeBuoy, Send, Clock3, CheckCircle2, AlertCircle } from 'lucide-react';
+import { LifeBuoy, Send, Clock3, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 
@@ -12,6 +12,8 @@ type Ticket = {
   sla_hours: number;
   due_at: string;
   created_at: string;
+  routing_status?: 'pending' | 'sent' | 'failed';
+  routing_error?: string | null;
 };
 
 const statusLabel: Record<Ticket['status'], string> = {
@@ -25,6 +27,7 @@ export const SupportInbox: React.FC = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const loadTickets = async () => {
     if (!supabase) { setLoading(false); return; }
@@ -38,6 +41,23 @@ export const SupportInbox: React.FC = () => {
   };
 
   useEffect(() => { void loadTickets(); }, []);
+
+  const retryRouting = async (ticketId: string) => {
+    if (!supabase) return;
+    setRetryingId(ticketId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Please sign in again.');
+      const response = await fetch(`/api/support/tickets/${encodeURIComponent(ticketId)}`, {
+        method: 'POST', headers: { authorization: `Bearer ${session.access_token}` }
+      });
+      const body = await response.json() as { data?: Ticket; error?: { message?: string } };
+      if (!response.ok || !body.data) throw new Error(body.error?.message || 'Support routing retry failed.');
+      setTickets(current => current.map(ticket => ticket.id === ticketId ? body.data! : ticket));
+      showToast(body.data.routing_status === 'sent' ? 'Support request routed successfully.' : body.data.routing_error || 'Support routing is still pending.');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Support routing retry failed.'); }
+    finally { setRetryingId(null); }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -77,6 +97,7 @@ export const SupportInbox: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-ink">{ticket.subject}</h3><span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">{statusLabel[ticket.status]}</span></div>
             <p className="mt-2 whitespace-pre-wrap text-sm text-subtle">{ticket.message}</p>
             <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-subtle"><span className="inline-flex items-center gap-1"><Clock3 className="w-3.5 h-3.5" /> SLA {ticket.sla_hours}h</span><span className="inline-flex items-center gap-1">{ticket.status === 'resolved' ? <CheckCircle2 className="w-3.5 h-3.5 text-success" /> : <AlertCircle className="w-3.5 h-3.5 text-warning" />}Due {new Date(ticket.due_at).toLocaleString()}</span><span>{new Date(ticket.created_at).toLocaleDateString()}</span></div>
+            {ticket.routing_status !== 'sent' && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2.5 text-xs"><span className="text-body">{ticket.routing_status === 'failed' ? (ticket.routing_error || 'Could not route this request.') : 'Waiting for support routing configuration.'}</span><button type="button" onClick={() => void retryRouting(ticket.id)} disabled={retryingId === ticket.id} className="inline-flex items-center gap-1.5 font-semibold text-accent hover:underline disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${retryingId === ticket.id ? 'animate-spin' : ''}`} />Retry routing</button></div>}
           </article>
         ))}
       </div>
