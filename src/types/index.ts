@@ -447,6 +447,8 @@ export interface CustomDomainConfig {
   sslStatus: 'active' | 'provisioning' | 'failed' | 'renewal_failed';
   cnameTarget: string;
   expectedIp: string;
+  /** Cloudflare custom-hostname identifier used for safe removal and refresh. */
+  cloudflareHostnameId?: string;
   lastCheckedAt: string;
   /** Set when hostname is already claimed by another workspace */
   conflictOwnerId?: string;

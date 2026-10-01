@@ -581,15 +581,40 @@ async function resolveCname(hostname: string): Promise<string[]> {
   return (body.Answer || []).filter(answer => answer.type === 5 && answer.data).map(answer => String(answer.data).replace(/\.$/, '').toLowerCase());
 }
 
-async function provisionCloudflareHostname(domain: string, env: Env): Promise<'active' | 'provisioning'> {
-  if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ZONE_ID) return 'provisioning';
-  const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}/custom_hostnames`, {
+type CloudflareHostnameState = { id?: string; sslStatus: 'active' | 'provisioning' | 'failed'; failureReason?: string };
+
+function cloudflareSslStatus(value: unknown): CloudflareHostnameState['sslStatus'] {
+  const status = String(value || '').toLowerCase();
+  if (status === 'active') return 'active';
+  if (['pending_validation', 'pending_issuance', 'pending_deployment', 'provisioning'].includes(status)) return 'provisioning';
+  return status ? 'failed' : 'provisioning';
+}
+
+async function provisionCloudflareHostname(domain: string, env: Env): Promise<CloudflareHostnameState> {
+  if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ZONE_ID) return { sslStatus: 'provisioning', failureReason: 'DNS verified. SSL provisioning is not configured yet.' };
+  const endpoint = `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}/custom_hostnames`;
+  const response = await fetch(endpoint, {
     method: 'POST', headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`, 'content-type': 'application/json' },
     body: JSON.stringify({ hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } })
   });
-  if (response.ok) return 'active';
+  if (response.ok) {
+    const body = await response.json() as { result?: { id?: string; ssl?: { status?: string } } };
+    const sslStatus = cloudflareSslStatus(body.result?.ssl?.status);
+    return { id: body.result?.id, sslStatus, ...(sslStatus === 'failed' ? { failureReason: 'Cloudflare could not provision the SSL certificate yet.' } : {}) };
+  }
   const body = await response.text();
-  if (response.status === 409 || body.includes('already exists')) return 'provisioning';
+  if (response.status === 409 || body.toLowerCase().includes('already exists')) {
+    const lookup = await fetch(`${endpoint}?hostname=${encodeURIComponent(domain)}`, { headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
+    if (lookup.ok) {
+      const lookupBody = await lookup.json() as { result?: Array<{ id?: string; ssl?: { status?: string } }> };
+      const existing = lookupBody.result?.[0];
+      if (existing) {
+        const sslStatus = cloudflareSslStatus(existing.ssl?.status);
+        return { id: existing.id, sslStatus, ...(sslStatus === 'failed' ? { failureReason: 'Cloudflare reports an SSL provisioning failure.' } : {}) };
+      }
+    }
+    return { sslStatus: 'provisioning', failureReason: 'DNS verified. Cloudflare is still finding the hostname.' };
+  }
   throw new Error('Cloudflare custom hostname provisioning failed.');
 }
 
@@ -617,12 +642,13 @@ async function verifyCustomDomain(request: Request, env: Env): Promise<Response>
     await supabaseRequest('custom_domains?on_conflict=domain', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ domain, workspace_id: access.user.id, profile_id: input.profileId, status: 'failed', ssl_status: 'failed', cname_target: DOMAIN_CNAME_TARGET, expected_ip: DOMAIN_A_RECORD, failure_reason: config.failureReason, last_checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
     return json({ success: false, config, error: config.failureReason }, 422);
   }
-  const sslStatus = await provisionCloudflareHostname(domain, env);
-  const config = profileDomainConfig(domain, 'verified', sslStatus, sslStatus === 'provisioning' ? 'DNS verified. SSL is provisioning.' : undefined);
+  const cloudflare = await provisionCloudflareHostname(domain, env);
+  const failureReason = cloudflare.failureReason || (cloudflare.sslStatus === 'provisioning' ? 'DNS verified. SSL is provisioning.' : undefined);
+  const config: Record<string, unknown> = { ...profileDomainConfig(domain, 'verified', cloudflare.sslStatus, failureReason), ...(cloudflare.id ? { cloudflareHostnameId: cloudflare.id } : {}) };
   const nextData = { ...profiles[0].data, customDomain: config };
   await supabaseRequest(`profiles?id=eq.${encodeURIComponent(input.profileId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() }) });
-  await supabaseRequest('custom_domains?on_conflict=domain', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ domain, workspace_id: access.user.id, profile_id: input.profileId, status: 'verified', ssl_status: sslStatus, cname_target: DOMAIN_CNAME_TARGET, expected_ip: DOMAIN_A_RECORD, failure_reason: config.failureReason || null, last_checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
-  await dispatchWebhookEvent(env, access.user.id, 'domain.verified', { profileId: input.profileId, domain, sslStatus });
+  await supabaseRequest('custom_domains?on_conflict=domain', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ domain, workspace_id: access.user.id, profile_id: input.profileId, status: 'verified', ssl_status: cloudflare.sslStatus, cname_target: DOMAIN_CNAME_TARGET, expected_ip: DOMAIN_A_RECORD, failure_reason: config.failureReason || null, last_checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
+  if (cloudflare.sslStatus === 'active') await dispatchWebhookEvent(env, access.user.id, 'domain.verified', { profileId: input.profileId, domain, sslStatus: cloudflare.sslStatus });
   return json({ success: true, config });
 }
 
@@ -636,7 +662,20 @@ async function removeCustomDomain(request: Request, env: Env): Promise<Response>
   const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(input.profileId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,data`, env);
   const profiles = await profileResponse.json() as Array<{ id: string; data: Record<string, unknown> }>;
   if (!profiles[0]) return apiError('NOT_FOUND', 'Profile not found.', 404);
-  const domain = (profiles[0].data.customDomain as Record<string, unknown> | undefined)?.domain;
+  const domainConfig = profiles[0].data.customDomain as Record<string, unknown> | undefined;
+  const domain = domainConfig?.domain;
+  if (domain && env.CLOUDFLARE_API_TOKEN && env.CLOUDFLARE_ZONE_ID) {
+    const endpoint = `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}/custom_hostnames`;
+    let hostnameId = typeof domainConfig?.cloudflareHostnameId === 'string' ? domainConfig.cloudflareHostnameId : '';
+    if (!hostnameId) {
+      const lookup = await fetch(`${endpoint}?hostname=${encodeURIComponent(String(domain))}`, { headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
+      if (lookup.ok) hostnameId = String(((await lookup.json() as { result?: Array<{ id?: string }> }).result?.[0]?.id) || '');
+    }
+    if (hostnameId) {
+      const removal = await fetch(`${endpoint}/${encodeURIComponent(hostnameId)}`, { method: 'DELETE', headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
+      if (!removal.ok && removal.status !== 404) throw new Error('Cloudflare custom hostname removal failed.');
+    }
+  }
   const nextData = { ...profiles[0].data, customDomain: null };
   await supabaseRequest(`profiles?id=eq.${encodeURIComponent(input.profileId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() }) });
   if (domain) await supabaseRequest(`custom_domains?domain=eq.${encodeURIComponent(String(domain))}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'DELETE' });
