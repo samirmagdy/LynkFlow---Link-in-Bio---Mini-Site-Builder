@@ -996,6 +996,13 @@ function apiError(code: string, message: string, status: number): Response {
   return json({ error: { code, message } }, status);
 }
 
+function requireIdempotencyKey(request: Request): Response | null {
+  const key = request.headers.get('idempotency-key')?.trim();
+  if (!key) return apiError('VALIDATION_ERROR', 'Idempotency-Key header is required for API mutations.', 422);
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) return apiError('VALIDATION_ERROR', 'Idempotency-Key must be 8-128 safe characters.', 422);
+  return null;
+}
+
 function internalApiError(context: string, error: unknown, message: string, status = 500): Response {
   console.error(context, error);
   return apiError('INTERNAL_ERROR', message, status);
@@ -1073,11 +1080,31 @@ async function saveIdempotentResponse(env: Env, auth: ApiKeyAuth, request: Reque
   }) });
 }
 
+async function recordApiAudit(env: Env, auth: ApiKeyAuth, action: string, target: string, details: string): Promise<void> {
+  await supabaseRequest('audit_logs', env, {
+    method: 'POST',
+    headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({
+      id: `audit-${crypto.randomUUID()}`,
+      workspace_id: auth.workspaceId,
+      actor: `api-key:${auth.keyId}`,
+      action,
+      target,
+      occurred_at: new Date().toISOString(),
+      details,
+    }),
+  });
+}
+
 async function handleApiProfileSubresource(request: Request, env: Env, profileId: string, resource: string, blockId?: string): Promise<Response> {
   const readScope = resource === 'blocks' ? 'blocks:read' : 'themes:read';
   const writeScope = resource === 'blocks' ? 'blocks:write' : 'themes:write';
   const auth = await authenticateApiKey(request, env, request.method === 'GET' ? readScope : writeScope);
   if (auth instanceof Response) return auth;
+  if (request.method !== 'GET') {
+    const idempotencyError = requireIdempotencyKey(request);
+    if (idempotencyError) return idempotencyError;
+  }
   const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
   if (resolvedProfileId instanceof Response) return resolvedProfileId;
   profileId = resolvedProfileId;
@@ -1105,6 +1132,7 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
     await persistDesignSystem(env, auth.workspaceId, profileId, nextTheme as unknown as Record<string, unknown>, nextData);
     const result = { data: nextTheme, requestId: crypto.randomUUID() };
     await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
+    await recordApiAudit(env, auth, 'api.theme.updated', profileId, 'Draft theme updated through the versioned API.');
     return json(result);
   }
 
@@ -1113,7 +1141,73 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
     const blocks: Array<Record<string, unknown>> = tabs.flatMap(tab => Array.isArray(tab.blocks) ? (tab.blocks as Array<Record<string, unknown>>).map(block => ({ ...block, tabId: tab.id })) : []);
     return json({ data: blockId ? blocks.filter(block => block.id === blockId) : blocks, requestId: crypto.randomUUID() });
   }
+
+  if (request.method === 'POST' && !blockId) {
+    let input: Record<string, unknown>;
+    try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+    const data = input.data && typeof input.data === 'object' && !Array.isArray(input.data) ? input.data as Record<string, unknown> : input;
+    const tabId = typeof data.tabId === 'string' ? data.tabId.trim() : '';
+    const type = typeof data.type === 'string' ? data.type.trim() : '';
+    const title = typeof data.title === 'string' ? data.title.trim() : '';
+    const payload = data.payload && typeof data.payload === 'object' && !Array.isArray(data.payload) ? data.payload : null;
+    const allowedTypes = new Set(['link', 'media', 'gallery', 'carousel', 'event', 'product', 'course', 'tip', 'membership', 'text', 'divider', 'folder', 'faq', 'testimonial', 'file', 'form', 'emailSignup', 'contact']);
+    if (!tabId || !type || !allowedTypes.has(type) || !title || !payload) return apiError('VALIDATION_ERROR', 'tabId, type, title and payload are required.', 422);
+    const targetTab = tabs.find(tab => tab.id === tabId);
+    if (!targetTab) return apiError('NOT_FOUND', 'Target tab not found.', 404);
+    const blockValidation = validateBlockPayload(type as BlockType, payload);
+    if (!blockValidation.isValid) return apiError('VALIDATION_ERROR', blockValidation.errors[0] || 'Block payload is invalid.', 422);
+    const requestHash = await sha256(JSON.stringify({ tabId, type, title, payload, isHidden: data.isHidden, schedule: data.schedule, style: data.style }));
+    const replay = await idempotentReplay(env, auth, request, requestHash);
+    if (replay) return replay;
+    const existingBlocks = Array.isArray(targetTab.blocks) ? targetTab.blocks as Array<Record<string, unknown>> : [];
+    const createdBlock: Record<string, unknown> = {
+      id: `blk_${crypto.randomUUID()}`,
+      type,
+      title,
+      payload,
+      position: existingBlocks.length,
+      isHidden: data.isHidden === true,
+      clicks: 0,
+      ...(data.schedule && typeof data.schedule === 'object' ? { schedule: data.schedule } : {}),
+      ...(typeof data.conversionRole === 'string' ? { conversionRole: data.conversionRole } : {}),
+      ...(typeof data.animation === 'string' ? { animation: data.animation } : {}),
+      ...(data.animationConfig && typeof data.animationConfig === 'object' ? { animationConfig: data.animationConfig } : {}),
+      ...(data.style && typeof data.style === 'object' ? { style: data.style } : {}),
+    };
+    const nextTabs = tabs.map(tab => tab.id !== tabId ? tab : { ...tab, blocks: [...existingBlocks, createdBlock] });
+    const nextData = { ...profile.data, tabs: nextTabs, updatedAt: new Date().toISOString() };
+    const saveResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() }) });
+    if (!saveResponse.ok) return apiError('PERSISTENCE_ERROR', 'Block could not be saved.', 503);
+    const result = { data: { ...createdBlock, tabId }, requestId: crypto.randomUUID() };
+    await saveIdempotentResponse(env, auth, request, requestHash, 201, result);
+    await recordApiAudit(env, auth, 'api.block.created', profileId, `Created block ${String(createdBlock.id)} in tab ${tabId}.`);
+    await dispatchWebhookEvent(env, auth.workspaceId, 'profile.updated', { profileId, username: profile.username, resource: 'block.created', blockId: createdBlock.id });
+    return json(result, 201);
+  }
+
   if (!blockId) return apiError('VALIDATION_ERROR', 'A block ID is required for mutations.', 422);
+
+  if (request.method === 'DELETE') {
+    const requestHash = await sha256(`${profileId}:delete:${blockId}`);
+    const replay = await idempotentReplay(env, auth, request, requestHash);
+    if (replay) return replay;
+    let found = false;
+    const nextTabs = tabs.map(tab => {
+      const currentBlocks = Array.isArray(tab.blocks) ? tab.blocks as Array<Record<string, unknown>> : [];
+      if (!currentBlocks.some(block => block.id === blockId)) return tab;
+      found = true;
+      return { ...tab, blocks: currentBlocks.filter(block => block.id !== blockId).map((block, index) => ({ ...block, position: index })) };
+    });
+    if (!found) return apiError('NOT_FOUND', 'Block not found.', 404);
+    const saveResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: { ...profile.data, tabs: nextTabs, updatedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }) });
+    if (!saveResponse.ok) return apiError('PERSISTENCE_ERROR', 'Block could not be deleted.', 503);
+    const result = { data: { deleted: true, blockId }, requestId: crypto.randomUUID() };
+    await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
+    await recordApiAudit(env, auth, 'api.block.deleted', profileId, `Deleted block ${blockId}.`);
+    await dispatchWebhookEvent(env, auth.workspaceId, 'profile.updated', { profileId, username: profile.username, resource: 'block.deleted', blockId });
+    return json(result);
+  }
+
   let input: { data?: Record<string, unknown> };
   try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
   if (!input.data || typeof input.data !== 'object' || Array.isArray(input.data)) return apiError('VALIDATION_ERROR', 'data must be an object.', 422);
@@ -1135,10 +1229,12 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
   }) : tab.blocks }));
   if (!found) return apiError('NOT_FOUND', 'Block not found.', 404);
   const nextData = { ...profile.data, tabs: nextTabs };
-  await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() }) });
+  const saveResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: nextData, updated_at: new Date().toISOString() }) });
+  if (!saveResponse.ok) return apiError('PERSISTENCE_ERROR', 'Block could not be updated.', 503);
   const updated = nextTabs.flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks as Array<Record<string, unknown>> : []).find(block => block.id === blockId);
   const result = { data: updated, requestId: crypto.randomUUID() };
   await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
+  await recordApiAudit(env, auth, 'api.block.updated', profileId, `Updated block ${blockId}.`);
   return json(result);
 }
 
@@ -1194,6 +1290,8 @@ async function handleApiFormSubmissions(request: Request, env: Env, profileId: s
 async function publishApiProfile(request: Request, env: Env, profileId: string): Promise<Response> {
   const auth = await authenticateApiKey(request, env, 'publish:write');
   if (auth instanceof Response) return auth;
+  const idempotencyError = requireIdempotencyKey(request);
+  if (idempotencyError) return idempotencyError;
   const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
   if (resolvedProfileId instanceof Response) return resolvedProfileId;
   profileId = resolvedProfileId;
@@ -1220,11 +1318,14 @@ async function publishApiProfile(request: Request, env: Env, profileId: string):
     snapshotHistory: [snapshot, ...(Array.isArray(profileData.snapshotHistory) ? profileData.snapshotHistory : [])].slice(0, 50),
     themeSnapshots: [themeSnapshot, ...(Array.isArray(profileData.themeSnapshots) ? profileData.themeSnapshots : []).slice(0, 49)],
   };
-  await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: publishedAt }) });
-  await supabaseRequest(`published_profiles?on_conflict=profile_id`, env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ profile_id: profileId, workspace_id: auth.workspaceId, username: profile.username, snapshot, published_version: version, published_at: publishedAt, updated_at: publishedAt }) });
+  const profileSave = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ data: withoutDraftDesignTheme(nextData), updated_at: publishedAt }) });
+  if (!profileSave.ok) return apiError('PERSISTENCE_ERROR', 'Profile draft could not be published.', 503);
+  const publishedSave = await supabaseRequest(`published_profiles?on_conflict=profile_id`, env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ profile_id: profileId, workspace_id: auth.workspaceId, username: profile.username, snapshot, published_version: version, published_at: publishedAt, updated_at: publishedAt }) });
+  if (!publishedSave.ok) return apiError('PERSISTENCE_ERROR', 'Published profile snapshot could not be stored.', 503);
   await dispatchWebhookEvent(env, auth.workspaceId, 'profile.published', { profileId, username: profile.username, publishedVersion: version, publishedAt });
   const result = { data: { profileId, status: 'published', publishedVersion: version, publishedAt }, requestId: crypto.randomUUID() };
   await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
+  await recordApiAudit(env, auth, 'api.profile.published', profileId, `Published version ${version} through the versioned API.`);
   return json(result);
 }
 
@@ -1841,6 +1942,10 @@ function profileApiResource(profile: { id: string; username: string; data: Recor
 async function handleApiProfiles(request: Request, env: Env, profileId?: string): Promise<Response> {
   const auth = await authenticateApiKey(request, env, request.method === 'GET' ? 'profiles:read' : 'profiles:write');
   if (auth instanceof Response) return auth;
+  if (request.method !== 'GET') {
+    const idempotencyError = requireIdempotencyKey(request);
+    if (idempotencyError) return idempotencyError;
+  }
   if (profileId) {
     const resolvedProfileId = await resolveApiProfileId(env, auth, profileId);
     if (resolvedProfileId instanceof Response) return resolvedProfileId;
@@ -1888,11 +1993,13 @@ async function handleApiProfiles(request: Request, env: Env, profileId?: string)
     nextData.standardTheme = normalizedTheme;
     nextData.theme = normalizedTheme;
   }
-  await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, {
+  const profileSave = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(auth.workspaceId)}`, env, {
     method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ ...(typeof input.data.username === 'string' ? { username: input.data.username } : {}), data: nextData, updated_at: new Date().toISOString() })
   });
+  if (!profileSave.ok) return apiError('PERSISTENCE_ERROR', 'Profile could not be updated.', 503);
   const result = { data: profileApiResource({ ...visible[0], data: nextData }), requestId: crypto.randomUUID() };
   await saveIdempotentResponse(env, auth, request, requestHash, 200, result);
+  await recordApiAudit(env, auth, 'api.profile.updated', profileId, 'Draft profile updated through the versioned API.');
   return json(result);
 }
 
@@ -3932,7 +4039,8 @@ export default {
         try { return await publishApiProfile(request, env, profileId); } catch (error) { return internalApiError('API publish failed', error, 'Publish request failed.'); }
       }
       if (parts[4] === 'blocks' || parts[4] === 'themes') {
-        if (!['GET', 'PATCH'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+        const allowedMethods = parts[4] === 'blocks' ? ['GET', 'POST', 'PATCH', 'DELETE'] : ['GET', 'PATCH'];
+        if (!allowedMethods.includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
         try { return await handleApiProfileSubresource(request, env, profileId, parts[4], parts[5]); } catch (error) { return internalApiError('API resource request failed', error, 'Resource request failed.'); }
       }
       if (parts[4] === 'analytics') {
