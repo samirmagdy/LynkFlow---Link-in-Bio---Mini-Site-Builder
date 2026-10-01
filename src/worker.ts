@@ -1777,14 +1777,27 @@ async function executeScheduledSocialPublications(env: Env, scheduledTime = Date
         const result = await publishInstagramMediaWithConnection(connection, publication.content, publication.media_url || '', publication.media_type === 'image' ? 'image' : 'video', env);
         await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
         if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+      } else if (publication.provider === 'facebook') {
+        const connection = await activeFacebookConnection(publication.workspace_id, env);
+        if (!connection) throw new Error('Facebook connection is unavailable.');
+        const result = await publishFacebookWithConnection(connection, publication.content, publication.target_url || '', env);
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+      } else if (publication.provider === 'x') {
+        const connection = await activeXConnection(publication.workspace_id, env);
+        if (!connection) throw new Error('X connection is unavailable.');
+        const result = await publishXWithConnection(connection, publication.content, publication.target_url || '', env);
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
       } else throw new Error('Unsupported social provider.');
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Scheduled social publication failed.';
       if (reason === 'CONNECTION_EXPIRED') {
-        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : publication.provider === 'instagram' ? await activeInstagramConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
+        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : publication.provider === 'instagram' ? await activeInstagramConnection(publication.workspace_id, env) : publication.provider === 'facebook' ? await activeFacebookConnection(publication.workspace_id, env) : publication.provider === 'x' ? await activeXConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
         if (expiredConnection) await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(expiredConnection.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
       }
-      await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: reason === 'CONNECTION_EXPIRED' ? 'LinkedIn connection expired. Reconnect and retry.' : reason, updated_at: new Date().toISOString() }) });
+      const expiredMessage = publication.provider === 'facebook' ? 'Facebook connection expired. Reconnect and retry.' : publication.provider === 'x' ? 'X connection expired. Reconnect and retry.' : publication.provider === 'tiktok' ? 'TikTok connection expired. Reconnect and retry.' : publication.provider === 'instagram' ? 'Instagram connection expired. Reconnect and retry.' : 'LinkedIn connection expired. Reconnect and retry.';
+      await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: reason === 'CONNECTION_EXPIRED' ? expiredMessage : reason, updated_at: new Date().toISOString() }) });
       if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed' }) });
       console.error(`Scheduled social publication failed for ${publication.id}`, error);
     }
@@ -3217,12 +3230,49 @@ async function scheduleInstagramPost(request: Request, env: Env): Promise<Respon
   return json({ data: publication, requestId: crypto.randomUUID() }, 201);
 }
 
+type ScheduledSimpleProvider = 'facebook' | 'x';
+
+async function scheduleSimpleSocialPost(request: Request, env: Env, provider: ScheduledSimpleProvider): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot schedule social posts.', 403);
+  let input: { content?: string; targetUrl?: string; profileId?: string; scheduledAt?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  const scheduledAt = Date.parse(String(input.scheduledAt || ''));
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  const maxLength = provider === 'x' ? 280 : 63206;
+  if (!content || content.length > maxLength) return apiError('VALIDATION_ERROR', `${provider === 'x' ? 'X posts' : 'Facebook messages'} must be between 1 and ${maxLength} characters.`, 422);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now() + 60_000) return apiError('VALIDATION_ERROR', 'Choose a future publish time at least one minute from now.', 422);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  }
+  if (provider === 'x' && `${content}${targetUrl ? ` ${targetUrl}` : ''}`.trim().length > 280) return apiError('VALIDATION_ERROR', 'The X post plus page URL must be 280 characters or fewer.', 422);
+  const connection = provider === 'x' ? await activeXConnection(user.id, env) : await activeFacebookConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', `Connect ${provider === 'x' ? 'X' : 'a Facebook Page'} before scheduling.`, 409);
+  const now = new Date().toISOString();
+  const shareEvent = { id: `share_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider, content, target_url: targetUrl, status: 'initiated', created_at: now };
+  const shareResponse = await supabaseRequest('social_share_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(shareEvent) });
+  if (!shareResponse.ok) return apiError('PERSISTENCE_ERROR', 'The scheduled share could not be recorded. Please retry.', 503);
+  const publication = { id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider, content, target_url: targetUrl || null, media_url: null, media_type: 'image', scheduled_at: new Date(scheduledAt).toISOString(), status: 'scheduled', provider_post_id: null, last_error: null, attempt_count: 0, share_event_id: shareEvent.id, created_by: user.email, created_at: now, updated_at: now };
+  const publicationResponse = await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(publication) });
+  if (!publicationResponse.ok) {
+    await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(shareEvent.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed' }) });
+    return apiError('PERSISTENCE_ERROR', 'The scheduled post could not be saved. Please retry.', 503);
+  }
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: `social.${provider}.scheduled`, target: publication.id, occurred_at: now, details: `Scheduled ${provider === 'x' ? 'X' : 'Facebook'} publication for ${publication.scheduled_at}.` }) });
+  return json({ data: publication, requestId: crypto.randomUUID() }, 201);
+}
+
 async function cancelSocialPublication(request: Request, env: Env, publicationId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot cancel social posts.', 403);
   const existingResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,status,profile_id,provider`, env);
-  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string; provider: 'linkedin' | 'tiktok' }>;
+  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string; provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'x' }>;
   if (!existing[0] || !canManageProfile(user, existing[0].profile_id)) return apiError('NOT_FOUND', 'Scheduled post not found.', 404);
   if (existing[0].status !== 'scheduled') return apiError('CONFLICT', 'Only scheduled posts can be cancelled.', 409);
   await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }) });
@@ -4260,6 +4310,14 @@ export default {
     if (url.pathname === '/api/social/instagram/schedule') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await scheduleInstagramPost(request, env); } catch (error) { return internalApiError('Schedule Instagram post failed', error, 'Unable to schedule Instagram post.'); }
+    }
+    if (url.pathname === '/api/social/facebook/schedule') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await scheduleSimpleSocialPost(request, env, 'facebook'); } catch (error) { return internalApiError('Schedule Facebook post failed', error, 'Unable to schedule Facebook post.'); }
+    }
+    if (url.pathname === '/api/social/x/schedule') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await scheduleSimpleSocialPost(request, env, 'x'); } catch (error) { return internalApiError('Schedule X post failed', error, 'Unable to schedule X post.'); }
     }
     if (url.pathname.startsWith('/api/social/publications/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

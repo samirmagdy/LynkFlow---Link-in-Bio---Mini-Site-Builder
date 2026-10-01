@@ -154,6 +154,20 @@ export async function scheduleTikTokPost(content: string, mediaUrl: string, prof
   return body.data;
 }
 
+export async function scheduleFacebookPost(content: string, targetUrl: string, profileId: string, scheduledAt: string): Promise<SocialPublication> {
+  const response = await authorizedRequest('/api/social/facebook/schedule', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, scheduledAt }) });
+  const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule Facebook post.');
+  return body.data;
+}
+
+export async function scheduleXPost(content: string, targetUrl: string, profileId: string, scheduledAt: string): Promise<SocialPublication> {
+  const response = await authorizedRequest('/api/social/x/schedule', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, scheduledAt }) });
+  const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule X post.');
+  return body.data;
+}
+
 export async function loadSocialPublications(profileId: string): Promise<SocialPublication[]> {
   const response = await authorizedRequest(`/api/social/publications?profileId=${encodeURIComponent(profileId)}`);
   const body = await response.json() as { data?: SocialPublication[]; error?: string | { message?: string } };
