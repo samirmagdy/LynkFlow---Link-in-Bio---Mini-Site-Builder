@@ -44,6 +44,8 @@ interface Env {
   META_APP_SECRET?: string;
   META_VERIFY_TOKEN?: string;
   META_GRAPH_API_VERSION?: string;
+  X_CLIENT_ID?: string;
+  X_CLIENT_SECRET?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   PEXELS_API_KEY?: string;
@@ -85,7 +87,7 @@ function deploymentHealth(env: Env): Response {
     email: requiredBindings.email.every(binding => Boolean(envValues[binding])),
     stripe: requiredBindings.stripe.every(binding => Boolean(envValues[binding])),
     webhooks: requiredBindings.webhooks.every(binding => Boolean(envValues[binding])),
-    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET) || (envValues.META_APP_ID && envValues.META_APP_SECRET))),
+    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET) || (envValues.META_APP_ID && envValues.META_APP_SECRET) || (envValues.X_CLIENT_ID && envValues.X_CLIENT_SECRET))),
     instagramAutomations: Boolean(envValues.META_APP_ID && envValues.META_APP_SECRET && envValues.META_VERIFY_TOKEN && envValues.SOCIAL_OAUTH_ENCRYPTION_KEY),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
     supportRouting: requiredBindings.supportRouting.every(binding => Boolean(envValues[binding])),
@@ -1099,6 +1101,11 @@ function randomSecret(bytes = 32): string {
   const values = new Uint8Array(bytes);
   crypto.getRandomValues(values);
   return btoa(String.fromCharCode(...values)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function pkceChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return toBase64(new Uint8Array(digest)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function apiError(code: string, message: string, status: number): Response {
@@ -2417,7 +2424,7 @@ function socialOAuthRedirect(request: Request, env: Env, path: string): string {
   return new URL(path, `${base.replace(/\/$/, '')}/`).toString();
 }
 
-type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram' | 'facebook';
+type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'x';
 
 function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean {
   const providerConfigured = provider === 'linkedin'
@@ -2426,7 +2433,9 @@ function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean
       ? Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET)
       : provider === 'instagram'
         ? Boolean(env.META_APP_ID && env.META_APP_SECRET && env.META_VERIFY_TOKEN)
-        : Boolean(env.META_APP_ID && env.META_APP_SECRET);
+        : provider === 'facebook'
+          ? Boolean(env.META_APP_ID && env.META_APP_SECRET)
+          : Boolean(env.X_CLIENT_ID && env.X_CLIENT_SECRET);
   return Boolean(providerConfigured && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
@@ -2643,6 +2652,57 @@ async function finishFacebookOAuth(request: Request, env: Env): Promise<Response
   return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?facebook=connected`, 302);
 }
 
+async function startXOAuth(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
+  if (!socialOAuthConfigured(env, 'x')) return apiError('SERVICE_UNAVAILABLE', 'X publishing is not configured yet.', 503);
+  const state = randomSecret(32);
+  const verifier = randomSecret(48);
+  await supabaseRequest('social_oauth_states', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `oauth_${crypto.randomUUID()}`, workspace_id: user.id, provider: 'x', state_hash: await sha256(state), code_verifier_ciphertext: await encryptSocialToken(verifier, env), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }) });
+  const authorize = new URL('https://twitter.com/i/oauth2/authorize');
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('client_id', env.X_CLIENT_ID!);
+  authorize.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/x/callback'));
+  authorize.searchParams.set('scope', 'tweet.read tweet.write users.read offline.access');
+  authorize.searchParams.set('state', state);
+  authorize.searchParams.set('code_challenge', await pkceChallenge(verifier));
+  authorize.searchParams.set('code_challenge_method', 'S256');
+  return Response.redirect(authorize.toString(), 302);
+}
+
+async function finishXOAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?x=error&reason=${encodeURIComponent(reason)}`, 302);
+  if (!code || !state || !socialOAuthConfigured(env, 'x')) return failure('configuration');
+  const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.x&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id,code_verifier_ciphertext`, env);
+  const states = await stateResponse.json() as Array<{ id: string; workspace_id: string; code_verifier_ciphertext?: string | null }>;
+  const oauthState = states[0];
+  if (!oauthState?.code_verifier_ciphertext) return failure('expired');
+  const markUsed = await supabaseRequest(`social_oauth_states?id=eq.${encodeURIComponent(oauthState.id)}&used_at=is.null`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
+  if (!(await markUsed.json() as unknown[]).length) return failure('replayed');
+  const verifier = await decryptSocialToken(oauthState.code_verifier_ciphertext, env);
+  const tokenResponse = await fetch('https://api.x.com/2/oauth2/token', {
+    method: 'POST',
+    headers: { authorization: `Basic ${btoa(`${env.X_CLIENT_ID!}:${env.X_CLIENT_SECRET!}`)}`, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, grant_type: 'authorization_code', redirect_uri: socialOAuthRedirect(request, env, '/api/social/x/callback'), code_verifier: verifier, client_id: env.X_CLIENT_ID! }),
+  });
+  if (!tokenResponse.ok) return failure('token_exchange');
+  const token = await tokenResponse.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
+  if (!token.access_token) return failure('token_exchange');
+  const profileResponse = await fetch('https://api.x.com/2/users/me?user.fields=username,name', { headers: { authorization: `Bearer ${token.access_token}` } });
+  if (!profileResponse.ok) return failure('profile_lookup');
+  const profileBody = await profileResponse.json() as { data?: { id?: string; name?: string; username?: string } };
+  const profile = profileBody.data;
+  if (!profile?.id) return failure('profile_lookup');
+  const now = new Date();
+  await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ id: `social_${oauthState.workspace_id}_x_${profile.id}`, workspace_id: oauthState.workspace_id, provider: 'x', provider_account_id: profile.id, account_name: profile.username ? `@${profile.username}` : profile.name || 'X account', access_token_ciphertext: await encryptSocialToken(token.access_token, env), refresh_token_ciphertext: token.refresh_token ? await encryptSocialToken(token.refresh_token, env) : null, token_expires_at: token.expires_in ? new Date(now.getTime() + token.expires_in * 1000).toISOString() : null, scopes: String(token.scope || 'tweet.read tweet.write users.read offline.access').split(/[ ,]+/).filter(Boolean), status: 'active', updated_at: now.toISOString() }) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: 'x-oauth', action: 'social.x.connected', target: profile.id, occurred_at: now.toISOString(), details: 'X publishing connection established.' }) });
+  return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?x=connected`, 302);
+}
+
 async function listSocialConnections(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2832,6 +2892,12 @@ async function activeFacebookConnection(workspaceId: string, env: Env): Promise<
   return rows[0] || null;
 }
 
+async function activeXConnection(workspaceId: string, env: Env): Promise<LinkedInConnectionRow | null> {
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(workspaceId)}&provider=eq.x&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const rows = await response.json() as LinkedInConnectionRow[];
+  return rows[0] || null;
+}
+
 async function publishFacebookWithConnection(connection: LinkedInConnectionRow, content: string, targetUrl: string, env: Env): Promise<{ providerPostId: string }> {
   if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
   const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
@@ -2846,6 +2912,19 @@ async function publishFacebookWithConnection(connection: LinkedInConnectionRow, 
   const providerPostId = body.post_id || body.id;
   if (!providerPostId) throw new Error('PROVIDER_ERROR');
   return { providerPostId };
+}
+
+async function publishXWithConnection(connection: LinkedInConnectionRow, content: string, targetUrl: string, env: Env): Promise<{ providerPostId: string }> {
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const text = `${content}${targetUrl ? ` ${targetUrl}` : ''}`.trim();
+  if (text.length > 280) throw new Error('CONTENT_TOO_LONG');
+  const response = await fetch('https://api.x.com/2/tweets', { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+  if (response.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!response.ok) throw new Error('PROVIDER_ERROR');
+  const body = await response.json() as { data?: { id?: string } };
+  if (!body.data?.id) throw new Error('PROVIDER_ERROR');
+  return { providerPostId: body.data.id };
 }
 
 async function publishInstagramMediaWithConnection(connection: LinkedInConnectionRow, content: string, mediaUrl: string, mediaType: 'image' | 'video', env: Env): Promise<{ providerPostId: string }> {
@@ -3021,6 +3100,39 @@ async function publishFacebookPost(request: Request, env: Env): Promise<Response
       return apiError('CONNECTION_EXPIRED', 'Facebook rejected this connection. Reconnect and try again.', 401);
     }
     return apiError('PROVIDER_ERROR', 'Facebook could not publish this post. No success was recorded.', 502);
+  }
+}
+
+async function publishXPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish to social accounts.', 403);
+  let input: { content?: string; targetUrl?: string; profileId?: string; shareEventId?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 280) return apiError('VALIDATION_ERROR', 'X posts must be between 1 and 280 characters.', 422);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  }
+  const connection = await activeXConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect X before publishing.', 409);
+  try {
+    const result = await publishXWithConnection(connection, content, targetUrl, env);
+    const now = new Date().toISOString();
+    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'x', content, target_url: targetUrl || null, media_url: null, media_type: 'image', scheduled_at: now, status: 'published', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: now, updated_at: now }) });
+    if (input.shareEventId) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(input.shareEventId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+    return json({ data: { provider: 'x', providerPostId: result.providerPostId, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
+      await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+      return apiError('CONNECTION_EXPIRED', 'X rejected this connection. Reconnect and try again.', 401);
+    }
+    if (error instanceof Error && error.message === 'CONTENT_TOO_LONG') return apiError('VALIDATION_ERROR', 'The post plus page URL must be 280 characters or fewer.', 422);
+    return apiError('PROVIDER_ERROR', 'X could not publish this post. No success was recorded.', 502);
   }
 }
 
@@ -4075,6 +4187,14 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await finishFacebookOAuth(request, env); } catch (error) { console.error('Finish Facebook OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?facebook=error&reason=server`, 302); }
     }
+    if (url.pathname === '/api/social/x/start') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await startXOAuth(request, env); } catch (error) { return internalApiError('Start X OAuth failed', error, 'Unable to connect X.'); }
+    }
+    if (url.pathname === '/api/social/x/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await finishXOAuth(request, env); } catch (error) { console.error('Finish X OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?x=error&reason=server`, 302); }
+    }
     if (url.pathname === '/api/webhooks/instagram') {
       try { return await handleInstagramWebhook(request, env); } catch (error) { console.error('Instagram webhook failed', error); return apiError('WEBHOOK_FAILED', 'Instagram webhook could not be processed.', 500); }
     }
@@ -4120,6 +4240,10 @@ export default {
     if (url.pathname === '/api/social/facebook/post') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishFacebookPost(request, env); } catch (error) { return internalApiError('Publish Facebook post failed', error, 'Unable to publish to Facebook.'); }
+    }
+    if (url.pathname === '/api/social/x/post') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await publishXPost(request, env); } catch (error) { return internalApiError('Publish X post failed', error, 'Unable to publish to X.'); }
     }
     if (url.pathname === '/api/social/publications') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

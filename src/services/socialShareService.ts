@@ -14,7 +14,7 @@ export interface SocialShareEvent {
 
 export interface SocialConnection {
   id: string;
-  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook';
+  provider: 'linkedin' | 'tiktok' | 'instagram' | 'facebook' | 'x';
   provider_account_id: string;
   account_name: string | null;
   token_expires_at: string | null;
@@ -94,10 +94,21 @@ export function startFacebookOAuth(): void {
   window.location.assign('/api/social/facebook/start');
 }
 
+export function startXOAuth(): void {
+  window.location.assign('/api/social/x/start');
+}
+
 export async function publishFacebookPost(content: string, targetUrl: string, profileId: string, shareEventId?: string): Promise<{ providerPostId: string | null }> {
   const response = await authorizedRequest('/api/social/facebook/post', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, shareEventId }) });
   const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
   if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to Facebook.');
+  return { providerPostId: body.data.providerPostId || null };
+}
+
+export async function publishXPost(content: string, targetUrl: string, profileId: string, shareEventId?: string): Promise<{ providerPostId: string | null }> {
+  const response = await authorizedRequest('/api/social/x/post', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, shareEventId }) });
+  const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to X.');
   return { providerPostId: body.data.providerPostId || null };
 }
 
