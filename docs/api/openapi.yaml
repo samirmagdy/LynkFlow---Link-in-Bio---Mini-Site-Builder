@@ -199,6 +199,47 @@ paths:
         '200': {description: Subscriber unsubscribed}
         '400': {description: Invalid unsubscribe link}
         '503': {description: Unsubscribe temporarily unavailable}
+  /api/automations:
+    get:
+      operationId: list-email-automations
+      security: [{Session: []}]
+      parameters:
+        - {name: profileId, in: query, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Email automations returned}
+        '401': {description: Authentication required}
+        '403': {description: Paid plan or profile access required}
+    post:
+      operationId: create-email-automation
+      security: [{Session: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profileId, name, subject, body]
+              properties:
+                profileId: {type: string}
+                name: {type: string, maxLength: 80}
+                subject: {type: string, maxLength: 160}
+                body: {type: string, maxLength: 10000}
+      responses:
+        '201': {description: Automation created}
+        '401': {description: Authentication required}
+        '403': {description: Paid plan or profile access required}
+        '422': {description: Invalid automation content}
+  /api/automations/{automationId}:
+    parameters: [{name: automationId, in: path, required: true, schema: {type: string}}]
+    patch:
+      operationId: update-email-automation
+      security: [{Session: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [enabled], properties: {enabled: {type: boolean}}}}}}
+      responses: {'200': {description: Automation updated}, '401': {description: Authentication required}, '404': {description: Automation not found}}
+    delete:
+      operationId: delete-email-automation
+      security: [{Session: []}]
+      responses: {'200': {description: Automation deleted}, '401': {description: Authentication required}, '404': {description: Automation not found}}
 components:
   securitySchemes:
     ApiKey:

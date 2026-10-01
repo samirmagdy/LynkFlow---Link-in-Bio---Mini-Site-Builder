@@ -667,7 +667,7 @@ function extractFormContact(formPayload: Record<string, unknown>, data: Record<s
   return { email, name };
 }
 
-async function submitPublicForm(request: Request, env: Env): Promise<Response> {
+async function submitPublicForm(request: Request, env: Env, context: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: 'Form service is not configured.' }, 503);
   let input: {
     profileId?: string; blockId?: string; formTitle?: string;
@@ -746,6 +746,7 @@ async function submitPublicForm(request: Request, env: Env): Promise<Response> {
         last_engagement_at: submittedAt
       })
     });
+    if (input.consentGiven === true) context.waitUntil(runSubscriberEmailAutomations(env, profile.workspace_id, input.profileId, submissionId, email, name));
   }
   await dispatchWebhookEvent(env, profile.workspace_id, 'form.submitted', {
     submissionId, profileId: input.profileId, blockId: input.blockId, formType: payload.formType || 'newsletter', submittedAt
@@ -1867,6 +1868,84 @@ async function unsubscribeAudienceFromCampaign(request: Request, env: Env): Prom
   return new Response('<!doctype html><html><body style="font-family:system-ui;max-width:560px;margin:64px auto;padding:24px"><h1>You are unsubscribed</h1><p>You will not receive future emails from this creator through LynkFlow.</p></body></html>', { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store' } });
 }
 
+async function listEmailAutomations(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot manage automations.', 403);
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  const response = await supabaseRequest(`email_automations?workspace_id=eq.${encodeURIComponent(access.user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,name,trigger,subject,body,enabled,run_count,last_triggered_at,created_by,created_at&order=created_at.desc&limit=50`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function createEmailAutomation(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot create automations.', 403);
+  let input: { profileId?: string; name?: string; subject?: string; body?: string; enabled?: boolean };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const name = String(input.name || '').trim();
+  const subject = String(input.subject || '').trim();
+  const body = String(input.body || '').trim();
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  if (!name || name.length > 80 || !subject || subject.length > 160 || !body || body.length > 10000) return apiError('VALIDATION_ERROR', 'Name, subject and message are required; name must be 80 characters or fewer, subject 160 or fewer, and message 10,000 or fewer.', 422);
+  const automation = { id: `aut_${crypto.randomUUID()}`, workspace_id: access.user.id, profile_id: profileId, name, trigger: 'subscriber.created', subject, body, enabled: input.enabled !== false, run_count: 0, created_by: access.user.email, created_at: new Date().toISOString() };
+  await supabaseRequest('email_automations', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(automation) });
+  return json({ data: automation, requestId: crypto.randomUUID() }, 201);
+}
+
+async function updateEmailAutomation(request: Request, env: Env, automationId: string): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot update automations.', 403);
+  let input: { enabled?: boolean };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  if (typeof input.enabled !== 'boolean') return apiError('VALIDATION_ERROR', 'enabled must be a boolean.', 422);
+  const response = await supabaseRequest(`email_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,profile_id`, env);
+  const rows = await response.json() as Array<{ id: string; profile_id: string }>;
+  if (!rows[0] || !canManageProfile(access.user, rows[0].profile_id)) return apiError('NOT_FOUND', 'Automation not found.', 404);
+  await supabaseRequest(`email_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ enabled: input.enabled }) });
+  return json({ data: { id: automationId, enabled: input.enabled }, requestId: crypto.randomUUID() });
+}
+
+async function deleteEmailAutomation(request: Request, env: Env, automationId: string): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot delete automations.', 403);
+  const response = await supabaseRequest(`email_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,profile_id`, env);
+  const rows = await response.json() as Array<{ id: string; profile_id: string }>;
+  if (!rows[0] || !canManageProfile(access.user, rows[0].profile_id)) return apiError('NOT_FOUND', 'Automation not found.', 404);
+  await supabaseRequest(`email_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'DELETE', headers: { prefer: 'return=minimal' } });
+  return json({ success: true, requestId: crypto.randomUUID() });
+}
+
+async function sendResendEmail(env: Env, email: { to: string; subject: string; html: string }): Promise<boolean> {
+  if (!env.RESEND_API_KEY) return false;
+  const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ from: 'onboarding@resend.dev', ...email }) });
+  if (!response.ok) console.error('Automated email failed', await response.text());
+  return response.ok;
+}
+
+async function runSubscriberEmailAutomations(env: Env, workspaceId: string, profileId: string, eventId: string, email: string, name?: string): Promise<void> {
+  if (!env.RESEND_API_KEY) return;
+  const response = await supabaseRequest(`email_automations?workspace_id=eq.${encodeURIComponent(workspaceId)}&profile_id=eq.${encodeURIComponent(profileId)}&trigger=eq.subscriber.created&enabled=eq.true&select=*`, env);
+  const automations = await response.json() as Array<{ id: string; subject: string; body: string; run_count?: number }>;
+  const origin = env.APP_URL || 'https://lynkflow.samirmagdy80.workers.dev';
+  for (const automation of automations) {
+    try {
+      const runId = `run_${automation.id}_${eventId}`;
+      const runResponse = await supabaseRequest('email_automation_runs?on_conflict=automation_id,event_id', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=representation' }, body: JSON.stringify({ id: runId, automation_id: automation.id, workspace_id: workspaceId, event_id: eventId, recipient_email: email, status: 'sending' }) });
+      const runs = await runResponse.json() as Array<{ id: string }>;
+      if (!runs.length) continue;
+      const token = await hashValue(`audience-unsubscribe:${profileId}:${email}`, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL || 'lynkflow-audience-unsubscribe');
+      const sent = await sendResendEmail(env, { to: email, subject: automation.subject, html: `<p>Hi ${escapeHtml(name || 'there')},</p><p>${campaignHtml(automation.body)}</p><hr><p style="font-size:12px;color:#666"><a href="${origin}/api/public/audience/unsubscribe?profileId=${encodeURIComponent(profileId)}&email=${encodeURIComponent(email)}&token=${token}">Unsubscribe</a></p>` });
+      await supabaseRequest(`email_automation_runs?id=eq.${encodeURIComponent(runId)}&workspace_id=eq.${encodeURIComponent(workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: sent ? 'sent' : 'failed', error_message: sent ? null : 'Email provider rejected the message.', sent_at: sent ? new Date().toISOString() : null }) });
+      if (sent) await supabaseRequest(`email_automations?id=eq.${encodeURIComponent(automation.id)}&workspace_id=eq.${encodeURIComponent(workspaceId)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ run_count: Number(automation.run_count || 0) + 1, last_triggered_at: new Date().toISOString() }) });
+    } catch (error) { console.error('Subscriber automation failed', automation.id, error); }
+  }
+}
+
 async function rotateApiKey(request: Request, env: Env, keyId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2441,7 +2520,7 @@ export default {
     await executeScheduledProfilePublishes(env, controller.scheduledTime);
     await retryPendingWebhooks(env);
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, context: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/privacy' || url.pathname === '/privacy.html') {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed.', { status: 405 });
@@ -2561,6 +2640,25 @@ export default {
       const campaignId = url.pathname.slice('/api/campaigns/'.length, -'/send'.length);
       try { return await sendEmailCampaign(request, env, decodeURIComponent(campaignId)); } catch (error) { return internalApiError('Send email campaign failed', error, 'Unable to send campaign.'); }
     }
+    if (url.pathname === '/api/automations') {
+      if (request.method === 'GET') {
+        try { return await listEmailAutomations(request, env); } catch (error) { return internalApiError('List email automations failed', error, 'Unable to load automations.'); }
+      }
+      if (request.method === 'POST') {
+        try { return await createEmailAutomation(request, env); } catch (error) { return internalApiError('Create email automation failed', error, 'Unable to create automation.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+    }
+    if (url.pathname.startsWith('/api/automations/')) {
+      const automationId = decodeURIComponent(url.pathname.slice('/api/automations/'.length));
+      if (request.method === 'PATCH') {
+        try { return await updateEmailAutomation(request, env, automationId); } catch (error) { return internalApiError('Update email automation failed', error, 'Unable to update automation.'); }
+      }
+      if (request.method === 'DELETE') {
+        try { return await deleteEmailAutomation(request, env, automationId); } catch (error) { return internalApiError('Delete email automation failed', error, 'Unable to delete automation.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+    }
     if (url.pathname === '/api/stripe/cancel') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await cancelStripeSubscription(request, env); } catch (error) { return internalApiError('Cancel subscription failed', error, 'Unable to cancel subscription.', 502); }
@@ -2575,7 +2673,7 @@ export default {
     }
     if (url.pathname === '/api/public/forms') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
-      try { return await submitPublicForm(request, env); } catch (error) { return internalApiError('Public form submission failed', error, 'Form submission failed.'); }
+      try { return await submitPublicForm(request, env, context); } catch (error) { return internalApiError('Public form submission failed', error, 'Form submission failed.'); }
     }
     if (url.pathname === '/api/public/newsletter') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

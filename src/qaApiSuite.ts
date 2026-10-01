@@ -19,10 +19,14 @@ const checks = [
   ['campaigns list', '/api/campaigns?profileId=example', 'GET'],
   ['campaigns create', '/api/campaigns', 'POST'],
   ['campaign send', '/api/campaigns/cmp_example/send', 'POST'],
+  ['automations list', '/api/automations?profileId=example', 'GET'],
+  ['automations create', '/api/automations', 'POST'],
+  ['automation update', '/api/automations/aut_example', 'PATCH'],
+  ['automation delete', '/api/automations/aut_example', 'DELETE'],
 ] as const;
 let failed = 0;
 for (const [name, path, method] of checks) {
-  const response = await fetch(`${baseUrl}${path}`, { method, headers: ['PATCH', 'POST'].includes(method) ? { 'content-type': 'application/json' } : undefined, body: method === 'PATCH' ? JSON.stringify({ data: {} }) : method === 'POST' ? JSON.stringify({ profileId: 'example', domain: 'example.com', url: 'https://example.com', topics: ['profile.published'] }) : undefined });
+  const response = await fetch(`${baseUrl}${path}`, { method, headers: ['PATCH', 'POST'].includes(method) ? { 'content-type': 'application/json' } : undefined, body: method === 'PATCH' ? JSON.stringify(path.includes('automations') ? { enabled: true } : { data: {} }) : method === 'POST' ? JSON.stringify({ profileId: 'example', domain: 'example.com', url: 'https://example.com', topics: ['profile.published'] }) : undefined });
   const body = await response.json() as { error?: { code?: string } | string };
   const errorCode = typeof body.error === 'object' ? body.error?.code : undefined;
   const passed = name === 'deployment health'

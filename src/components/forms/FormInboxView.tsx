@@ -15,15 +15,17 @@ import {
   UserCheck,
   UserX,
   Send,
+  Bot as BotIcon,
 } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 import { CampaignsPanel } from './CampaignsPanel';
+import { AutomationsPanel } from './AutomationsPanel';
 
 export const FormInboxView: React.FC = () => {
   const { submissions, deleteSubmission, unsubscribeSubscriber, activeProfile, user, showToast, appendAuditLog } = useApp();
   
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers' | 'campaigns'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers' | 'campaigns' | 'automations'>('submissions');
   
   // Submissions State
   const [searchTerm, setSearchTerm] = useState('');
@@ -214,6 +216,17 @@ export const FormInboxView: React.FC = () => {
           >
             <Send className="w-3.5 h-3.5 text-accent" />
             <span>Campaigns</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('automations')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'automations'
+                ? 'bg-surface-2 text-ink shadow-xs'
+                : 'text-muted hover:text-ink-strong'
+            }`}
+          >
+            <BotIcon className="w-3.5 h-3.5 text-accent" />
+            <span>Automations</span>
           </button>
         </div>
       </div>
@@ -520,6 +533,7 @@ export const FormInboxView: React.FC = () => {
       )}
 
       {activeTab === 'campaigns' && <CampaignsPanel />}
+      {activeTab === 'automations' && <AutomationsPanel />}
 
       {/* MODAL 1: Submission Detail Drawer / Dialog */}
       {selectedSubmission && (
