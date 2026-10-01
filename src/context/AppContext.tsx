@@ -114,6 +114,7 @@ type AppView =
   | 'analytics' 
   | 'forms' 
   | 'sales'
+  | 'social'
   | 'growth' 
   | 'profiles'
   | 'settings' 
@@ -130,6 +131,7 @@ const APP_VIEW_PATHS: Partial<Record<AppView, string>> = {
   analytics: '/studio/analytics',
   forms: '/studio/forms',
   sales: '/studio/sales',
+  social: '/studio/social',
   growth: '/studio/growth',
   profiles: '/studio/profiles',
   settings: '/studio/settings',

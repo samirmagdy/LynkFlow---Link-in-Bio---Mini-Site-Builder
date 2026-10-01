@@ -5,6 +5,7 @@ const ThemeStudio = lazy(() => import('../design/ThemeStudio').then(module => ({
 const AnalyticsDashboard = lazy(() => import('../analytics/AnalyticsDashboard').then(module => ({ default: module.AnalyticsDashboard })));
 const FormInboxView = lazy(() => import('../forms/FormInboxView').then(module => ({ default: module.FormInboxView })));
 const SalesDashboard = lazy(() => import('../growth/SalesDashboard').then(module => ({ default: module.SalesDashboard })));
+const SocialShareHub = lazy(() => import('../growth/SocialShareHub').then(module => ({ default: module.SocialShareHub })));
 const QrCodeStudio = lazy(() => import('../growth/QrCodeStudio').then(module => ({ default: module.QrCodeStudio })));
 const CustomDomainManager = lazy(() => import('../growth/CustomDomainManager').then(module => ({ default: module.CustomDomainManager })));
 const MultiProfileManager = lazy(() => import('../growth/MultiProfileManager').then(module => ({ default: module.MultiProfileManager })));
@@ -21,6 +22,7 @@ import {
   Globe, 
   CreditCard, 
   ShoppingBag,
+  Share2,
   Terminal, 
   Shield,
   LifeBuoy,
@@ -49,6 +51,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     { id: 'analytics' as const, label: 'Analytics', icon: <BarChart2 className="w-4 h-4" /> },
     { id: 'forms' as const, label: 'Form Inbox', icon: <MailCheck className="w-4 h-4" /> },
     { id: 'sales' as const, label: 'Sales', icon: <ShoppingBag className="w-4 h-4" /> },
+    { id: 'social' as const, label: 'Share & Publish', icon: <Share2 className="w-4 h-4" /> },
     { id: 'growth' as const, label: 'Dynamic QR', icon: <QrCode className="w-4 h-4" /> },
     { id: 'profiles' as const, label: 'All Profiles', icon: <Users className="w-4 h-4" /> },
     { id: 'settings' as const, label: 'Custom Domain', icon: <Globe className="w-4 h-4" /> },
@@ -176,6 +179,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           {currentView === 'analytics' && <AnalyticsDashboard />}
           {currentView === 'forms' && <FormInboxView />}
           {currentView === 'sales' && <SalesDashboard />}
+          {currentView === 'social' && <SocialShareHub />}
           {currentView === 'growth' && <QrCodeStudio />}
           {currentView === 'profiles' && <MultiProfileManager />}
           {currentView === 'settings' && <CustomDomainManager />}

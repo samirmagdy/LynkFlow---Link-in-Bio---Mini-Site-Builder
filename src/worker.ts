@@ -1912,6 +1912,39 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
+const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email']);
+
+async function listSocialShareEvents(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
+  const response = await supabaseRequest(`social_share_events?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,content,target_url,status,created_at&order=created_at.desc&limit=50`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function createSocialShareEvent(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot start publishing handoffs.', 403);
+  let input: { profileId?: string; provider?: string; content?: string; targetUrl?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const provider = String(input.provider || '').trim().toLowerCase();
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!SOCIAL_SHARE_PROVIDERS.has(provider)) return apiError('VALIDATION_ERROR', 'Unsupported share provider.', 422);
+  if (!content || content.length > 2800) return apiError('VALIDATION_ERROR', 'Message must be between 1 and 2800 characters.', 422);
+  const targetCheck = validateUrl(targetUrl);
+  if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  const row = { id: `share_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider, content, target_url: targetCheck.sanitizedValue || targetUrl, status: 'initiated', created_at: new Date().toISOString() };
+  const response = await supabaseRequest('social_share_events', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(row) });
+  if (!response.ok) return apiError('PERSISTENCE_ERROR', 'Share handoff could not be recorded. Please retry.', 503);
+  const saved = await response.json() as Array<Record<string, unknown>>;
+  return json({ data: saved[0] || row, requestId: crypto.randomUUID() }, 201);
+}
+
 async function listBookingRequests(request: Request, env: Env): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
@@ -2790,6 +2823,15 @@ export default {
     if (url.pathname === '/api/sales/orders') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listProductOrders(request, env); } catch (error) { return internalApiError('List product orders failed', error, 'Unable to load sales data.'); }
+    }
+    if (url.pathname === '/api/social/shares') {
+      if (request.method === 'GET') {
+        try { return await listSocialShareEvents(request, env); } catch (error) { return internalApiError('List social share events failed', error, 'Unable to load share activity.'); }
+      }
+      if (request.method === 'POST') {
+        try { return await createSocialShareEvent(request, env); } catch (error) { return internalApiError('Create social share event failed', error, 'Unable to record share handoff.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
     }
     if (url.pathname === '/api/bookings') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

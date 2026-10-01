@@ -1,0 +1,74 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Check, Clipboard, ExternalLink, Facebook, Linkedin, Loader2, Mail, MessageCircle, Send, Share2, Twitter } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { loadSocialShareEvents, recordSocialShare, ShareProvider, SocialShareEvent } from '../../services/socialShareService';
+
+const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode; hint: string }> = [
+  { id: 'x', label: 'X', icon: <Twitter className="h-4 w-4" />, hint: 'Post with a pre-filled message' },
+  { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="h-4 w-4" />, hint: 'Share your page with your network' },
+  { id: 'facebook', label: 'Facebook', icon: <Facebook className="h-4 w-4" />, hint: 'Open the share composer' },
+  { id: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle className="h-4 w-4" />, hint: 'Send it to a conversation' },
+  { id: 'telegram', label: 'Telegram', icon: <Send className="h-4 w-4" />, hint: 'Share to a chat or channel' },
+  { id: 'email', label: 'Email', icon: <Mail className="h-4 w-4" />, hint: 'Open a new email draft' },
+];
+
+function shareUrl(provider: ShareProvider, content: string, targetUrl: string): string {
+  const text = encodeURIComponent(content);
+  const url = encodeURIComponent(targetUrl);
+  switch (provider) {
+    case 'x': return `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+    case 'linkedin': return `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
+    case 'facebook': return `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+    case 'whatsapp': return `https://wa.me/?text=${encodeURIComponent(`${content}\n${targetUrl}`)}`;
+    case 'telegram': return `https://t.me/share/url?url=${url}&text=${text}`;
+    case 'email': return `mailto:?subject=${encodeURIComponent('Take a look at this page')}&body=${encodeURIComponent(`${content}\n\n${targetUrl}`)}`;
+  }
+}
+
+export const SocialShareHub: React.FC = () => {
+  const { activeProfile } = useApp();
+  const [content, setContent] = useState(`I just published a new page — take a look at @${activeProfile.username}.`);
+  const [targetUrl, setTargetUrl] = useState(() => `${window.location.origin}/@${activeProfile.username}`);
+  const [events, setEvents] = useState<SocialShareEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyProvider, setBusyProvider] = useState<ShareProvider | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setContent(`I just published a new page — take a look at @${activeProfile.username}.`);
+    setTargetUrl(`${window.location.origin}/@${activeProfile.username}`);
+    let cancelled = false;
+    setLoading(true);
+    void loadSocialShareEvents(activeProfile.id).then(result => { if (!cancelled) setEvents(result); }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load share history.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeProfile.id, activeProfile.username]);
+
+  const valid = useMemo(() => content.trim().length > 0 && /^https?:\/\//i.test(targetUrl.trim()), [content, targetUrl]);
+
+  const openProvider = async (provider: ShareProvider) => {
+    if (!valid) { setError('Add a message and a valid page URL before sharing.'); return; }
+    setBusyProvider(provider); setError(null);
+    try {
+      const event = await recordSocialShare(activeProfile.id, provider, content.trim(), targetUrl.trim());
+      setEvents(previous => [event, ...previous].slice(0, 20));
+      window.open(shareUrl(provider, content.trim(), targetUrl.trim()), '_blank', 'noopener,noreferrer');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to start this share.'); }
+    finally { setBusyProvider(null); }
+  };
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(targetUrl.trim()); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }
+    catch { setError('Copy is unavailable in this browser.'); }
+  };
+
+  return <div className="studio-page flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-5xl space-y-6">
+    <header><div className="flex items-center gap-2"><Share2 className="h-5 w-5 text-accent" /><h2 className="text-lg font-bold text-ink">Share & Publish</h2></div><p className="mt-1 max-w-2xl text-xs leading-5 text-muted">Compose once, then hand off to the networks your audience already uses. LynkFlow records each handoff without storing social credentials.</p></header>
+    {error && <div role="alert" className="rounded-xl border border-danger/30 bg-danger-surface p-3 text-xs text-danger">{error}</div>}
+    <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+      <div className="space-y-4"><div><label htmlFor="share-copy" className="text-xs font-semibold text-body">Your message</label><textarea id="share-copy" value={content} onChange={event => setContent(event.target.value)} maxLength={2800} rows={6} className="mt-2 w-full resize-y rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm leading-relaxed text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" placeholder="Tell people what you are sharing…" /><p className="mt-1 text-right text-[11px] text-muted">{content.length}/2800</p></div><div><label htmlFor="share-url" className="text-xs font-semibold text-body">Page to share</label><div className="mt-2 flex gap-2"><input id="share-url" value={targetUrl} onChange={event => setTargetUrl(event.target.value)} type="url" className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" /><button type="button" onClick={() => void copyLink()} className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-semibold text-body hover:border-accent hover:text-accent">{copied ? <Check className="h-4 w-4 text-success" /> : <Clipboard className="h-4 w-4" />}{copied ? 'Copied' : 'Copy'}</button></div></div></div>
+      <div><p className="text-xs font-semibold text-body">Share everywhere</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{PROVIDERS.map(provider => <button key={provider.id} type="button" disabled={busyProvider !== null} onClick={() => void openProvider(provider.id)} className="flex min-h-16 items-center gap-3 rounded-xl border border-line bg-canvas px-3 text-left transition hover:border-accent hover:bg-accent-surface/30 disabled:cursor-wait disabled:opacity-60"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-surface text-accent">{busyProvider === provider.id ? <Loader2 className="h-4 w-4 animate-spin" /> : provider.icon}</span><span className="min-w-0"><span className="block text-xs font-semibold text-ink">{provider.label}</span><span className="mt-0.5 block truncate text-[11px] text-muted">{provider.hint}</span></span><ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-subtle" /></button>)}</div><p className="mt-3 text-[11px] leading-5 text-muted">Each button opens the provider’s own composer. You remain in control of the final publish action.</p></div>
+    </div></section>
+    <section className="overflow-hidden rounded-2xl border border-line bg-surface"><div className="border-b border-line px-5 py-4"><h3 className="text-sm font-semibold text-ink">Recent share activity</h3><p className="mt-1 text-xs text-muted">A private record of publishing handoffs for @{activeProfile.username}.</p></div>{loading ? <div className="flex items-center justify-center gap-2 p-10 text-xs text-muted"><Loader2 className="h-4 w-4 animate-spin" />Loading activity…</div> : events.length === 0 ? <div className="p-10 text-center text-xs text-muted">No shares yet. Your first handoff will appear here.</div> : <div className="divide-y divide-line">{events.map(event => <div key={event.id} className="flex items-center justify-between gap-3 px-5 py-3"><div><p className="text-xs font-semibold capitalize text-ink">{event.provider}</p><p className="mt-1 truncate text-[11px] text-muted">{event.content}</p></div><time className="shrink-0 text-[10px] text-subtle">{new Date(event.created_at).toLocaleDateString()}</time></div>)}</div>}</section>
+  </div></div>;
+};
