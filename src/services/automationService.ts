@@ -14,6 +14,23 @@ export interface EmailAutomation {
   created_at: string;
 }
 
+export interface SocialAutomation {
+  id: string;
+  profile_id: string;
+  provider: 'instagram';
+  provider_account_id: string;
+  trigger: 'comment.keyword' | 'message.keyword';
+  keyword: string;
+  response_text: string;
+  target_url: string | null;
+  enabled: boolean;
+  run_count: number;
+  last_triggered_at?: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
   if (!supabase) throw new Error('Automations require a signed-in Supabase workspace.');
   const { data: { session } } = await supabase.auth.getSession();
@@ -50,4 +67,29 @@ export async function setEmailAutomationEnabled(id: string, enabled: boolean): P
 export async function deleteEmailAutomation(id: string): Promise<void> {
   const response = await request(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!response.ok) throw await failure(response, 'Unable to delete automation.');
+}
+
+export async function loadSocialAutomations(profileId: string): Promise<SocialAutomation[]> {
+  const response = await request(`/api/social-automations?profileId=${encodeURIComponent(profileId)}`);
+  if (!response.ok) throw await failure(response, 'Unable to load Instagram automations.');
+  const body = await response.json() as { data?: SocialAutomation[] };
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+export async function createSocialAutomation(profileId: string, trigger: SocialAutomation['trigger'], keyword: string, responseText: string, targetUrl: string): Promise<SocialAutomation> {
+  const response = await request('/api/social-automations', { method: 'POST', body: JSON.stringify({ profileId, trigger, keyword, responseText, targetUrl }) });
+  if (!response.ok) throw await failure(response, 'Unable to save Instagram automation.');
+  const payload = await response.json() as { data?: SocialAutomation };
+  if (!payload.data) throw new Error('Instagram automation was saved without a server result.');
+  return payload.data;
+}
+
+export async function setSocialAutomationEnabled(id: string, enabled: boolean): Promise<void> {
+  const response = await request(`/api/social-automations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) });
+  if (!response.ok) throw await failure(response, 'Unable to update Instagram automation.');
+}
+
+export async function deleteSocialAutomation(id: string): Promise<void> {
+  const response = await request(`/api/social-automations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!response.ok) throw await failure(response, 'Unable to delete Instagram automation.');
 }

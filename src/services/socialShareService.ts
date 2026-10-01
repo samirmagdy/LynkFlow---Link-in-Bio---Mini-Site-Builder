@@ -14,7 +14,7 @@ export interface SocialShareEvent {
 
 export interface SocialConnection {
   id: string;
-  provider: 'linkedin' | 'tiktok';
+  provider: 'linkedin' | 'tiktok' | 'instagram';
   provider_account_id: string;
   account_name: string | null;
   token_expires_at: string | null;
@@ -83,6 +83,10 @@ export function startLinkedInOAuth(): void {
 
 export function startTikTokOAuth(): void {
   window.location.assign('/api/social/tiktok/start');
+}
+
+export function startInstagramOAuth(): void {
+  window.location.assign('/api/social/instagram/start');
 }
 
 export async function publishLinkedInPost(content: string, targetUrl: string, profileId: string): Promise<{ providerPostId: string | null }> {

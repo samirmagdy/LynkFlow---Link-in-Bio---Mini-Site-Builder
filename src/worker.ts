@@ -40,6 +40,10 @@ interface Env {
   LINKEDIN_VERSION?: string;
   TIKTOK_CLIENT_KEY?: string;
   TIKTOK_CLIENT_SECRET?: string;
+  META_APP_ID?: string;
+  META_APP_SECRET?: string;
+  META_VERIFY_TOKEN?: string;
+  META_GRAPH_API_VERSION?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   PEXELS_API_KEY?: string;
@@ -69,6 +73,7 @@ function deploymentHealth(env: Env): Response {
     stripe: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PRO_MONTHLY', 'STRIPE_PRICE_PRO_ANNUAL', 'STRIPE_PRICE_AGENCY_MONTHLY', 'STRIPE_PRICE_AGENCY_ANNUAL'],
     webhooks: ['WEBHOOK_ENCRYPTION_KEY'],
     socialOAuth: ['SOCIAL_OAUTH_ENCRYPTION_KEY'],
+    instagramAutomations: ['META_APP_ID', 'META_APP_SECRET', 'META_VERIFY_TOKEN'],
     customDomains: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID'],
   } as const;
   const envValues = env as unknown as Record<string, unknown>;
@@ -78,6 +83,7 @@ function deploymentHealth(env: Env): Response {
     stripe: requiredBindings.stripe.every(binding => Boolean(envValues[binding])),
     webhooks: requiredBindings.webhooks.every(binding => Boolean(envValues[binding])),
     socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET))),
+    instagramAutomations: Boolean(envValues.META_APP_ID && envValues.META_APP_SECRET && envValues.META_VERIFY_TOKEN && envValues.SOCIAL_OAUTH_ENCRYPTION_KEY),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
   };
   const missing = Object.values(requiredBindings).flat().filter(binding => !envValues[binding]);
@@ -2072,10 +2078,14 @@ function socialOAuthRedirect(request: Request, env: Env, path: string): string {
   return new URL(path, `${base.replace(/\/$/, '')}/`).toString();
 }
 
-type SocialOAuthProvider = 'linkedin' | 'tiktok';
+type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram';
 
 function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean {
-  const providerConfigured = provider === 'linkedin' ? Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET) : Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET);
+  const providerConfigured = provider === 'linkedin'
+    ? Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET)
+    : provider === 'tiktok'
+      ? Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET)
+      : Boolean(env.META_APP_ID && env.META_APP_SECRET && env.META_VERIFY_TOKEN);
   return Boolean(providerConfigured && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
@@ -2183,6 +2193,62 @@ async function finishTikTokOAuth(request: Request, env: Env): Promise<Response> 
   return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?tiktok=connected`, 302);
 }
 
+function metaGraphBase(env: Env): string {
+  return `https://graph.facebook.com/${env.META_GRAPH_API_VERSION || 'v23.0'}`;
+}
+
+async function startInstagramOAuth(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
+  if (!socialOAuthConfigured(env, 'instagram')) return apiError('SERVICE_UNAVAILABLE', 'Instagram automations are not configured yet.', 503);
+  const state = randomSecret(32);
+  await supabaseRequest('social_oauth_states', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `oauth_${crypto.randomUUID()}`, workspace_id: user.id, provider: 'instagram', state_hash: await sha256(state), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }) });
+  const authorize = new URL(`https://www.facebook.com/${env.META_GRAPH_API_VERSION || 'v23.0'}/dialog/oauth`);
+  authorize.searchParams.set('client_id', env.META_APP_ID!);
+  authorize.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/instagram/callback'));
+  authorize.searchParams.set('state', state);
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('scope', 'instagram_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata');
+  return Response.redirect(authorize.toString(), 302);
+}
+
+async function finishInstagramOAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/forms')}?instagram=error&reason=${encodeURIComponent(reason)}`, 302);
+  if (!code || !state || !socialOAuthConfigured(env, 'instagram')) return failure('configuration');
+  const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.instagram&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id`, env);
+  const states = await stateResponse.json() as Array<{ id: string; workspace_id: string }>;
+  const oauthState = states[0];
+  if (!oauthState) return failure('expired');
+  const markUsed = await supabaseRequest(`social_oauth_states?id=eq.${encodeURIComponent(oauthState.id)}&used_at=is.null`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
+  if (!(await markUsed.json() as unknown[]).length) return failure('replayed');
+  const tokenUrl = new URL(`${metaGraphBase(env)}/oauth/access_token`);
+  tokenUrl.searchParams.set('client_id', env.META_APP_ID!);
+  tokenUrl.searchParams.set('client_secret', env.META_APP_SECRET!);
+  tokenUrl.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/instagram/callback'));
+  tokenUrl.searchParams.set('code', code);
+  const tokenResponse = await fetch(tokenUrl.toString());
+  if (!tokenResponse.ok) return failure('token_exchange');
+  const token = await tokenResponse.json() as { access_token?: string };
+  if (!token.access_token) return failure('token_exchange');
+  const accountsUrl = new URL(`${metaGraphBase(env)}/me/accounts`);
+  accountsUrl.searchParams.set('fields', 'id,name,access_token,instagram_business_account{id,username}');
+  accountsUrl.searchParams.set('access_token', token.access_token);
+  const accountsResponse = await fetch(accountsUrl.toString());
+  if (!accountsResponse.ok) return failure('account_lookup');
+  const accountsBody = await accountsResponse.json() as { data?: Array<{ id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string; username?: string } }> };
+  const account = (accountsBody.data || []).find(candidate => candidate.instagram_business_account?.id && candidate.access_token);
+  const instagram = account?.instagram_business_account;
+  if (!account?.access_token || !instagram?.id) return failure('instagram_account_required');
+  const now = new Date();
+  await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ id: `social_${oauthState.workspace_id}_instagram_${instagram.id}`, workspace_id: oauthState.workspace_id, provider: 'instagram', provider_account_id: instagram.id, account_name: instagram.username || account.name || 'Instagram account', access_token_ciphertext: await encryptSocialToken(account.access_token, env), refresh_token_ciphertext: null, token_expires_at: null, scopes: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages'], status: 'active', updated_at: now.toISOString() }) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: 'instagram-oauth', action: 'social.instagram.connected', target: instagram.id, occurred_at: now.toISOString(), details: 'Instagram automation connection established.' }) });
+  return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/forms')}?instagram=connected`, 302);
+}
+
 async function listSocialConnections(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2197,6 +2263,139 @@ async function disconnectSocialConnection(request: Request, env: Env, connection
   const response = await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connectionId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'revoked', updated_at: new Date().toISOString() }) });
   if (!response.ok) return apiError('PERSISTENCE_ERROR', 'Social connection could not be revoked.', 503);
   return json({ success: true });
+}
+
+async function listSocialAutomations(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot manage automations.', 403);
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  const response = await supabaseRequest(`social_automations?workspace_id=eq.${encodeURIComponent(access.user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,provider_account_id,trigger,keyword,response_text,target_url,enabled,run_count,last_triggered_at,created_by,created_at,updated_at&order=created_at.desc&limit=50`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function createSocialAutomation(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot create automations.', 403);
+  let input: { profileId?: string; trigger?: string; keyword?: string; responseText?: string; targetUrl?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const trigger = String(input.trigger || '').trim();
+  const keyword = String(input.keyword || '').trim();
+  const responseText = String(input.responseText || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to manage this profile.', 403);
+  if (!['comment.keyword', 'message.keyword'].includes(trigger)) return apiError('VALIDATION_ERROR', 'Choose a comment or message trigger.', 422);
+  if (!keyword || keyword.length > 80 || !responseText || responseText.length > 1000) return apiError('VALIDATION_ERROR', 'Keyword and response are required; keyword must be 80 characters or fewer and response 1,000 or fewer.', 422);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS destination URL is required.', 422);
+  }
+  const connectionResponse = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(access.user.id)}&provider=eq.instagram&status=eq.active&select=provider_account_id&order=updated_at.desc&limit=1`, env);
+  const connections = await connectionResponse.json() as Array<{ provider_account_id: string }>;
+  if (!connections[0]) return apiError('CONNECTION_REQUIRED', 'Connect Instagram before creating an automation.', 409);
+  const automation = { id: `social_aut_${crypto.randomUUID()}`, workspace_id: access.user.id, profile_id: profileId, provider: 'instagram', provider_account_id: connections[0].provider_account_id, trigger, keyword, response_text: responseText, target_url: targetUrl || null, enabled: true, run_count: 0, created_by: access.user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  const response = await supabaseRequest('social_automations', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(automation) });
+  if (!response.ok) return apiError('PERSISTENCE_ERROR', 'Automation could not be saved. Please retry.', 503);
+  return json({ data: automation, requestId: crypto.randomUUID() }, 201);
+}
+
+async function updateSocialAutomation(request: Request, env: Env, automationId: string): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot update automations.', 403);
+  let input: { enabled?: boolean };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  if (typeof input.enabled !== 'boolean') return apiError('VALIDATION_ERROR', 'enabled must be a boolean.', 422);
+  const response = await supabaseRequest(`social_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,profile_id`, env);
+  const rows = await response.json() as Array<{ id: string; profile_id: string }>;
+  if (!rows[0] || !canManageProfile(access.user, rows[0].profile_id)) return apiError('NOT_FOUND', 'Automation not found.', 404);
+  await supabaseRequest(`social_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ enabled: input.enabled, updated_at: new Date().toISOString() }) });
+  return json({ data: { id: automationId, enabled: input.enabled }, requestId: crypto.randomUUID() });
+}
+
+async function deleteSocialAutomation(request: Request, env: Env, automationId: string): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot delete automations.', 403);
+  const response = await supabaseRequest(`social_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=id,profile_id`, env);
+  const rows = await response.json() as Array<{ id: string; profile_id: string }>;
+  if (!rows[0] || !canManageProfile(access.user, rows[0].profile_id)) return apiError('NOT_FOUND', 'Automation not found.', 404);
+  await supabaseRequest(`social_automations?id=eq.${encodeURIComponent(automationId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'DELETE', headers: { prefer: 'return=minimal' } });
+  return json({ success: true, requestId: crypto.randomUUID() });
+}
+
+async function verifyMetaWebhookSignature(body: string, signature: string | null, secret: string): Promise<boolean> {
+  if (!signature?.startsWith('sha256=')) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const expected = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body)));
+  return equalBytes(expected, hexToBytes(signature.slice(7)));
+}
+
+type InstagramAutomationEvent = { providerEventId: string; providerAccountId: string; trigger: 'comment.keyword' | 'message.keyword'; text: string; recipientId: string; resourceId: string };
+
+async function sendInstagramAutomationResponse(event: InstagramAutomationEvent, automation: { response_text: string; target_url?: string | null }, connection: { access_token_ciphertext: string }, env: Env): Promise<void> {
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const message = `${automation.response_text}${automation.target_url ? `\n${automation.target_url}` : ''}`;
+  const endpoint = event.trigger === 'comment.keyword'
+    ? `${metaGraphBase(env)}/${encodeURIComponent(event.resourceId)}/replies`
+    : `${metaGraphBase(env)}/${encodeURIComponent(event.providerAccountId)}/messages`;
+  const payload = event.trigger === 'comment.keyword'
+    ? { message, access_token: accessToken }
+    : { recipient: { id: event.recipientId }, message: { text: message }, access_token: accessToken };
+  const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!response.ok) throw new Error(`Meta rejected the automation response (${response.status}).`);
+}
+
+async function processInstagramAutomationEvent(event: InstagramAutomationEvent, env: Env): Promise<void> {
+  const automationsResponse = await supabaseRequest(`social_automations?provider=eq.instagram&provider_account_id=eq.${encodeURIComponent(event.providerAccountId)}&trigger=eq.${encodeURIComponent(event.trigger)}&enabled=eq.true&select=*`, env);
+  const automations = await automationsResponse.json() as Array<{ id: string; workspace_id: string; response_text: string; target_url?: string | null; run_count?: number }>;
+  for (const automation of automations) {
+    if (!event.text.toLocaleLowerCase().includes(String((automation as { keyword?: string }).keyword || '').toLocaleLowerCase())) continue;
+    const runId = `social_run_${automation.id}_${event.providerEventId}`;
+    const runResponse = await supabaseRequest('social_automation_runs?on_conflict=automation_id,provider_event_id', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=representation' }, body: JSON.stringify({ id: runId, automation_id: automation.id, workspace_id: automation.workspace_id, provider: 'instagram', provider_event_id: event.providerEventId, recipient_id: event.recipientId, status: 'matched' }) });
+    const runs = await runResponse.json() as unknown[];
+    if (!runs.length) continue;
+    let status: 'sent' | 'failed' = 'failed';
+    let errorMessage: string | null = 'Instagram connection is unavailable.';
+    try {
+      const connectionResponse = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(automation.workspace_id)}&provider=eq.instagram&provider_account_id=eq.${encodeURIComponent(event.providerAccountId)}&status=eq.active&select=access_token_ciphertext&limit=1`, env);
+      const connections = await connectionResponse.json() as Array<{ access_token_ciphertext: string }>;
+      if (!connections[0]) throw new Error('Instagram connection is unavailable.');
+      await sendInstagramAutomationResponse(event, automation, connections[0], env);
+      status = 'sent'; errorMessage = null;
+    } catch (error) { errorMessage = error instanceof Error ? error.message : 'Instagram automation failed.'; }
+    const now = new Date().toISOString();
+    await supabaseRequest(`social_automation_runs?id=eq.${encodeURIComponent(runId)}&workspace_id=eq.${encodeURIComponent(automation.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status, error_message: errorMessage, completed_at: now }) });
+    if (status === 'sent') await supabaseRequest(`social_automations?id=eq.${encodeURIComponent(automation.id)}&workspace_id=eq.${encodeURIComponent(automation.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ run_count: Number(automation.run_count || 0) + 1, last_triggered_at: now, updated_at: now }) });
+  }
+}
+
+async function handleInstagramWebhook(request: Request, env: Env): Promise<Response> {
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    if (url.searchParams.get('hub.mode') !== 'subscribe' || !env.META_VERIFY_TOKEN || url.searchParams.get('hub.verify_token') !== env.META_VERIFY_TOKEN) return new Response('Forbidden', { status: 403 });
+    return new Response(url.searchParams.get('hub.challenge') || '', { status: 200, headers: { 'content-type': 'text/plain;charset=UTF-8' } });
+  }
+  if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+  if (!env.META_APP_SECRET) return apiError('SERVICE_UNAVAILABLE', 'Instagram webhook is not configured.', 503);
+  const body = await request.text();
+  if (body.length > 256 * 1024 || !await verifyMetaWebhookSignature(body, request.headers.get('x-hub-signature-256'), env.META_APP_SECRET)) return apiError('UNAUTHORIZED', 'Invalid webhook signature.', 401);
+  let payload: { object?: string; entry?: Array<{ id?: string; changes?: Array<{ field?: string; value?: { id?: string; text?: string; from?: { id?: string } } }>; messaging?: Array<{ sender?: { id?: string }; message?: { mid?: string; text?: string } }> }> };
+  try { payload = JSON.parse(body); } catch { return apiError('VALIDATION_ERROR', 'Webhook body must be valid JSON.', 400); }
+  if (payload.object !== 'instagram') return json({ received: true, ignored: true });
+  for (const entry of payload.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change.value;
+      if (change.field === 'comments' && value?.id && value.text && value.from?.id && entry.id) await processInstagramAutomationEvent({ providerEventId: value.id, providerAccountId: entry.id, trigger: 'comment.keyword', text: value.text, recipientId: value.from.id, resourceId: value.id }, env);
+    }
+    for (const message of entry.messaging || []) {
+      if (entry.id && message.message?.mid && message.message.text && message.sender?.id) await processInstagramAutomationEvent({ providerEventId: message.message.mid, providerAccountId: entry.id, trigger: 'message.keyword', text: message.message.text, recipientId: message.sender.id, resourceId: message.message.mid }, env);
+    }
+  }
+  return json({ received: true });
 }
 
 type LinkedInConnectionRow = { id: string; provider_account_id: string; access_token_ciphertext: string; token_expires_at?: string | null };
@@ -3296,6 +3495,17 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await finishTikTokOAuth(request, env); } catch (error) { console.error('Finish TikTok OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?tiktok=error&reason=server`, 302); }
     }
+    if (url.pathname === '/api/social/instagram/start') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await startInstagramOAuth(request, env); } catch (error) { return internalApiError('Start Instagram OAuth failed', error, 'Unable to connect Instagram.'); }
+    }
+    if (url.pathname === '/api/social/instagram/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await finishInstagramOAuth(request, env); } catch (error) { console.error('Finish Instagram OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/forms')}?instagram=error&reason=server`, 302); }
+    }
+    if (url.pathname === '/api/webhooks/instagram') {
+      try { return await handleInstagramWebhook(request, env); } catch (error) { console.error('Instagram webhook failed', error); return apiError('WEBHOOK_FAILED', 'Instagram webhook could not be processed.', 500); }
+    }
     if (url.pathname === '/api/social/connections') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialConnections(request, env); } catch (error) { return internalApiError('List social connections failed', error, 'Unable to load social connections.'); }
@@ -3303,6 +3513,25 @@ export default {
     if (url.pathname.startsWith('/api/social/connections/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await disconnectSocialConnection(request, env, decodeURIComponent(url.pathname.slice('/api/social/connections/'.length))); } catch (error) { return internalApiError('Disconnect social connection failed', error, 'Unable to disconnect social account.'); }
+    }
+    if (url.pathname === '/api/social-automations') {
+      if (request.method === 'GET') {
+        try { return await listSocialAutomations(request, env); } catch (error) { return internalApiError('List social automations failed', error, 'Unable to load social automations.'); }
+      }
+      if (request.method === 'POST') {
+        try { return await createSocialAutomation(request, env); } catch (error) { return internalApiError('Create social automation failed', error, 'Unable to create social automation.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+    }
+    if (url.pathname.startsWith('/api/social-automations/')) {
+      const automationId = decodeURIComponent(url.pathname.slice('/api/social-automations/'.length));
+      if (request.method === 'PATCH') {
+        try { return await updateSocialAutomation(request, env, automationId); } catch (error) { return internalApiError('Update social automation failed', error, 'Unable to update social automation.'); }
+      }
+      if (request.method === 'DELETE') {
+        try { return await deleteSocialAutomation(request, env, automationId); } catch (error) { return internalApiError('Delete social automation failed', error, 'Unable to delete social automation.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
     }
     if (url.pathname === '/api/social/linkedin/post') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
