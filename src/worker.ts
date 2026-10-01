@@ -667,6 +667,8 @@ function resolveBookingRequest(payload: Record<string, unknown>, data: Record<st
   if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(requestedTime)) return { error: 'Choose a valid booking date and time.' };
   if (!requesterEmail) return { error: 'An email address is required for booking requests.' };
   const settings = (payload.bookingSettings && typeof payload.bookingSettings === 'object' ? payload.bookingSettings : {}) as Record<string, unknown>;
+  const timezone = String(settings.timezone || 'UTC');
+  try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(); } catch { return { error: 'This booking form has an invalid timezone. Please ask the creator to update it.' }; }
   const allowedDays = Array.isArray(settings.days) ? settings.days.filter(day => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6).map(Number) : [1, 2, 3, 4, 5];
   const day = new Date(`${requestedDate}T00:00:00Z`).getUTCDay();
   if (!allowedDays.includes(day)) return { error: 'That date is outside the creator’s available days.' };
@@ -675,7 +677,13 @@ function resolveBookingRequest(payload: Record<string, unknown>, data: Record<st
   const endTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.endTime || '17:00')) ? String(settings.endTime || '17:00') : '17:00';
   const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
   if (toMinutes(requestedTime) < toMinutes(startTime) || toMinutes(requestedTime) + durationMinutes > toMinutes(endTime)) return { error: `Choose a time between ${startTime} and ${endTime}.` };
-  const requestedStart = new Date(`${requestedDate}T${requestedTime}:00Z`);
+  const localParts = requestedDate.split('-').map(Number);
+  const timeParts = requestedTime.split(':').map(Number);
+  const localAsUtc = new Date(Date.UTC(localParts[0], localParts[1] - 1, localParts[2], timeParts[0], timeParts[1]));
+  const zoneParts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(localAsUtc);
+  const zoneValues = Object.fromEntries(zoneParts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]));
+  const zoneAsUtc = Date.UTC(zoneValues.year, zoneValues.month - 1, zoneValues.day, zoneValues.hour, zoneValues.minute);
+  const requestedStart = new Date(localAsUtc.getTime() - (zoneAsUtc - localAsUtc.getTime()));
   if (Number.isNaN(requestedStart.getTime()) || requestedStart.getTime() <= now.getTime()) return { error: 'Choose a future booking time.' };
   return { requestedStart: requestedStart.toISOString(), durationMinutes, requestedDate, requestedTime, requesterEmail, requesterName };
 }

@@ -58,10 +58,11 @@ function BookingSettings({ payload, update }: { payload: DraftPayload; update: (
         })}
       </div>
     </div>
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-4">
       <Field label="From"><TextInput type="time" value={String(settings.startTime || '09:00')} onChange={(value) => updateSettings({ startTime: value })} /></Field>
       <Field label="Until"><TextInput type="time" value={String(settings.endTime || '17:00')} onChange={(value) => updateSettings({ endTime: value })} /></Field>
       <Field label="Meeting length"><select value={Number(settings.durationMinutes || 30)} onChange={(event) => updateSettings({ durationMinutes: Number(event.target.value) })} className="mt-1 min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink"><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="90">90 minutes</option><option value="120">2 hours</option></select></Field>
+      <Field label="Timezone"><select value={String(settings.timezone || 'UTC')} onChange={(event) => updateSettings({ timezone: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink"><option value="UTC">UTC</option><option value="America/New_York">New York</option><option value="America/Chicago">Chicago</option><option value="America/Denver">Denver</option><option value="America/Los_Angeles">Los Angeles</option><option value="Europe/London">London</option><option value="Europe/Paris">Paris</option><option value="Asia/Dubai">Dubai</option><option value="Asia/Riyadh">Riyadh</option><option value="Asia/Kolkata">India</option><option value="Asia/Singapore">Singapore</option><option value="Asia/Tokyo">Tokyo</option><option value="Australia/Sydney">Sydney</option></select></Field>
     </div>
   </div>;
 }
