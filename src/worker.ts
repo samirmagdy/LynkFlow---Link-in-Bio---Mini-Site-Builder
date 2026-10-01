@@ -694,7 +694,7 @@ async function courseAccessResponse(request: Request, env: Env): Promise<Respons
   const profileResponse = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(order.profile_id)}&select=username,snapshot`, env);
   const profiles = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
   const snapshot = profiles[0]?.snapshot;
-  const block = (snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []).find(candidate => candidate.id === order.block_id && (candidate.type === 'course' || candidate.type === 'product'));
+  const block = (snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []).find(candidate => candidate.id === order.block_id && (candidate.type === 'course' || candidate.type === 'product' || candidate.type === 'membership'));
   if (!block) return new Response('This paid content is no longer available.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
   const payload = block.payload || {};
   const isCourse = block.type === 'course';
