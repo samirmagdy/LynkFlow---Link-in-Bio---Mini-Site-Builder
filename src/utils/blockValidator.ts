@@ -167,19 +167,27 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       break;
     }
 
-    case 'product': {
+    case 'product':
+    case 'course': {
       const url = getString(payload, 'url');
       const image = getString(payload, 'image');
       const deliveryUrl = getString(payload, 'deliveryUrl');
       const checkoutEnabled = payload.checkoutEnabled === true;
-      if (!checkoutEnabled && !url) errors.push('Product block requires a destination URL.');
-      if (url && !validateUrl(url).isValid) errors.push('Product destination URL is invalid.');
-      if (image && !validateUrl(image).isValid) errors.push('Product image URL is invalid.');
+      if (!checkoutEnabled && !url) errors.push(`${type === 'course' ? 'Course' : 'Product'} block requires a destination URL.`);
+      if (url && !validateUrl(url).isValid) errors.push(`${type === 'course' ? 'Course' : 'Product'} destination URL is invalid.`);
+      if (image && !validateUrl(image).isValid) errors.push(`${type === 'course' ? 'Course' : 'Product'} image URL is invalid.`);
       if (deliveryUrl && !validateUrl(deliveryUrl).isValid) errors.push('Digital delivery URL is invalid.');
+      if (type === 'course') {
+        if (!Array.isArray(payload.lessons) || payload.lessons.length === 0) errors.push('Course block requires at least one lesson.');
+        else payload.lessons.forEach((lesson, index) => {
+          if (!isPayloadRecord(lesson) || !getString(lesson, 'title').trim()) errors.push(`Course lesson #${index + 1} requires a title.`);
+        });
+      }
       if (checkoutEnabled) {
         const price = Number(getString(payload, 'price'));
-        if (!Number.isFinite(price) || price <= 0) errors.push('Product checkout requires a valid positive price.');
-        if (!getString(payload, 'currency')) errors.push('Product checkout requires a currency.');
+        if (!Number.isFinite(price) || price <= 0) errors.push(`${type === 'course' ? 'Course' : 'Product'} checkout requires a valid positive price.`);
+        if (!getString(payload, 'currency')) errors.push(`${type === 'course' ? 'Course' : 'Product'} checkout requires a currency.`);
+        if (type === 'course' && !deliveryUrl) errors.push('Course checkout requires a course access link for delivery.');
       }
       break;
     }

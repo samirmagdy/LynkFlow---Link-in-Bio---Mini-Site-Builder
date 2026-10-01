@@ -28,6 +28,7 @@ export type BlockType =
   | 'carousel'
   | 'event'
   | 'product'
+  | 'course'
   | 'tip'
   | 'text' 
   | 'divider' 
@@ -214,6 +215,19 @@ export interface ProductBlockPayload {
   deliveryUrl?: string;
 }
 
+export interface CourseLesson {
+  id: string;
+  title: string;
+  description?: string;
+  duration?: string;
+  preview?: boolean;
+}
+
+export interface CourseBlockPayload extends ProductBlockPayload {
+  lessons: CourseLesson[];
+  level?: 'beginner' | 'intermediate' | 'advanced' | 'all-levels';
+}
+
 export interface EventBlockPayload {
   date: string;
   time?: string;
@@ -328,6 +342,7 @@ type BlockPayload =
   | CarouselBlockPayload
   | EventBlockPayload
   | ProductBlockPayload
+  | CourseBlockPayload
   | TipBlockPayload
   | TextBlockPayload 
   | DividerBlockPayload 

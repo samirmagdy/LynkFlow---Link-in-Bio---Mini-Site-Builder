@@ -57,6 +57,14 @@ function createDefaultBlock(blockType: BlockType, customTitle?: string): Block {
       title = customTitle || 'Featured Product';
       payload = { image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1200', description: 'Add a product description', price: '49', currency: 'USD', url: 'https://example.com', buttonLabel: 'Shop now', checkoutEnabled: false };
       break;
+    case 'course':
+      title = customTitle || 'Creator Course';
+      payload = { image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200', description: 'A practical course your audience can start today.', price: '79', currency: 'USD', url: 'https://example.com/course', buttonLabel: 'View course', checkoutEnabled: false, level: 'all-levels', lessons: [
+        { id: 'lesson-1', title: 'Welcome and getting started', duration: '8 min', preview: true },
+        { id: 'lesson-2', title: 'Build your first system', duration: '24 min' },
+        { id: 'lesson-3', title: 'Publish and grow', duration: '18 min' },
+      ] };
+      break;
     case 'tip':
       title = customTitle || 'Support my work';
       payload = { description: 'If you enjoy what I make, you can leave a small tip.', amount: '5', currency: 'USD', buttonLabel: 'Leave a tip', checkoutEnabled: true };

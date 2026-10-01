@@ -14,6 +14,7 @@ import {
   Images,
   GalleryHorizontal,
   ShoppingBag,
+  GraduationCap,
   HandCoins,
   CalendarDays,
   X 
@@ -73,6 +74,13 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
       title: 'Product Card',
       description: 'Feature an item with image, price, description, and purchase link',
       icon: <ShoppingBag className="w-5 h-5 text-lime-400" />,
+      badge: 'Commerce'
+    },
+    {
+      type: 'course',
+      title: 'Course / Digital Class',
+      description: 'Show lessons, sell access, and deliver the course after payment',
+      icon: <GraduationCap className="w-5 h-5 text-accent" />,
       badge: 'Commerce'
     },
     {

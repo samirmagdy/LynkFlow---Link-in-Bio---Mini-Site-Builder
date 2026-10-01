@@ -7,6 +7,7 @@ export const BLOCK_STYLE_VARIANTS = {
   carousel: ['peek', 'full-bleed', 'card', 'filmstrip', 'editorial'] as const,
   event: ['spotlight', 'compact', 'calendar', 'featured', 'row'] as const,
   product: ['spotlight', 'compact', 'offer', 'service', 'editorial'] as const,
+  course: ['spotlight', 'featured', 'editorial', 'stack', 'gated'] as const,
   tip: ['offer', 'compact', 'spotlight', 'conversion', 'benefits'] as const,
   text: ['display', 'body', 'quote', 'announcement', 'stat'] as const,
   divider: ['hairline', 'gradient', 'numbered', 'icon', 'spacer'] as const,

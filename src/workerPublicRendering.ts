@@ -100,6 +100,7 @@ export function renderPublicProfileBody(snapshot: PublicSnapshot, _canonicalUrl:
       faq: { items: [] },
       gallery: { items: [] },
       carousel: { items: [] },
+      course: { lessons: [] },
       form: { fields: [], successMessage: 'Thanks — your message was received.' },
       emailSignup: { fields: [], successMessage: 'Thanks — you are subscribed.' },
     };
