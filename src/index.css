@@ -182,12 +182,12 @@ body {
 
 /* Dialogs are shared by authentication, editor actions, billing, and
    publishing. Keep their chrome consistent with the calmer Studio surfaces. */
-.app-shell [data-dialog-managed='true'] {
+.app-shell [role='dialog'] {
   border-radius: 1rem;
   box-shadow: 0 16px 38px rgb(15 23 42 / 0.14);
 }
 
-[data-theme='dark'] .app-shell [data-dialog-managed='true'] {
+[data-theme='dark'] .app-shell [role='dialog'] {
   box-shadow: 0 18px 42px rgb(0 0 0 / 0.34);
 }
 
