@@ -2334,7 +2334,7 @@ async function updateProductOrderFulfillment(request: Request, env: Env, orderId
   return json({ data: rows[0] || { id: orderId, fulfillment_status: status }, requestId: crypto.randomUUID() });
 }
 
-const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email', 'tiktok', 'instagram']);
+const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email', 'tiktok', 'instagram', 'youtube', 'threads']);
 
 async function listSocialShareEvents(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);

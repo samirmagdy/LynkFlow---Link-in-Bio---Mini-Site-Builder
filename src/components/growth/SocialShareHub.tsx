@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter } from 'lucide-react';
+import { AtSign, Check, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter, Youtube } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialPublications, loadSocialShareEvents, publishInstagramPost, publishLinkedInPost, publishTikTokPost, recordSocialShare, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, ShareProvider, SocialConnection, SocialPublication, startInstagramOAuth, startLinkedInOAuth, startTikTokOAuth, SocialShareEvent } from '../../services/socialShareService';
 
@@ -8,6 +8,8 @@ const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode
   { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="h-4 w-4" />, hint: 'Share your page with your network' },
   { id: 'tiktok', label: 'TikTok', icon: <Music2 className="h-4 w-4" />, hint: 'Publish a video to your profile' },
   { id: 'instagram', label: 'Instagram', icon: <Instagram className="h-4 w-4" />, hint: 'Publish an image or video to your profile' },
+  { id: 'youtube', label: 'YouTube', icon: <Youtube className="h-4 w-4" />, hint: 'Open YouTube Studio to upload a video' },
+  { id: 'threads', label: 'Threads', icon: <AtSign className="h-4 w-4" />, hint: 'Open the Threads composer' },
   { id: 'facebook', label: 'Facebook', icon: <Facebook className="h-4 w-4" />, hint: 'Open the share composer' },
   { id: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle className="h-4 w-4" />, hint: 'Send it to a conversation' },
   { id: 'telegram', label: 'Telegram', icon: <Send className="h-4 w-4" />, hint: 'Share to a chat or channel' },
@@ -40,6 +42,8 @@ function shareUrl(provider: ShareProvider, content: string, targetUrl: string): 
     case 'email': return `mailto:?subject=${encodeURIComponent('Take a look at this page')}&body=${encodeURIComponent(`${content}\n\n${targetUrl}`)}`;
     case 'tiktok': return 'https://www.tiktok.com/upload?lang=en';
     case 'instagram': return 'https://www.instagram.com/';
+    case 'youtube': return 'https://studio.youtube.com/channel/UC/videos/upload';
+    case 'threads': return 'https://www.threads.net/';
   }
 }
 

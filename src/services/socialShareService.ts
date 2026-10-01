@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-export type ShareProvider = 'x' | 'linkedin' | 'facebook' | 'whatsapp' | 'telegram' | 'email' | 'tiktok' | 'instagram';
+export type ShareProvider = 'x' | 'linkedin' | 'facebook' | 'whatsapp' | 'telegram' | 'email' | 'tiktok' | 'instagram' | 'youtube' | 'threads';
 
 export interface SocialShareEvent {
   id: string;
