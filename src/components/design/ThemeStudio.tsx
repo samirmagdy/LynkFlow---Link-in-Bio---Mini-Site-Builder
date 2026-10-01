@@ -249,6 +249,8 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
+  const [themeSearch, setThemeSearch] = useState('');
+  const [themeCategory, setThemeCategory] = useState('All');
   const [pexelsQuery, setPexelsQuery] = useState('abstract background');
   const [pexelsResults, setPexelsResults] = useState<PexelsMedia[]>([]);
   const [pexelsPage, setPexelsPage] = useState(0);
@@ -756,22 +758,9 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   };
 
   const previewPreset = (preset: StandardTheme) => setPreviewTheme(normalizeTheme(preset));
-  const applyVisualStyle = (preset: StandardTheme) => {
-    const next = normalizeTheme(preset);
-    updateStandardTheme(prev => ({
-      ...prev,
-      name: next.name,
-      presetId: next.presetId,
-      tokens: next.tokens,
-      background: next.background,
-      componentVariants: next.componentVariants,
-      buttons: next.buttons,
-      cards: next.cards,
-      socialIcons: next.socialIcons,
-      effects: next.effects,
-      blockDefaults: next.blockDefaults
-    }));
-    setActionFeedback(`${preset.name} appearance updated in the draft. Saving… Your content and layout were preserved.`);
+  const applyMarketplaceTheme = (preset: StandardTheme) => {
+    applyTheme(preset);
+    setActionFeedback(`${preset.name} is now your draft theme. Your content was preserved; publish when ready.`);
     window.setTimeout(() => setActionFeedback(null), 4000);
   };
   const applyLayoutOnly = (preset: StandardTheme) => {
@@ -908,6 +897,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   })();
   const currentStage = STUDIO_STAGES.find(stage => stage.id === activeStage) || STUDIO_STAGES[0];
   const visibleStageTabs = currentStage.tabs.filter(tab => editorMode === 'advanced' || QUICK_CUSTOMIZE_TABS.includes(tab));
+  const themeCategories = ['All', ...Array.from(new Set(SPEC_THEME_PRESETS.map(theme => theme.category || 'Creator'))).sort()];
+  const normalizedThemeSearch = themeSearch.trim().toLowerCase();
+  const visibleThemePresets = SPEC_THEME_PRESETS.filter(preset => {
+    const category = preset.category || 'Creator';
+    const matchesCategory = themeCategory === 'All' || category === themeCategory;
+    const matchesSearch = !normalizedThemeSearch || `${preset.name} ${category} ${preset.tokens.typography.displayFamily}`.toLowerCase().includes(normalizedThemeSearch);
+    return matchesCategory && matchesSearch;
+  });
   const changeEditorMode = (mode: 'quick' | 'advanced') => {
     setEditorMode(mode);
     if (mode === 'quick' && !QUICK_CUSTOMIZE_TABS.includes(activeTab)) {
@@ -1278,11 +1275,31 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   <div className="text-xs font-semibold text-muted uppercase tracking-wider font-mono">
                     Specification Curated Presets ({SPEC_THEME_PRESETS.length})
                   </div>
-                  <p className="text-[11px] text-muted mt-0.5">Tested against WCAG AA color standards and multi-device viewports.</p>
+                  <p className="text-[11px] text-muted mt-0.5">Finished visual directions, tested for contrast and responsive preview. Choose a look first; customize details later.</p>
                 </div>
               </div>
+              <div className="mb-4 flex flex-col gap-2 rounded-xl border border-line bg-surface p-2.5 sm:flex-row sm:items-center">
+                <label className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" aria-hidden="true" />
+                  <span className="sr-only">Search themes</span>
+                  <input value={themeSearch} onChange={event => setThemeSearch(event.target.value)} placeholder="Search by style, category, or font" className="h-9 w-full rounded-lg border border-line bg-canvas pl-9 pr-3 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
+                </label>
+                <div className="flex min-w-0 gap-1.5 overflow-x-auto pb-0.5" role="tablist" aria-label="Theme categories">
+                  {themeCategories.map(category => (
+                    <button key={category} type="button" role="tab" aria-selected={themeCategory === category} onClick={() => setThemeCategory(category)} className={`min-h-9 shrink-0 rounded-lg px-2.5 text-[11px] font-semibold transition-colors cursor-pointer ${themeCategory === category ? 'bg-ink text-white' : 'bg-canvas text-muted hover:text-ink'}`}>
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {visibleThemePresets.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-line-strong bg-surface p-8 text-center">
+                  <p className="text-sm font-semibold text-ink">No themes match that search.</p>
+                  <button type="button" onClick={() => { setThemeSearch(''); setThemeCategory('All'); }} className="mt-2 text-xs font-semibold text-accent hover:underline cursor-pointer">Clear filters</button>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {SPEC_THEME_PRESETS.map((preset) => {
+                {visibleThemePresets.map((preset) => {
                   const isSelected = standardTheme.presetId === preset.presetId || standardTheme.id === preset.id;
                   return (
                     <div
@@ -1322,13 +1339,14 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
 
                       <div className="mt-3.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3 pt-2.5 border-t border-line/60">
                         <button type="button" onClick={() => previewPreset(preset)} className="min-h-9 rounded-lg border border-line px-2 py-1.5 text-[11px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors">Preview</button>
-                        <button type="button" onClick={() => applyVisualStyle(preset)} className="min-h-9 rounded-lg bg-ink px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-ink/85 cursor-pointer transition-colors">Style</button>
-                        <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors">Layout</button>
+                        <button type="button" onClick={() => applyMarketplaceTheme(preset)} className="min-h-9 rounded-lg bg-ink px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-ink/85 cursor-pointer transition-colors sm:col-span-2">Use this theme</button>
+                        {editorMode === 'advanced' && <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors sm:col-span-3">Apply layout only</button>}
                       </div>
                     </div>
                   );
                 })}
               </div>
+              )}
             </div>
 
             {/* Custom Presets saved by user */}
