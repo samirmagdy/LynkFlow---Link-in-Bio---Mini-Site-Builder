@@ -222,53 +222,53 @@ export const AnalyticsDashboard: React.FC = () => {
         <>
           {/* KPI Cards Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-2xl bg-surface border border-line">
-          <div className="flex items-center justify-between text-muted mb-2">
-            <span className="text-xs font-medium">Page Views</span>
-            <TrendingUp className="w-4 h-4 text-accent" />
-          </div>
-          <div ref={pageViewsRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{pageViews.toLocaleString()}</div>
-          <div className="text-[11px] text-success mt-1 flex items-center gap-1">
-            <span>↑ 14.2%</span>
-            <span className="text-subtle">vs prev period</span>
-          </div>
-        </div>
+            <div className="p-4 rounded-xl bg-surface border border-line hover:border-line-strong transition-colors">
+              <div className="flex items-center justify-between text-muted mb-2">
+                <span className="text-xs font-medium">Page Views</span>
+                <TrendingUp className="w-4 h-4 text-accent" />
+              </div>
+              <div ref={pageViewsRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{pageViews.toLocaleString()}</div>
+              <div className="text-[11px] text-success mt-1.5 flex items-center gap-1 font-mono">
+                <span>↑ 14.2%</span>
+                <span className="text-subtle font-sans">vs prev period</span>
+              </div>
+            </div>
 
-        <div className="p-4 rounded-2xl bg-surface border border-line">
-          <div className="flex items-center justify-between text-muted mb-2">
-            <span className="text-xs font-medium">Unique Visitors</span>
-            <Users className="w-4 h-4 text-success" />
-          </div>
-          <div ref={visitorsRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{uniqueVisitors.toLocaleString()}</div>
-          <div className="text-[11px] text-success mt-1 flex items-center gap-1">
-            <span>↑ 8.6%</span>
-            <span className="text-subtle">organic reach</span>
-          </div>
-        </div>
+            <div className="p-4 rounded-xl bg-surface border border-line hover:border-line-strong transition-colors">
+              <div className="flex items-center justify-between text-muted mb-2">
+                <span className="text-xs font-medium">Unique Visitors</span>
+                <Users className="w-4 h-4 text-success" />
+              </div>
+              <div ref={visitorsRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{uniqueVisitors.toLocaleString()}</div>
+              <div className="text-[11px] text-success mt-1.5 flex items-center gap-1 font-mono">
+                <span>↑ 8.6%</span>
+                <span className="text-subtle font-sans">organic reach</span>
+              </div>
+            </div>
 
-        <div className="p-4 rounded-2xl bg-surface border border-line">
-          <div className="flex items-center justify-between text-muted mb-2">
-            <span className="text-xs font-medium">Link & Action Clicks</span>
-            <MousePointerClick className="w-4 h-4 text-info" />
-          </div>
-          <div ref={clicksRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{linkClicks.toLocaleString()}</div>
-          <div className="text-[11px] text-muted mt-1 flex items-center gap-1.5">
-            <QrCode className="w-3.5 h-3.5 text-subtle" />
-            <span>{qrScans} QR scans included</span>
-          </div>
-        </div>
+            <div className="p-4 rounded-xl bg-surface border border-line hover:border-line-strong transition-colors">
+              <div className="flex items-center justify-between text-muted mb-2">
+                <span className="text-xs font-medium">Link & Action Clicks</span>
+                <MousePointerClick className="w-4 h-4 text-info" />
+              </div>
+              <div ref={clicksRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{linkClicks.toLocaleString()}</div>
+              <div className="text-[11px] text-muted mt-1.5 flex items-center gap-1.5 font-mono">
+                <QrCode className="w-3.5 h-3.5 text-subtle" />
+                <span>{qrScans} QR scans included</span>
+              </div>
+            </div>
 
-        <div className="p-4 rounded-2xl bg-surface border border-line">
-          <div className="flex items-center justify-between text-muted mb-2">
-            <span className="text-xs font-medium">Average CTR</span>
-            <Percent className="w-4 h-4 text-warning" />
+            <div className="p-4 rounded-xl bg-surface border border-line hover:border-line-strong transition-colors">
+              <div className="flex items-center justify-between text-muted mb-2">
+                <span className="text-xs font-medium">Average CTR</span>
+                <Percent className="w-4 h-4 text-warning" />
+              </div>
+              <div ref={ctrRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{ctr}%</div>
+              <div className="text-[11px] text-muted mt-1.5 font-mono">
+                Authoritative aggregate rate
+              </div>
+            </div>
           </div>
-          <div ref={ctrRef} className="text-2xl font-bold text-ink font-mono tabular-nums">{ctr}%</div>
-          <div className="text-[11px] text-muted mt-1">
-            Authoritative aggregate rate
-          </div>
-        </div>
-      </div>
 
       {/* 7-Day Velocity Chart (Animated with Anime.js) */}
       <div className="p-5 rounded-2xl bg-surface border border-line space-y-4">

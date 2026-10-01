@@ -22,7 +22,6 @@ import {
   Edit3,
   Crown
 } from 'lucide-react';
-import { ProductIllustration } from '../illustration/ProductIllustration';
 
 // ─── Profile Status Badge ─────────────────────────────────────────────────────
 
@@ -285,10 +284,6 @@ export const MultiProfileManager: React.FC = () => {
           <Plus className="w-3.5 h-3.5" />
           New Profile
         </button>
-      </div>
-
-      <div className="max-w-xl rounded-2xl border border-violet-500/15 bg-violet-500/5 p-2">
-        <ProductIllustration variant="profiles" />
       </div>
 
       {atLimit && (

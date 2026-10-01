@@ -727,10 +727,9 @@ export const MarketingPage: React.FC<MarketingPageProps> = ({ onOpenAuth }) => {
         className="py-20 px-4 sm:px-6 border-t border-line bg-gradient-to-b from-canvas via-surface/60 to-canvas text-center"
       >
         <div className="max-w-3xl mx-auto space-y-6">
-          <div className="cta-anime-item inline-flex items-center gap-2 text-xs font-mono text-accent bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-            <Flame className="w-3.5 h-3.5 text-warning" />
-            <span>Start free — publish when ready</span>
-          </div>
+          <p className="cta-anime-item text-xs font-mono uppercase tracking-widest text-accent font-semibold">
+            Ready when you are
+          </p>
 
           <h2 className="cta-anime-item text-3xl sm:text-5xl font-extrabold text-ink font-display tracking-tight">
             Publish a page that feels like yours.

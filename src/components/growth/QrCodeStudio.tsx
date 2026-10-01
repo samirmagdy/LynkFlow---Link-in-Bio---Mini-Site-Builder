@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { QrCode, Download, Smartphone, Sliders, Check } from 'lucide-react';
-import { ProductIllustration } from '../illustration/ProductIllustration';
 import QRCode from 'qrcode';
 
 export const QrCodeStudio: React.FC = () => {
@@ -112,10 +111,6 @@ export const QrCodeStudio: React.FC = () => {
           <p className="text-xs text-muted mt-0.5">
             Retarget where your QR code redirects without reprinting merchandise, business cards, or packaging.
           </p>
-        </div>
-
-        <div className="max-w-sm rounded-2xl border border-amber-500/15 bg-amber-500/5 p-2">
-          <ProductIllustration variant="route" />
         </div>
 
         <div className="flex items-center gap-2">

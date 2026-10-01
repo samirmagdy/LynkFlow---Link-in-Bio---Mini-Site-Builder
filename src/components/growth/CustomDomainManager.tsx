@@ -23,7 +23,6 @@ import {
   Clock,
   ExternalLink
 } from 'lucide-react';
-import { ProductIllustration } from '../illustration/ProductIllustration';
 
 // ─── SSL Status Badge ─────────────────────────────────────────────────────────
 
@@ -251,10 +250,6 @@ export const CustomDomainManager: React.FC = () => {
             </button>
           )}
         </div>
-      </div>
-
-      <div className="max-w-xl rounded-2xl border border-indigo-500/15 bg-indigo-500/5 p-2">
-        <ProductIllustration variant="domain" />
       </div>
 
       {/* Entitlement gate */}
