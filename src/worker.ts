@@ -2067,6 +2067,36 @@ async function listSocialShareEvents(request: Request, env: Env): Promise<Respon
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
+async function listSocialAnalytics(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  const url = new URL(request.url);
+  const profileId = url.searchParams.get('profileId')?.trim();
+  const period = url.searchParams.get('period') || '7d';
+  const periodDays = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : period === 'all' ? 730 : 0;
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
+  if (!periodDays) return apiError('VALIDATION_ERROR', 'period must be today, 7d, 30d, 90d, or all.', 422);
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=plan,status,current_period_end`, env);
+  const workspace = (await workspaceResponse.json() as Array<{ plan?: string; status?: string; current_period_end?: string | null }>)[0];
+  const maxDays = workspace?.status === 'canceled' && workspace.current_period_end && workspace.current_period_end < new Date().toISOString() ? 7 : workspace?.plan === 'agency' ? 730 : workspace?.plan === 'pro' ? 365 : 7;
+  if (periodDays > maxDays) return apiError('ENTITLEMENT_REQUIRED', `This plan includes ${maxDays} days of social history.`, 403);
+  const since = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
+  const [sharesResponse, publicationsResponse] = await Promise.all([
+    supabaseRequest(`social_share_events?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&created_at=gte.${encodeURIComponent(since)}&select=provider,status&limit=1000`, env),
+    supabaseRequest(`social_publications?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&created_at=gte.${encodeURIComponent(since)}&select=provider,status&limit=1000`, env),
+  ]);
+  const shares = await sharesResponse.json() as Array<{ provider?: string; status?: string }>;
+  const publications = await publicationsResponse.json() as Array<{ provider?: string; status?: string }>;
+  const providerMap = new Map<string, { handoffs: number; completed: number; failed: number; scheduled: number; published: number }>();
+  const metricFor = (provider: string) => { const current = providerMap.get(provider) || { handoffs: 0, completed: 0, failed: 0, scheduled: 0, published: 0 }; providerMap.set(provider, current); return current; };
+  for (const share of shares) { const metric = metricFor(share.provider || 'unknown'); metric.handoffs += 1; if (share.status === 'completed') metric.completed += 1; if (share.status === 'failed') metric.failed += 1; }
+  for (const publication of publications) { const metric = metricFor(publication.provider || 'unknown'); if (publication.status === 'scheduled') metric.scheduled += 1; if (publication.status === 'published') metric.published += 1; if (publication.status === 'failed') metric.failed += 1; }
+  const totalHandoffs = shares.length;
+  const completedHandoffs = shares.filter(share => share.status === 'completed').length;
+  const failedHandoffs = shares.filter(share => share.status === 'failed').length + publications.filter(publication => publication.status === 'failed').length;
+  return json({ data: { period, totalHandoffs, completedHandoffs, failedHandoffs, successRate: totalHandoffs ? Math.round((completedHandoffs / totalHandoffs) * 1000) / 10 : 0, scheduled: publications.filter(publication => publication.status === 'scheduled').length, published: publications.filter(publication => publication.status === 'published').length, providers: [...providerMap.entries()].sort((a, b) => b[1].handoffs - a[1].handoffs).map(([provider, metric]) => ({ provider, ...metric })) }, requestId: crypto.randomUUID() });
+}
+
 async function createSocialShareEvent(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -3783,6 +3813,10 @@ export default {
     if (url.pathname === '/api/public/analytics') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await ingestPublicAnalytics(request, env); } catch (error) { return internalApiError('Public analytics ingestion failed', error, 'Analytics event could not be recorded.'); }
+    }
+    if (url.pathname === '/api/analytics/social') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await listSocialAnalytics(request, env); } catch (error) { return internalApiError('Social analytics request failed', error, 'Unable to load social analytics.'); }
     }
     if (url.pathname === '/api/public/newsletter') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

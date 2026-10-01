@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { analyticsEngineService, AnalyticsAggregateSummary } from '../../services/analyticsEngineService';
 import { billingService } from '../../services/billingService';
+import { SocialPerformanceCard } from './SocialPerformanceCard';
 
 type TimeRange = 'today' | '7d' | '30d' | '90d' | 'all';
 type ChartType = 'area' | 'bar' | 'line';
@@ -395,6 +396,8 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <SocialPerformanceCard profileId={activeProfile.id} period={timeRange} />
 
       {/* Main Interactive Recharts Chart: Views & Clicks Over Time */}
       <div className="p-5 rounded-2xl bg-surface border border-line shadow-xl space-y-4">
