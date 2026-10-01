@@ -38,6 +38,8 @@ interface Env {
   LINKEDIN_CLIENT_ID?: string;
   LINKEDIN_CLIENT_SECRET?: string;
   LINKEDIN_VERSION?: string;
+  TIKTOK_CLIENT_KEY?: string;
+  TIKTOK_CLIENT_SECRET?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   PEXELS_API_KEY?: string;
@@ -66,7 +68,7 @@ function deploymentHealth(env: Env): Response {
     email: ['RESEND_API_KEY'],
     stripe: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_PRO_MONTHLY', 'STRIPE_PRICE_PRO_ANNUAL', 'STRIPE_PRICE_AGENCY_MONTHLY', 'STRIPE_PRICE_AGENCY_ANNUAL'],
     webhooks: ['WEBHOOK_ENCRYPTION_KEY'],
-    socialOAuth: ['LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET', 'SOCIAL_OAUTH_ENCRYPTION_KEY'],
+    socialOAuth: ['SOCIAL_OAUTH_ENCRYPTION_KEY'],
     customDomains: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID'],
   } as const;
   const envValues = env as unknown as Record<string, unknown>;
@@ -75,7 +77,7 @@ function deploymentHealth(env: Env): Response {
     email: requiredBindings.email.every(binding => Boolean(envValues[binding])),
     stripe: requiredBindings.stripe.every(binding => Boolean(envValues[binding])),
     webhooks: requiredBindings.webhooks.every(binding => Boolean(envValues[binding])),
-    socialOAuth: requiredBindings.socialOAuth.every(binding => Boolean(envValues[binding])),
+    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET))),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
   };
   const missing = Object.values(requiredBindings).flat().filter(binding => !envValues[binding]);
@@ -1482,29 +1484,60 @@ async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.n
 }
 
 async function executeScheduledSocialPublications(env: Env, scheduledTime = Date.now()): Promise<void> {
-  const dueResponse = await supabaseRequest(`social_publications?status=eq.scheduled&scheduled_at=lte.${encodeURIComponent(new Date(scheduledTime).toISOString())}&select=id,workspace_id,profile_id,provider,content,target_url,share_event_id,attempt_count&order=scheduled_at.asc&limit=100`, env);
-  const due = await dueResponse.json() as Array<{ id: string; workspace_id: string; profile_id: string; provider: string; content: string; target_url?: string | null; share_event_id?: string | null; attempt_count?: number }>;
+  await pollTikTokPublications(env);
+  const dueResponse = await supabaseRequest(`social_publications?status=eq.scheduled&scheduled_at=lte.${encodeURIComponent(new Date(scheduledTime).toISOString())}&select=id,workspace_id,profile_id,provider,content,target_url,media_url,share_event_id,attempt_count&order=scheduled_at.asc&limit=100`, env);
+  const due = await dueResponse.json() as Array<{ id: string; workspace_id: string; profile_id: string; provider: string; content: string; target_url?: string | null; media_url?: string | null; share_event_id?: string | null; attempt_count?: number }>;
   for (const publication of due) {
     const marked = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: 'publishing', attempt_count: Number(publication.attempt_count || 0) + 1, updated_at: new Date().toISOString() }) });
     const claimed = await marked.json() as unknown[];
     if (!claimed.length) continue;
     try {
-      if (publication.provider !== 'linkedin') throw new Error('Unsupported social provider.');
-      const connection = await activeLinkedInConnection(publication.workspace_id, env);
-      if (!connection) throw new Error('LinkedIn connection is unavailable.');
-      const result = await publishLinkedInWithConnection(connection, publication.content, publication.target_url || '', env);
-      await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
-      if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+      if (publication.provider === 'linkedin') {
+        const connection = await activeLinkedInConnection(publication.workspace_id, env);
+        if (!connection) throw new Error('LinkedIn connection is unavailable.');
+        const result = await publishLinkedInWithConnection(connection, publication.content, publication.target_url || '', env);
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+      } else if (publication.provider === 'tiktok') {
+        const connection = await activeTikTokConnection(publication.workspace_id, env);
+        if (!connection) throw new Error('TikTok connection is unavailable.');
+        const result = await publishTikTokVideoWithConnection(connection, publication.content, publication.media_url || '', env);
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'publishing', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+      } else throw new Error('Unsupported social provider.');
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Scheduled social publication failed.';
       if (reason === 'CONNECTION_EXPIRED') {
-        const expiredConnection = await activeLinkedInConnection(publication.workspace_id, env);
+        const expiredConnection = publication.provider === 'tiktok' ? await activeTikTokConnection(publication.workspace_id, env) : await activeLinkedInConnection(publication.workspace_id, env);
         if (expiredConnection) await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(expiredConnection.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
       }
       await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: reason === 'CONNECTION_EXPIRED' ? 'LinkedIn connection expired. Reconnect and retry.' : reason, updated_at: new Date().toISOString() }) });
       if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed' }) });
       console.error(`Scheduled social publication failed for ${publication.id}`, error);
     }
+  }
+}
+
+async function pollTikTokPublications(env: Env): Promise<void> {
+  const response = await supabaseRequest('social_publications?provider=eq.tiktok&status=eq.publishing&provider_post_id=not.is.null&select=id,workspace_id,provider_post_id,share_event_id&limit=100', env);
+  const publications = await response.json() as Array<{ id: string; workspace_id: string; provider_post_id: string; share_event_id?: string | null }>;
+  for (const publication of publications) {
+    try {
+      const connection = await activeTikTokConnection(publication.workspace_id, env);
+      if (!connection) continue;
+      const token = await decryptSocialToken(connection.access_token_ciphertext, env);
+      const statusResponse = await fetch('https://open.tiktokapis.com/v2/post/publish/status/fetch/', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ publish_id: publication.provider_post_id }) });
+      if (!statusResponse.ok) continue;
+      const statusBody = await statusResponse.json() as { data?: { status?: string; fail_reason?: string; publicly_available_post_id?: string[]; publicaly_available_post_id?: string[] } };
+      const status = statusBody.data?.status;
+      if (status === 'PUBLISH_COMPLETE') {
+        const postId = statusBody.data?.publicly_available_post_id?.[0] || statusBody.data?.publicaly_available_post_id?.[0] || publication.provider_post_id;
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: postId, updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+      } else if (status === 'FAILED') {
+        await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: statusBody.data?.fail_reason || 'TikTok rejected the post.', updated_at: new Date().toISOString() }) });
+        if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed' }) });
+      }
+    } catch (error) { console.error(`TikTok publication status check failed for ${publication.id}`, error); }
   }
 }
 
@@ -1986,7 +2019,7 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
-const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email']);
+const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email', 'tiktok']);
 
 async function listSocialShareEvents(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
@@ -2039,15 +2072,18 @@ function socialOAuthRedirect(request: Request, env: Env, path: string): string {
   return new URL(path, `${base.replace(/\/$/, '')}/`).toString();
 }
 
-function socialOAuthConfigured(env: Env): boolean {
-  return Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
+type SocialOAuthProvider = 'linkedin' | 'tiktok';
+
+function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean {
+  const providerConfigured = provider === 'linkedin' ? Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET) : Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET);
+  return Boolean(providerConfigured && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 async function startLinkedInOAuth(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
-  if (!socialOAuthConfigured(env)) return apiError('SERVICE_UNAVAILABLE', 'LinkedIn publishing is not configured yet.', 503);
+  if (!socialOAuthConfigured(env, 'linkedin')) return apiError('SERVICE_UNAVAILABLE', 'LinkedIn publishing is not configured yet.', 503);
   const state = randomSecret(32);
   await supabaseRequest('social_oauth_states', env, {
     method: 'POST',
@@ -2068,7 +2104,7 @@ async function finishLinkedInOAuth(request: Request, env: Env): Promise<Response
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?linkedin=error&reason=${encodeURIComponent(reason)}`, 302);
-  if (!code || !state || !socialOAuthConfigured(env)) return failure('configuration');
+  if (!code || !state || !socialOAuthConfigured(env, 'linkedin')) return failure('configuration');
   const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.linkedin&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id`, env);
   const states = await stateResponse.json() as Array<{ id: string; workspace_id: string }>;
   const oauthState = states[0];
@@ -2102,6 +2138,49 @@ async function finishLinkedInOAuth(request: Request, env: Env): Promise<Response
   });
   await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: profile.email || 'linkedin-oauth', action: 'social.linkedin.connected', target: profile.sub, occurred_at: now.toISOString(), details: 'LinkedIn publishing connection established.' }) });
   return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?linkedin=connected`, 302);
+}
+
+async function startTikTokOAuth(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
+  if (!socialOAuthConfigured(env, 'tiktok')) return apiError('SERVICE_UNAVAILABLE', 'TikTok publishing is not configured yet.', 503);
+  const state = randomSecret(32);
+  await supabaseRequest('social_oauth_states', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `oauth_${crypto.randomUUID()}`, workspace_id: user.id, provider: 'tiktok', state_hash: await sha256(state), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }) });
+  const authorize = new URL('https://www.tiktok.com/v2/auth/authorize/');
+  authorize.searchParams.set('client_key', env.TIKTOK_CLIENT_KEY!);
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('scope', 'user.info.basic,video.publish');
+  authorize.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/tiktok/callback'));
+  authorize.searchParams.set('state', state);
+  return Response.redirect(authorize.toString(), 302);
+}
+
+async function finishTikTokOAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?tiktok=error&reason=${encodeURIComponent(reason)}`, 302);
+  if (!code || !state || !socialOAuthConfigured(env, 'tiktok')) return failure('configuration');
+  const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.tiktok&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id`, env);
+  const states = await stateResponse.json() as Array<{ id: string; workspace_id: string }>;
+  const oauthState = states[0];
+  if (!oauthState) return failure('expired');
+  const markUsed = await supabaseRequest(`social_oauth_states?id=eq.${encodeURIComponent(oauthState.id)}&used_at=is.null`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
+  if (!(await markUsed.json() as unknown[]).length) return failure('replayed');
+  const tokenResponse = await fetch('https://open.tiktokapis.com/v2/oauth/token/', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_key: env.TIKTOK_CLIENT_KEY!, client_secret: env.TIKTOK_CLIENT_SECRET!, code, grant_type: 'authorization_code', redirect_uri: socialOAuthRedirect(request, env, '/api/social/tiktok/callback') }) });
+  if (!tokenResponse.ok) return failure('token_exchange');
+  const token = await tokenResponse.json() as { access_token?: string; open_id?: string; expires_in?: number; refresh_token?: string; scope?: string };
+  if (!token.access_token || !token.open_id) return failure('token_exchange');
+  const profileResponse = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url', { headers: { authorization: `Bearer ${token.access_token}` } });
+  if (!profileResponse.ok) return failure('profile_lookup');
+  const profileBody = await profileResponse.json() as { data?: { user?: { open_id?: string; display_name?: string } } };
+  const profile = profileBody.data?.user;
+  if (!profile?.open_id) return failure('profile_lookup');
+  const now = new Date();
+  await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ id: `social_${oauthState.workspace_id}_tiktok_${profile.open_id}`, workspace_id: oauthState.workspace_id, provider: 'tiktok', provider_account_id: profile.open_id, account_name: profile.display_name || 'TikTok account', access_token_ciphertext: await encryptSocialToken(token.access_token, env), refresh_token_ciphertext: token.refresh_token ? await encryptSocialToken(token.refresh_token, env) : null, token_expires_at: token.expires_in ? new Date(now.getTime() + token.expires_in * 1000).toISOString() : null, scopes: String(token.scope || 'user.info.basic video.publish').split(/[ ,]+/).filter(Boolean), status: 'active', updated_at: now.toISOString() }) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: 'tiktok-oauth', action: 'social.tiktok.connected', target: profile.open_id, occurred_at: now.toISOString(), details: 'TikTok publishing connection established.' }) });
+  return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?tiktok=connected`, 302);
 }
 
 async function listSocialConnections(request: Request, env: Env): Promise<Response> {
@@ -2142,6 +2221,31 @@ async function activeLinkedInConnection(workspaceId: string, env: Env): Promise<
   return rows[0] || null;
 }
 
+async function activeTikTokConnection(workspaceId: string, env: Env): Promise<LinkedInConnectionRow | null> {
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(workspaceId)}&provider=eq.tiktok&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const rows = await response.json() as LinkedInConnectionRow[];
+  return rows[0] || null;
+}
+
+async function publishTikTokVideoWithConnection(connection: LinkedInConnectionRow, content: string, mediaUrl: string, env: Env): Promise<{ providerPostId: string }> {
+  if (!mediaUrl) throw new Error('MEDIA_REQUIRED');
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const creatorResponse = await fetch('https://open.tiktokapis.com/v2/post/publish/creator_info/query/', { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' } });
+  if (creatorResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!creatorResponse.ok) throw new Error('PROVIDER_ERROR');
+  const creatorBody = await creatorResponse.json() as { data?: { privacy_level_options?: string[] } };
+  const privacyOptions = creatorBody.data?.privacy_level_options || [];
+  const privacy = privacyOptions.includes('PUBLIC_TO_EVERYONE') ? 'PUBLIC_TO_EVERYONE' : privacyOptions[0];
+  if (!privacy) throw new Error('PROVIDER_ERROR');
+  const postResponse = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json; charset=UTF-8' }, body: JSON.stringify({ post_info: { title: content.slice(0, 2200), privacy_level: privacy, disable_duet: false, disable_comment: false, disable_stitch: false }, source_info: { source: 'PULL_FROM_URL', video_url: mediaUrl } }) });
+  if (postResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!postResponse.ok) throw new Error('PROVIDER_ERROR');
+  const postBody = await postResponse.json() as { data?: { publish_id?: string }; error?: { code?: string; message?: string } };
+  if (!postBody.data?.publish_id) throw new Error('PROVIDER_ERROR');
+  return { providerPostId: postBody.data.publish_id };
+}
+
 async function publishLinkedInPost(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2170,12 +2274,39 @@ async function publishLinkedInPost(request: Request, env: Env): Promise<Response
   }
 }
 
+async function publishTikTokPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish to social accounts.', 403);
+  let input: { content?: string; mediaUrl?: string; profileId?: string; shareEventId?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const content = String(input.content || '').trim();
+  const mediaUrl = String(input.mediaUrl || '').trim();
+  if (!content || content.length > 2200) return apiError('VALIDATION_ERROR', 'TikTok caption must be between 1 and 2200 characters.', 422);
+  if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) return apiError('VALIDATION_ERROR', 'A public HTTPS video URL is required for TikTok.', 422);
+  if (input.profileId && !canManageProfile(user, input.profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  const connection = await activeTikTokConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect TikTok before publishing.', 409);
+  try {
+    const result = await publishTikTokVideoWithConnection(connection, content, mediaUrl, env);
+    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: input.profileId || '', provider: 'tiktok', content, target_url: null, media_url: mediaUrl, scheduled_at: new Date().toISOString(), status: 'publishing', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
+    return json({ data: { provider: 'tiktok', providerPostId: result.providerPostId, status: 'processing' }, requestId: crypto.randomUUID() }, 202);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
+      await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+      return apiError('CONNECTION_EXPIRED', 'TikTok rejected this connection. Reconnect and try again.', 401);
+    }
+    if (error instanceof Error && error.message === 'MEDIA_REQUIRED') return apiError('VALIDATION_ERROR', 'A public HTTPS video URL is required for TikTok.', 422);
+    return apiError('PROVIDER_ERROR', 'TikTok could not accept this video. No success was recorded.', 502);
+  }
+}
+
 async function listSocialPublications(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   const profileId = new URL(request.url).searchParams.get('profileId');
   if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
-  const response = await supabaseRequest(`social_publications?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,content,target_url,scheduled_at,status,provider_post_id,last_error,attempt_count,share_event_id,created_at,updated_at&order=scheduled_at.desc&limit=50`, env);
+  const response = await supabaseRequest(`social_publications?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,content,target_url,media_url,scheduled_at,status,provider_post_id,last_error,attempt_count,share_event_id,created_at,updated_at&order=scheduled_at.desc&limit=50`, env);
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
@@ -2202,6 +2333,29 @@ async function scheduleLinkedInPost(request: Request, env: Env): Promise<Respons
   const publication = { id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'linkedin', content, target_url: targetUrl || null, scheduled_at: new Date(scheduledAt).toISOString(), status: 'scheduled', provider_post_id: null, last_error: null, attempt_count: 0, share_event_id: shareEvent.id, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(publication) });
   await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.linkedin.scheduled', target: publication.id, occurred_at: publication.created_at, details: `Scheduled LinkedIn publication for ${publication.scheduled_at}.` }) });
+  return json({ data: publication, requestId: crypto.randomUUID() }, 201);
+}
+
+async function scheduleTikTokPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot schedule social posts.', 403);
+  let input: { content?: string; mediaUrl?: string; profileId?: string; scheduledAt?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const mediaUrl = String(input.mediaUrl || '').trim();
+  const scheduledAt = Date.parse(String(input.scheduledAt || ''));
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 2200) return apiError('VALIDATION_ERROR', 'TikTok caption must be between 1 and 2200 characters.', 422);
+  if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) return apiError('VALIDATION_ERROR', 'A public HTTPS video URL is required for TikTok.', 422);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now() + 60_000) return apiError('VALIDATION_ERROR', 'Choose a future publish time at least one minute from now.', 422);
+  if (!await activeTikTokConnection(user.id, env)) return apiError('CONNECTION_REQUIRED', 'Connect TikTok before scheduling.', 409);
+  const shareEvent = { id: `share_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'tiktok', content, target_url: mediaUrl, status: 'initiated', created_at: new Date().toISOString() };
+  await supabaseRequest('social_share_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(shareEvent) });
+  const publication = { id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'tiktok', content, target_url: null, media_url: mediaUrl, scheduled_at: new Date(scheduledAt).toISOString(), status: 'scheduled', provider_post_id: null, last_error: null, attempt_count: 0, share_event_id: shareEvent.id, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(publication) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.tiktok.scheduled', target: publication.id, occurred_at: publication.created_at, details: `Scheduled TikTok publication for ${publication.scheduled_at}.` }) });
   return json({ data: publication, requestId: crypto.randomUUID() }, 201);
 }
 
@@ -3132,6 +3286,14 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await finishLinkedInOAuth(request, env); } catch (error) { console.error('Finish LinkedIn OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?linkedin=error&reason=server`, 302); }
     }
+    if (url.pathname === '/api/social/tiktok/start') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await startTikTokOAuth(request, env); } catch (error) { return internalApiError('Start TikTok OAuth failed', error, 'Unable to connect TikTok.'); }
+    }
+    if (url.pathname === '/api/social/tiktok/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await finishTikTokOAuth(request, env); } catch (error) { console.error('Finish TikTok OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?tiktok=error&reason=server`, 302); }
+    }
     if (url.pathname === '/api/social/connections') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialConnections(request, env); } catch (error) { return internalApiError('List social connections failed', error, 'Unable to load social connections.'); }
@@ -3144,6 +3306,10 @@ export default {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishLinkedInPost(request, env); } catch (error) { return internalApiError('Publish LinkedIn post failed', error, 'Unable to publish to LinkedIn.'); }
     }
+    if (url.pathname === '/api/social/tiktok/post') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await publishTikTokPost(request, env); } catch (error) { return internalApiError('Publish TikTok post failed', error, 'Unable to publish to TikTok.'); }
+    }
     if (url.pathname === '/api/social/publications') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialPublications(request, env); } catch (error) { return internalApiError('List social publications failed', error, 'Unable to load scheduled posts.'); }
@@ -3151,6 +3317,10 @@ export default {
     if (url.pathname === '/api/social/linkedin/schedule') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await scheduleLinkedInPost(request, env); } catch (error) { return internalApiError('Schedule LinkedIn post failed', error, 'Unable to schedule LinkedIn post.'); }
+    }
+    if (url.pathname === '/api/social/tiktok/schedule') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await scheduleTikTokPost(request, env); } catch (error) { return internalApiError('Schedule TikTok post failed', error, 'Unable to schedule TikTok post.'); }
     }
     if (url.pathname.startsWith('/api/social/publications/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

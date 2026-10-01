@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-export type ShareProvider = 'x' | 'linkedin' | 'facebook' | 'whatsapp' | 'telegram' | 'email';
+export type ShareProvider = 'x' | 'linkedin' | 'facebook' | 'whatsapp' | 'telegram' | 'email' | 'tiktok';
 
 export interface SocialShareEvent {
   id: string;
@@ -14,7 +14,7 @@ export interface SocialShareEvent {
 
 export interface SocialConnection {
   id: string;
-  provider: 'linkedin';
+  provider: 'linkedin' | 'tiktok';
   provider_account_id: string;
   account_name: string | null;
   token_expires_at: string | null;
@@ -27,9 +27,10 @@ export interface SocialConnection {
 export interface SocialPublication {
   id: string;
   profile_id: string;
-  provider: 'linkedin';
+  provider: 'linkedin' | 'tiktok';
   content: string;
   target_url: string | null;
+  media_url: string | null;
   scheduled_at: string;
   status: 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
   provider_post_id: string | null;
@@ -80,6 +81,10 @@ export function startLinkedInOAuth(): void {
   window.location.assign('/api/social/linkedin/start');
 }
 
+export function startTikTokOAuth(): void {
+  window.location.assign('/api/social/tiktok/start');
+}
+
 export async function publishLinkedInPost(content: string, targetUrl: string, profileId: string): Promise<{ providerPostId: string | null }> {
   const response = await authorizedRequest('/api/social/linkedin/post', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId }) });
   const body = await response.json() as { data?: { providerPostId?: string | null }; error?: string | { message?: string } };
@@ -87,10 +92,24 @@ export async function publishLinkedInPost(content: string, targetUrl: string, pr
   return { providerPostId: body.data.providerPostId || null };
 }
 
+export async function publishTikTokPost(content: string, mediaUrl: string, profileId: string, shareEventId?: string): Promise<{ providerPostId: string | null; status: 'processing' }> {
+  const response = await authorizedRequest('/api/social/tiktok/post', { method: 'POST', body: JSON.stringify({ content, mediaUrl, profileId, shareEventId }) });
+  const body = await response.json() as { data?: { providerPostId?: string | null; status?: 'processing' }; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to publish to TikTok.');
+  return { providerPostId: body.data.providerPostId || null, status: 'processing' };
+}
+
 export async function scheduleLinkedInPost(content: string, targetUrl: string, profileId: string, scheduledAt: string): Promise<SocialPublication> {
   const response = await authorizedRequest('/api/social/linkedin/schedule', { method: 'POST', body: JSON.stringify({ content, targetUrl, profileId, scheduledAt }) });
   const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
   if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule LinkedIn post.');
+  return body.data;
+}
+
+export async function scheduleTikTokPost(content: string, mediaUrl: string, profileId: string, scheduledAt: string): Promise<SocialPublication> {
+  const response = await authorizedRequest('/api/social/tiktok/schedule', { method: 'POST', body: JSON.stringify({ content, mediaUrl, profileId, scheduledAt }) });
+  const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
+  if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to schedule TikTok post.');
   return body.data;
 }
 
