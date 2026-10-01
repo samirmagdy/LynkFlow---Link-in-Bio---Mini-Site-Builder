@@ -69,6 +69,10 @@ function createDefaultBlock(blockType: BlockType, customTitle?: string): Block {
       title = customTitle || 'Support my work';
       payload = { description: 'If you enjoy what I make, you can leave a small tip.', amount: '5', currency: 'USD', buttonLabel: 'Leave a tip', checkoutEnabled: true };
       break;
+    case 'membership':
+      title = customTitle || 'Join the community';
+      payload = { description: 'Get member-only resources, updates, and community access.', price: '9', currency: 'USD', interval: 'month', buttonLabel: 'Become a member', checkoutEnabled: true, benefits: ['Member-only resources', 'Monthly updates', 'Direct community access'] };
+      break;
     case 'event':
       title = customTitle || 'Upcoming Event';
       payload = { date: '2026-06-15', time: '7:00 PM', location: 'Add venue or online details', description: 'Share what visitors can expect.', url: 'https://example.com', buttonLabel: 'Get tickets' } as EventBlockPayload;

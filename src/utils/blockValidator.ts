@@ -202,6 +202,18 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       break;
     }
 
+    case 'membership': {
+      const price = Number(getString(payload, 'price'));
+      const currency = getString(payload, 'currency');
+      const interval = getString(payload, 'interval');
+      if (!Number.isFinite(price) || price <= 0) errors.push('Membership requires a valid positive price.');
+      if (!/^[A-Za-z]{3}$/.test(currency)) errors.push('Membership requires a three-letter currency code.');
+      if (!['month', 'year'].includes(interval)) errors.push('Membership requires a monthly or annual interval.');
+      if (payload.checkoutEnabled !== true && !getString(payload, 'url')) errors.push('Membership requires secure checkout or a destination URL.');
+      if (getString(payload, 'url') && !validateUrl(getString(payload, 'url')).isValid) errors.push('Membership destination URL is invalid.');
+      break;
+    }
+
     case 'event': {
       const date = getString(payload, 'date');
       const url = getString(payload, 'url');

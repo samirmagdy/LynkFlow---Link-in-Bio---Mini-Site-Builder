@@ -30,6 +30,7 @@ export type BlockType =
   | 'product'
   | 'course'
   | 'tip'
+  | 'membership'
   | 'text' 
   | 'divider' 
   | 'folder' 
@@ -336,6 +337,16 @@ export interface TipBlockPayload {
   checkoutEnabled?: boolean;
 }
 
+export interface MembershipBlockPayload {
+  description?: string;
+  price: string;
+  currency: string;
+  interval?: 'month' | 'year';
+  buttonLabel?: string;
+  checkoutEnabled?: boolean;
+  benefits?: string[];
+}
+
 type BlockPayload =
   | LinkBlockPayload 
   | MediaBlockPayload 
@@ -345,6 +356,7 @@ type BlockPayload =
   | ProductBlockPayload
   | CourseBlockPayload
   | TipBlockPayload
+  | MembershipBlockPayload
   | TextBlockPayload 
   | DividerBlockPayload 
   | FolderBlockPayload 

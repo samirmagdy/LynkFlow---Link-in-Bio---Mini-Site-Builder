@@ -401,7 +401,7 @@ async function publishedProductDelivery(env: Env, profileId: string, blockId: st
   const response = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(profileId)}&select=snapshot`, env);
   const rows = await response.json() as Array<{ snapshot?: PublicSnapshot }>;
   const blocks = (rows[0]?.snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
-  const block = blocks.find(candidate => candidate.id === blockId && (candidate.type === 'product' || candidate.type === 'course' || candidate.type === 'tip'));
+  const block = blocks.find(candidate => candidate.id === blockId && (candidate.type === 'product' || candidate.type === 'course' || candidate.type === 'tip' || candidate.type === 'membership'));
   const rawDeliveryUrl = String(block?.payload?.deliveryUrl || '').trim();
   if (!block || !rawDeliveryUrl) return null;
   try {
@@ -1908,7 +1908,7 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   const profileId = new URL(request.url).searchParams.get('profileId');
   const profileFilter = profileId ? `&profile_id=eq.${encodeURIComponent(profileId)}` : '';
   if (profileId && !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
-  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,payment_status,amount_total,currency,customer_email,customer_name,delivery_url,delivery_sent_at,created_at,paid_at&order=created_at.desc&limit=500`, env);
+  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,commerce_type,stripe_subscription_id,membership_status,payment_status,amount_total,currency,customer_email,customer_name,delivery_url,delivery_sent_at,created_at,paid_at&order=created_at.desc&limit=500`, env);
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
@@ -2556,10 +2556,11 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
   const price = parseProductPrice(block.type === 'tip' ? payload.amount : payload.price);
   const currency = normalizeProductCurrency(payload.currency);
   if (!price || !currency) return json({ error: 'This product has incomplete checkout details.' }, 422);
-  const productName = String(block.title || (block.type === 'tip' ? 'Creator support' : block.type === 'course' ? 'Creator course' : 'LynkFlow product')).trim().slice(0, 120) || 'Creator support';
+  const isMembership = block.type === 'membership';
+  const productName = String(block.title || (block.type === 'tip' ? 'Creator support' : block.type === 'course' ? 'Creator course' : isMembership ? 'Creator membership' : 'LynkFlow product')).trim().slice(0, 120) || 'Creator support';
   const description = String(payload.description || '').trim().slice(0, 500);
   const params = new URLSearchParams({
-    mode: 'payment',
+    mode: isMembership ? 'subscription' : 'payment',
     'line_items[0][price_data][currency]': currency,
     'line_items[0][price_data][unit_amount]': String(price.amountInCents),
     'line_items[0][price_data][product_data][name]': productName,
@@ -2571,8 +2572,16 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
     'metadata[workspace_id]': String(profileRow?.workspace_id || ''),
     'metadata[profile_id]': String(profileRow?.profile_id || ''),
     'metadata[product_order]': 'true',
-    'metadata[commerce_type]': block.type === 'tip' ? 'tip' : block.type === 'course' ? 'course' : 'product',
+    'metadata[commerce_type]': block.type === 'tip' ? 'tip' : block.type === 'course' ? 'course' : isMembership ? 'membership' : 'product',
   });
+  if (isMembership) {
+    params.set('line_items[0][price_data][recurring][interval]', payload.interval === 'year' ? 'year' : 'month');
+    params.set('subscription_data[metadata][product_order]', 'true');
+    params.set('subscription_data[metadata][commerce_type]', 'membership');
+    params.set('subscription_data[metadata][workspace_id]', String(profileRow?.workspace_id || ''));
+    params.set('subscription_data[metadata][profile_id]', String(profileRow?.profile_id || ''));
+    params.set('subscription_data[metadata][block_id]', blockId);
+  }
   if (description) params.set('line_items[0][price_data][product_data][description]', description);
   const image = safePublicHref(payload.image);
   if (image) params.set('line_items[0][price_data][product_data][images][0]', image);
@@ -2678,6 +2687,8 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     const courseAccessToken = delivery?.isCourse && paymentStatus === 'paid' ? randomSecret(48) : undefined;
     const courseAccessUrl = courseAccessToken ? `${env.APP_URL || new URL(request.url).origin}/course-access?token=${encodeURIComponent(courseAccessToken)}` : undefined;
     const deliveryUrl = courseAccessUrl || delivery?.deliveryUrl || null;
+    const commerceType = ['product', 'course', 'tip', 'membership'].includes(metadata.commerce_type) ? metadata.commerce_type : 'product';
+    const subscriptionId = String(object.subscription || '').startsWith('sub_') ? String(object.subscription) : null;
     await supabaseRequest('product_orders?on_conflict=stripe_session_id', env, {
       method: 'POST',
       headers: { prefer: 'resolution=ignore-duplicates,return=minimal' },
@@ -2687,6 +2698,9 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         profile_id: metadata.profile_id,
         block_id: metadata.block_id,
         stripe_session_id: String(object.id || event.id),
+        commerce_type: commerceType,
+        stripe_subscription_id: subscriptionId,
+        membership_status: commerceType === 'membership' ? 'active' : null,
         payment_status: paymentStatus,
         amount_total: Math.max(0, Number(object.amount_total || 0)),
         currency: String(object.currency || 'usd').toLowerCase(),
@@ -2720,6 +2734,10 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     ...(object.current_period_start ? { current_period_start: new Date(Number(object.current_period_start) * 1000).toISOString() } : {}),
     ...(object.current_period_end ? { current_period_end: new Date(Number(object.current_period_end) * 1000).toISOString() } : {}),
   });
+  if (subscriptionId && ['customer.subscription.updated', 'customer.subscription.deleted', 'invoice.payment_failed', 'invoice.paid'].includes(event.type)) {
+    const membershipStatus = event.type === 'customer.subscription.deleted' ? 'canceled' : event.type === 'invoice.payment_failed' ? 'past_due' : ['active', 'trialing'].includes(status) ? 'active' : 'incomplete';
+    await supabaseRequest(`product_orders?stripe_subscription_id=eq.${encodeURIComponent(subscriptionId)}&commerce_type=eq.membership`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ membership_status: membershipStatus, payment_status: membershipStatus === 'active' ? 'paid' : 'unpaid' }) });
+  }
   await supabaseRequest('stripe_events', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify({ id: event.id, event_type: event.type }) });
   return json({ received: true });
 }

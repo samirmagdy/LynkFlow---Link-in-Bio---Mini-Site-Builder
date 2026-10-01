@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   GraduationCap,
   HandCoins,
+  Crown,
   CalendarDays,
   X 
 } from 'lucide-react';
@@ -89,6 +90,13 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
       description: 'Let visitors support your work with a secure one-time tip',
       icon: <HandCoins className="w-5 h-5 text-warning" />,
       badge: 'Monetization'
+    },
+    {
+      type: 'membership',
+      title: 'Membership',
+      description: 'Offer recurring access, perks, and a simple member promise',
+      icon: <Crown className="w-5 h-5 text-warning" />,
+      badge: 'Recurring'
     },
     {
       type: 'event',

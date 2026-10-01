@@ -9,6 +9,7 @@ export const BLOCK_STYLE_VARIANTS = {
   product: ['spotlight', 'compact', 'offer', 'service', 'editorial'] as const,
   course: ['spotlight', 'featured', 'editorial', 'stack', 'gated'] as const,
   tip: ['offer', 'compact', 'spotlight', 'conversion', 'benefits'] as const,
+  membership: ['spotlight', 'featured', 'offer', 'benefits', 'conversion'] as const,
   text: ['display', 'body', 'quote', 'announcement', 'stat'] as const,
   divider: ['hairline', 'gradient', 'numbered', 'icon', 'spacer'] as const,
   folder: ['accordion', 'directory', 'tabbed', 'nested', 'glass'] as const,

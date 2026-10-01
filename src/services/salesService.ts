@@ -5,6 +5,9 @@ export interface ProductOrder {
   profile_id: string;
   block_id: string;
   stripe_session_id: string;
+  commerce_type?: 'product' | 'course' | 'tip' | 'membership';
+  stripe_subscription_id?: string | null;
+  membership_status?: 'active' | 'past_due' | 'canceled' | 'incomplete' | null;
   payment_status: 'paid' | 'unpaid' | 'no_payment_required';
   amount_total: number;
   currency: string;

@@ -10,4 +10,6 @@ assert.equal(normalizeProductCurrency('EUR'), 'eur');
 assert.equal(normalizeProductCurrency('bitcoin'), null);
 assert.equal(validateBlockPayload('course', { price: '79', currency: 'USD', checkoutEnabled: true, deliveryUrl: 'https://example.com/access', lessons: [{ id: 'l1', title: 'Welcome' }] }).isValid, true);
 assert.equal(validateBlockPayload('course', { price: '79', currency: 'USD', checkoutEnabled: true, lessons: [{ id: 'l1', title: 'Welcome' }] }).isValid, false);
+assert.equal(validateBlockPayload('membership', { price: '9', currency: 'USD', interval: 'month', checkoutEnabled: true, benefits: ['Community access'] }).isValid, true);
+assert.equal(validateBlockPayload('membership', { price: '9', currency: 'USD', interval: 'weekly', checkoutEnabled: true }).isValid, false);
 console.log('Product checkout contract passed.');
