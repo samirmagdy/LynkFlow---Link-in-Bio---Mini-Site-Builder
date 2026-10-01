@@ -2021,8 +2021,33 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   const profileId = new URL(request.url).searchParams.get('profileId');
   const profileFilter = profileId ? `&profile_id=eq.${encodeURIComponent(profileId)}` : '';
   if (profileId && !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
-  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,commerce_type,stripe_subscription_id,membership_status,payment_status,amount_total,currency,customer_email,customer_name,delivery_url,delivery_sent_at,created_at,paid_at&order=created_at.desc&limit=500`, env);
+  const response = await supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}${profileFilter}&select=id,profile_id,block_id,stripe_session_id,commerce_type,stripe_subscription_id,membership_status,payment_status,amount_total,currency,customer_email,customer_name,delivery_url,delivery_sent_at,physical_product,fulfillment_status,shipping_name,shipping_address,tracking_number,tracking_url,fulfilled_at,created_at,paid_at&order=created_at.desc&limit=500`, env);
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function updateProductOrderFulfillment(request: Request, env: Env, orderId: string): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot update fulfillment.', 403);
+  let input: { status?: string; trackingNumber?: string; trackingUrl?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const status = String(input.status || '').trim();
+  if (!['pending', 'processing', 'fulfilled', 'cancelled'].includes(status)) return apiError('VALIDATION_ERROR', 'Choose a valid fulfillment status.', 422);
+  const existingResponse = await supabaseRequest(`product_orders?id=eq.${encodeURIComponent(orderId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,profile_id,physical_product`, env);
+  const existing = await existingResponse.json() as Array<{ id: string; profile_id: string; physical_product: boolean }>;
+  if (!existing[0] || !existing[0].physical_product || !canManageProfile(user, existing[0].profile_id)) return apiError('NOT_FOUND', 'Physical order not found.', 404);
+  const trackingNumber = String(input.trackingNumber || '').trim().slice(0, 120);
+  const trackingUrl = String(input.trackingUrl || '').trim();
+  if (trackingUrl) {
+    const check = validateUrl(trackingUrl);
+    if (!check.isValid || !/^https?:$/i.test(new URL(trackingUrl).protocol)) return apiError('VALIDATION_ERROR', 'Tracking link must be a valid HTTPS URL.', 422);
+  }
+  const now = new Date().toISOString();
+  const response = await supabaseRequest(`product_orders?id=eq.${encodeURIComponent(orderId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ fulfillment_status: status, tracking_number: trackingNumber || null, tracking_url: trackingUrl || null, fulfilled_at: status === 'fulfilled' ? now : null }) });
+  if (!response.ok) return apiError('PERSISTENCE_ERROR', 'Fulfillment status could not be saved.', 503);
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: `sales.order.${status}`, target: orderId, occurred_at: now, details: `Physical order fulfillment marked ${status}.` }) });
+  const rows = await response.json();
+  return json({ data: rows[0] || { id: orderId, fulfillment_status: status }, requestId: crypto.randomUUID() });
 }
 
 const SOCIAL_SHARE_PROVIDERS = new Set(['x', 'linkedin', 'facebook', 'whatsapp', 'telegram', 'email', 'tiktok']);
@@ -3166,6 +3191,7 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
   const block = blocks.find(candidate => candidate.id === blockId && (candidate.type === 'product' || candidate.type === 'course' || candidate.type === 'tip'));
   const payload = block?.payload || {};
   if (!block || payload.checkoutEnabled !== true) return json({ error: 'This block does not offer secure checkout.' }, 404);
+  const physicalProduct = block.type === 'product' && payload.physicalProduct === true;
   const price = parseProductPrice(block.type === 'tip' ? payload.amount : payload.price);
   const currency = normalizeProductCurrency(payload.currency);
   if (!price || !currency) return json({ error: 'This product has incomplete checkout details.' }, 422);
@@ -3186,6 +3212,7 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
     'metadata[profile_id]': String(profileRow?.profile_id || ''),
     'metadata[product_order]': 'true',
     'metadata[commerce_type]': block.type === 'tip' ? 'tip' : block.type === 'course' ? 'course' : isMembership ? 'membership' : 'product',
+    'metadata[physical_product]': physicalProduct ? 'true' : 'false',
   });
   if (isMembership) {
     params.set('line_items[0][price_data][recurring][interval]', payload.interval === 'year' ? 'year' : 'month');
@@ -3198,6 +3225,9 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
   if (description) params.set('line_items[0][price_data][product_data][description]', description);
   const image = safePublicHref(payload.image);
   if (image) params.set('line_items[0][price_data][product_data][images][0]', image);
+  if (physicalProduct) {
+    for (const [index, country] of ['US', 'CA', 'GB', 'AU', 'DE', 'FR', 'AE', 'SA'].entries()) params.set(`shipping_address_collection[allowed_countries][${index}]`, country);
+  }
   const session = await stripeRequest('/v1/checkout/sessions', env, params);
   return json({ url: session.url, sessionId: session.id });
 }
@@ -3293,6 +3323,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
   const metadata = (object.metadata || {}) as Record<string, string>;
   if (event.type === 'checkout.session.completed' && metadata.product_order === 'true' && metadata.workspace_id && metadata.profile_id && metadata.block_id) {
     const customerDetails = (object.customer_details || {}) as Record<string, unknown>;
+    const shippingDetails = (object.shipping_details || {}) as Record<string, unknown>;
     const paymentStatus = ['paid', 'unpaid', 'no_payment_required'].includes(String(object.payment_status)) ? String(object.payment_status) : 'unpaid';
     const customerEmail = typeof customerDetails.email === 'string' ? customerDetails.email : null;
     const customerName = typeof customerDetails.name === 'string' ? customerDetails.name : undefined;
@@ -3301,6 +3332,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     const protectedAccessToken = delivery && paymentStatus === 'paid' && ['product', 'course', 'membership'].includes(commerceType) ? randomSecret(48) : undefined;
     const protectedAccessUrl = protectedAccessToken ? `${env.APP_URL || new URL(request.url).origin}/course-access?token=${encodeURIComponent(protectedAccessToken)}` : undefined;
     const deliveryUrl = protectedAccessUrl || delivery?.deliveryUrl || null;
+    const physicalProduct = metadata.physical_product === 'true';
     const subscriptionId = String(object.subscription || '').startsWith('sub_') ? String(object.subscription) : null;
     await supabaseRequest('product_orders?on_conflict=stripe_session_id', env, {
       method: 'POST',
@@ -3320,6 +3352,10 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
         customer_email: customerEmail,
         customer_name: customerName || null,
         delivery_url: deliveryUrl,
+        physical_product: physicalProduct,
+        fulfillment_status: physicalProduct ? 'pending' : 'not_required',
+        shipping_name: typeof shippingDetails.name === 'string' ? shippingDetails.name : null,
+        shipping_address: shippingDetails.address && typeof shippingDetails.address === 'object' ? shippingDetails.address : null,
         access_token_hash: protectedAccessToken ? await sha256(protectedAccessToken) : null,
         access_token_expires_at: protectedAccessToken ? new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() : null,
         created_at: new Date(Number(object.created || Date.now() / 1000) * 1000).toISOString(),
@@ -3478,6 +3514,10 @@ export default {
     if (url.pathname === '/api/sales/orders') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listProductOrders(request, env); } catch (error) { return internalApiError('List product orders failed', error, 'Unable to load sales data.'); }
+    }
+    if (url.pathname.startsWith('/api/sales/orders/')) {
+      if (request.method !== 'PATCH') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await updateProductOrderFulfillment(request, env, decodeURIComponent(url.pathname.slice('/api/sales/orders/'.length))); } catch (error) { return internalApiError('Update product fulfillment failed', error, 'Unable to update order fulfillment.'); }
     }
     if (url.pathname === '/api/social/linkedin/start') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
