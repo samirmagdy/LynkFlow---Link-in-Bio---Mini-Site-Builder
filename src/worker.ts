@@ -654,6 +654,32 @@ async function unsubscribeMarketingNewsletter(request: Request, env: Env): Promi
 }
 
 
+function resolveBookingRequest(payload: Record<string, unknown>, data: Record<string, string>, now = new Date()): { requestedStart: string; durationMinutes: number; requestedDate: string; requestedTime: string; requesterEmail: string; requesterName?: string } | { error: string } {
+  const fields = Array.isArray(payload.fields) ? payload.fields as Array<Record<string, unknown>> : [];
+  const dateField = fields.find(field => field.type === 'date');
+  const timeField = fields.find(field => field.type === 'time');
+  const emailField = fields.find(field => field.type === 'email');
+  const nameField = fields.find(field => String(field.label || '').toLowerCase().includes('name'));
+  const requestedDate = String((dateField && data[String(dateField.id)]) || '').trim();
+  const requestedTime = String((timeField && data[String(timeField.id)]) || '09:00').trim();
+  const requesterEmail = String((emailField && data[String(emailField.id)]) || '').trim().toLowerCase();
+  const requesterName = nameField ? String(data[String(nameField.id)] || '').trim() : undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(requestedTime)) return { error: 'Choose a valid booking date and time.' };
+  if (!requesterEmail) return { error: 'An email address is required for booking requests.' };
+  const settings = (payload.bookingSettings && typeof payload.bookingSettings === 'object' ? payload.bookingSettings : {}) as Record<string, unknown>;
+  const allowedDays = Array.isArray(settings.days) ? settings.days.filter(day => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6).map(Number) : [1, 2, 3, 4, 5];
+  const day = new Date(`${requestedDate}T00:00:00Z`).getUTCDay();
+  if (!allowedDays.includes(day)) return { error: 'That date is outside the creator’s available days.' };
+  const durationMinutes = [15, 30, 60, 90, 120].includes(Number(settings.durationMinutes)) ? Number(settings.durationMinutes) : 30;
+  const startTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.startTime || '09:00')) ? String(settings.startTime || '09:00') : '09:00';
+  const endTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.endTime || '17:00')) ? String(settings.endTime || '17:00') : '17:00';
+  const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+  if (toMinutes(requestedTime) < toMinutes(startTime) || toMinutes(requestedTime) + durationMinutes > toMinutes(endTime)) return { error: `Choose a time between ${startTime} and ${endTime}.` };
+  const requestedStart = new Date(`${requestedDate}T${requestedTime}:00Z`);
+  if (Number.isNaN(requestedStart.getTime()) || requestedStart.getTime() <= now.getTime()) return { error: 'Choose a future booking time.' };
+  return { requestedStart: requestedStart.toISOString(), durationMinutes, requestedDate, requestedTime, requesterEmail, requesterName };
+}
+
 function extractFormContact(formPayload: Record<string, unknown>, data: Record<string, string>): { email?: string; name?: string } {
   const fields = Array.isArray(formPayload.fields) ? formPayload.fields as Array<Record<string, unknown>> : [];
   let email: string | undefined;
@@ -713,6 +739,13 @@ async function submitPublicForm(request: Request, env: Env, context: { waitUntil
   if (Object.keys(fieldErrors).length) return json({ error: 'Please correct the form fields.', fieldErrors }, 422);
 
   const { email, name } = extractFormContact(payload, input.data);
+  const booking = payload.formType === 'booking' ? resolveBookingRequest(payload, input.data) : null;
+  if (booking && 'error' in booking) return json({ error: booking.error }, 422);
+  if (booking) {
+    const conflictResponse = await supabaseRequest(`booking_requests?profile_id=eq.${encodeURIComponent(input.profileId)}&requested_start=eq.${encodeURIComponent(booking.requestedStart)}&status=in.(pending,confirmed)&select=id`, env);
+    const conflicts = await conflictResponse.json() as Array<{ id: string }>;
+    if (conflicts.length) return json({ error: 'That time was just requested by someone else. Please choose another slot.' }, 409);
+  }
   const submissionId = idempotencyKey ? `sub-${await sha256(`${profile.id}:${input.blockId}:${idempotencyKey}`)}` : `sub-${crypto.randomUUID()}`;
   if (idempotencyKey) {
     const existingResponse = await supabaseRequest(`form_submissions?id=eq.${encodeURIComponent(submissionId)}&profile_id=eq.${encodeURIComponent(input.profileId)}&select=id`, env);
@@ -735,6 +768,18 @@ async function submitPublicForm(request: Request, env: Env, context: { waitUntil
   // The deterministic id is the database-level idempotency claim. If another
   // request won the race, do not repeat subscriber or webhook side effects.
   if (idempotencyKey && !insertedSubmissions.length) return json({ success: true, submissionId });
+  if (booking) {
+    await supabaseRequest('booking_requests', env, {
+      method: 'POST', headers: { prefer: 'return=minimal' },
+      body: JSON.stringify({
+        id: `book_${crypto.randomUUID()}`, workspace_id: profile.workspace_id, profile_id: input.profileId,
+        block_id: input.blockId, form_submission_id: submissionId, requested_start: booking.requestedStart,
+        duration_minutes: booking.durationMinutes, requester_email: booking.requesterEmail,
+        requester_name: booking.requesterName || null, details: { requestedDate: booking.requestedDate, requestedTime: booking.requestedTime, data: input.data },
+        status: 'pending', created_at: submittedAt, updated_at: submittedAt
+      })
+    });
+  }
   if (email && (payload.subscriberMode === true || payload.formType === 'newsletter')) {
     await supabaseRequest('subscribers?on_conflict=workspace_id,profile_id,email', env, {
       method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -1829,6 +1874,36 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
+async function listBookingRequests(request: Request, env: Env): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot access booking requests.', 403);
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  if (!profileId || !canManageProfile(access.user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
+  const response = await supabaseRequest(`booking_requests?workspace_id=eq.${encodeURIComponent(access.user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,block_id,form_submission_id,requested_start,duration_minutes,requester_email,requester_name,details,status,created_at,updated_at&order=requested_start.asc&limit=200`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function updateBookingRequest(request: Request, env: Env, bookingId: string): Promise<Response> {
+  const access = await requirePaidWorkspace(request, env);
+  if (access instanceof Response) return access;
+  if (access.user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot update booking requests.', 403);
+  let input: { status?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  if (!['confirmed', 'declined', 'cancelled'].includes(input.status || '')) return apiError('VALIDATION_ERROR', 'Booking status must be confirmed, declined, or cancelled.', 422);
+  const response = await supabaseRequest(`booking_requests?id=eq.${encodeURIComponent(bookingId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}&select=*`, env);
+  const rows = await response.json() as Array<{ id: string; profile_id: string; requester_email: string; requester_name?: string; requested_start: string; status: string }>;
+  const booking = rows[0];
+  if (!booking || !canManageProfile(access.user, booking.profile_id)) return apiError('NOT_FOUND', 'Booking request not found.', 404);
+  if (['declined', 'cancelled'].includes(booking.status)) return apiError('CONFLICT', 'This booking request is already closed.', 409);
+  await supabaseRequest(`booking_requests?id=eq.${encodeURIComponent(bookingId)}&workspace_id=eq.${encodeURIComponent(access.user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: input.status, updated_at: new Date().toISOString() }) });
+  if (input.status === 'confirmed' && env.RESEND_API_KEY) {
+    const when = new Date(booking.requested_start).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
+    await sendResendEmail(env, { to: booking.requester_email, subject: 'Your booking request is confirmed', html: `<p>Hi ${escapeHtml(booking.requester_name || 'there')},</p><p>Your booking request for <strong>${escapeHtml(when)} UTC</strong> has been confirmed.</p>` });
+  }
+  return json({ data: { id: bookingId, status: input.status }, requestId: crypto.randomUUID() });
+}
+
 function campaignHtml(body: string): string {
   return escapeHtml(body).replace(/\r?\n/g, '<br>');
 }
@@ -2667,6 +2742,15 @@ export default {
     if (url.pathname === '/api/sales/orders') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listProductOrders(request, env); } catch (error) { return internalApiError('List product orders failed', error, 'Unable to load sales data.'); }
+    }
+    if (url.pathname === '/api/bookings') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await listBookingRequests(request, env); } catch (error) { return internalApiError('List booking requests failed', error, 'Unable to load booking requests.'); }
+    }
+    if (url.pathname.startsWith('/api/bookings/')) {
+      if (request.method !== 'PATCH') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      const bookingId = decodeURIComponent(url.pathname.slice('/api/bookings/'.length));
+      try { return await updateBookingRequest(request, env, bookingId); } catch (error) { return internalApiError('Update booking request failed', error, 'Unable to update booking request.'); }
     }
     if (url.pathname === '/api/campaigns') {
       if (request.method === 'GET') {

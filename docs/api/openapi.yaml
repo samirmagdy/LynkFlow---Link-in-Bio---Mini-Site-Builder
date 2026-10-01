@@ -265,6 +265,28 @@ paths:
       operationId: delete-email-automation
       security: [{Session: []}]
       responses: {'200': {description: Automation deleted}, '401': {description: Authentication required}, '404': {description: Automation not found}}
+  /api/bookings:
+    get:
+      operationId: list-booking-requests
+      security: [{Session: []}]
+      parameters:
+        - {name: profileId, in: query, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Booking requests returned}
+        '401': {description: Authentication required}
+        '403': {description: Paid plan or profile access required}
+  /api/bookings/{bookingId}:
+    parameters: [{name: bookingId, in: path, required: true, schema: {type: string}}]
+    patch:
+      operationId: update-booking-request
+      security: [{Session: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [status], properties: {status: {type: string, enum: [confirmed, declined, cancelled]}}}}}}
+      responses:
+        '200': {description: Booking request updated}
+        '401': {description: Authentication required}
+        '403': {description: Paid plan or profile access required}
+        '404': {description: Booking request not found}
+        '409': {description: Booking request already closed}
 components:
   securitySchemes:
     ApiKey:

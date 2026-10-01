@@ -16,16 +16,18 @@ import {
   UserX,
   Send,
   Bot as BotIcon,
+  CalendarCheck,
 } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 import { CampaignsPanel } from './CampaignsPanel';
 import { AutomationsPanel } from './AutomationsPanel';
+import { BookingsPanel } from './BookingsPanel';
 
 export const FormInboxView: React.FC = () => {
   const { submissions, deleteSubmission, unsubscribeSubscriber, activeProfile, user, showToast, appendAuditLog } = useApp();
   
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers' | 'campaigns' | 'automations'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'subscribers' | 'campaigns' | 'automations' | 'bookings'>('submissions');
   
   // Submissions State
   const [searchTerm, setSearchTerm] = useState('');
@@ -183,10 +185,10 @@ export const FormInboxView: React.FC = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 p-1 bg-surface border border-line rounded-xl">
+        <div className="flex max-w-full items-center gap-1.5 overflow-x-auto p-1 bg-surface border border-line rounded-xl">
           <button
             onClick={() => setActiveTab('submissions')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'submissions'
                 ? 'bg-surface-2 text-ink shadow-xs'
                 : 'text-muted hover:text-ink-strong'
@@ -197,7 +199,7 @@ export const FormInboxView: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('subscribers')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'subscribers'
                 ? 'bg-surface-2 text-ink shadow-xs'
                 : 'text-muted hover:text-ink-strong'
@@ -208,7 +210,7 @@ export const FormInboxView: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('campaigns')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'campaigns'
                 ? 'bg-surface-2 text-ink shadow-xs'
                 : 'text-muted hover:text-ink-strong'
@@ -219,7 +221,7 @@ export const FormInboxView: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('automations')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'automations'
                 ? 'bg-surface-2 text-ink shadow-xs'
                 : 'text-muted hover:text-ink-strong'
@@ -227,6 +229,17 @@ export const FormInboxView: React.FC = () => {
           >
             <BotIcon className="w-3.5 h-3.5 text-accent" />
             <span>Automations</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('bookings')}
+            className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'bookings'
+                ? 'bg-surface-2 text-ink shadow-xs'
+                : 'text-muted hover:text-ink-strong'
+            }`}
+          >
+            <CalendarCheck className="w-3.5 h-3.5 text-accent" />
+            <span>Bookings</span>
           </button>
         </div>
       </div>
@@ -534,6 +547,7 @@ export const FormInboxView: React.FC = () => {
 
       {activeTab === 'campaigns' && <CampaignsPanel />}
       {activeTab === 'automations' && <AutomationsPanel />}
+      {activeTab === 'bookings' && <BookingsPanel />}
 
       {/* MODAL 1: Submission Detail Drawer / Dialog */}
       {selectedSubmission && (

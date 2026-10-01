@@ -293,6 +293,13 @@ export interface FormBlockPayload {
   consentText?: string;
   requireConsent?: boolean;
   subscriberMode?: boolean; // automatically syncs email fields to Subscriber Audience list
+  bookingSettings?: {
+    timezone?: string;
+    days?: number[];
+    startTime?: string;
+    endTime?: string;
+    durationMinutes?: 15 | 30 | 60 | 90 | 120;
+  };
 }
 
 /** Email-signup has the same persisted field contract as a newsletter form,

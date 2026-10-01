@@ -23,6 +23,8 @@ const checks = [
   ['automations create', '/api/automations', 'POST'],
   ['automation update', '/api/automations/aut_example', 'PATCH'],
   ['automation delete', '/api/automations/aut_example', 'DELETE'],
+  ['bookings list', '/api/bookings?profileId=example', 'GET'],
+  ['booking update', '/api/bookings/book_example', 'PATCH'],
 ] as const;
 let failed = 0;
 for (const [name, path, method] of checks) {
