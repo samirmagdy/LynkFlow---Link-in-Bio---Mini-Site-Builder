@@ -14,6 +14,9 @@ export const BLOCK_STYLE_CSS = `
 .profile-theme-root [data-block-style=columns] .space-y-2{columns:2;column-gap:1rem}
 .profile-theme-root [data-block-style=columns] .space-y-2>*{break-inside:avoid}
 .profile-theme-root [data-block-style=featured] h4{font-size:1rem;letter-spacing:-.02em}
+.profile-theme-root [data-featured-block=true]{position:relative;border:1px solid color-mix(in srgb,var(--theme-accent,#6366f1) 72%,var(--theme-border,#30394d));box-shadow:0 18px 42px color-mix(in srgb,var(--theme-accent,#6366f1) 18%,transparent);}
+.profile-theme-root [data-featured-block=true] .profile-featured-label{position:absolute;top:.65rem;inset-inline-end:.7rem;z-index:2;border-radius:999px;background:var(--theme-accent,#6366f1);color:var(--theme-accent-text,#fff);padding:.22rem .55rem;font-size:.62rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;line-height:1;pointer-events:none}
+.profile-theme-root [data-featured-block=true]>a,.profile-theme-root [data-featured-block=true]>div{border-color:transparent!important}
 .profile-theme-root [data-block-style=searchable]{outline:1px solid color-mix(in srgb,var(--theme-accent,#6366f1) 28%,transparent)}
 .profile-theme-root [data-block-style=logo] blockquote:before{content:'✦';display:block;color:var(--theme-accent,#6366f1);font-style:normal;font-size:1.4rem}
 .profile-theme-root [data-block-style=rating]{background:linear-gradient(135deg,color-mix(in srgb,var(--theme-accent,#6366f1) 10%,transparent),transparent)}

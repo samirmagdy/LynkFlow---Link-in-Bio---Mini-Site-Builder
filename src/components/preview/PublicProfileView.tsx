@@ -703,6 +703,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               block.style?.variant,
               block.type === 'link' ? variants.link : block.type === 'media' || block.type === 'gallery' || block.type === 'carousel' ? variants.image : undefined
             );
+            const isFeaturedBlock = blockIdx === 0 && (
+              block.pinned === true ||
+              block.conversionRole === 'primary' ||
+              block.style?.variant === 'featured' ||
+              blockStyle === 'featured'
+            );
 
             const renderBlockContent = () => {
               switch (block.type) {
@@ -1484,7 +1490,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               className="w-full"
               data-variant-id={registeredVariant?.id || 'default'}
               data-block-style={blockStyle}
+              data-featured-block={isFeaturedBlock ? 'true' : undefined}
             >
+              {isFeaturedBlock && <span className="profile-featured-label" aria-hidden="true">Featured</span>}
               {renderBlockContent()}
             </AnimatedProfileBlock>
           );

@@ -4,7 +4,7 @@ const snapshot = {
   username: 'contract-test', displayName: 'Contract Test', bio: 'English and العربية content', nowStatus: { label: 'Now', text: 'Working on a new collection', url: 'https://example.com/collection' }, avatarUrl: 'https://images.example/avatar.webp', verified: true, followerCount: 12500, socialLinks: [{ id: 'social-1', platform: 'instagram', url: 'https://instagram.com/contract', active: true }],
   standardTheme: { language: 'ar', direction: 'rtl', profile: { showAvatar: true } },
   tabs: [{ blocks: [
-    { type: 'link', title: 'Link', payload: { url: 'https://example.com' } },
+    { type: 'link', title: 'Link', pinned: true, payload: { url: 'https://example.com' } },
     { type: 'text', title: 'Intro', payload: { textType: 'p', content: 'Text' } },
     { type: 'media', title: 'Image', payload: { mediaType: 'image', url: 'https://images.example/image.webp' } },
     { type: 'media', title: 'Video', payload: { mediaType: 'video', url: 'https://cdn.example/video.mp4', captionsUrl: 'https://cdn.example/video.vtt' } },
@@ -63,6 +63,7 @@ const normalizedSafetyStyles = publicProfileStyles({ standardTheme: { background
 const requiredMarkers = ['data-block-id="contract-0"', 'data-block-id="contract-1"', 'data-block-id="contract-2"', 'data-block-id="contract-3"', 'data-block-id="contract-4"', 'data-block-id="contract-5"', 'data-block-id="contract-6"', 'data-block-id="contract-7"', 'data-block-id="contract-8"', 'data-block-id="contract-9"', 'data-block-id="contract-10"', 'data-block-id="contract-11"', 'data-block-id="contract-12"', 'data-block-id="contract-13"', 'data-block-id="contract-14"', 'data-block-id="contract-15"', 'data-block-id="contract-16"', 'Get tickets', 'Leave a tip', 'Enroll now', 'Save contact', 'Working on a new collection', 'Verified', 'followers', '<video', '<track', 'dir="rtl"'];
 const failures = requiredMarkers.filter(marker => !html.includes(marker));
 if ((html.match(/data-block-style="/g) || []).length !== snapshot.tabs[0].blocks.length) failures.push('every rendered block must carry a resolved premium style');
+if (!html.includes('data-featured-block="true"') || !html.includes('profile-featured-label')) failures.push('pinned primary block must render as a featured conversion block');
 if (!tabHtml.includes('role="tablist"') || !tabHtml.includes('aria-selected="true"') || tabHtml.indexOf('Primary') > tabHtml.indexOf('Secondary') || tabHtml.includes('Must not render')) failures.push('server tab navigation, active-tab isolation or CTA ordering');
 if (!backgroundStyles.includes('contract-background.jpg') || !backgroundStyles.includes('background-position:30% 70%')) failures.push('server background image/focal point');
 if (!backgroundStyles.includes('--theme-avatar-size:72px') || !backgroundStyles.includes('--theme-heading-scale:0.9') || !backgroundStyles.includes('@media (min-width:375px) and (max-width:639px)')) failures.push('server responsive theme tokens');
