@@ -23,12 +23,13 @@ interface AnimatedProfileBlockProps {
   theme: AnimationTheme;
   className?: string;
   'data-variant-id'?: string;
+  'data-block-style'?: string;
   children: React.ReactNode;
 }
 
 const ENTRANCE_EFFECTS: AnimeBlockEffect[] = ['springPop', 'elasticWave', 'backZoom', 'kineticDrop', 'cinematicGlide', 'flip3dX', 'flip3dY', 'spiralUnfold', 'blurFocus', 'slideSkew'];
 
-export const AnimatedProfileBlock: React.FC<AnimatedProfileBlockProps> = ({ block, theme, className = '', 'data-variant-id': variantId, children }) => {
+export const AnimatedProfileBlock: React.FC<AnimatedProfileBlockProps> = ({ block, theme, className = '', 'data-variant-id': variantId, 'data-block-style': blockStyle, children }) => {
   const elementRef = useRef<HTMLDivElement>(null);
   const { animationTrigger } = useApp();
   const legacyAnimation = (block.payload as Partial<LinkBlockPayload>).animation;
@@ -61,7 +62,7 @@ export const AnimatedProfileBlock: React.FC<AnimatedProfileBlockProps> = ({ bloc
     if (elementRef.current && clickEffect !== 'none') triggerBlockClickFx(event, elementRef.current, clickEffect, theme.accentColor);
   };
 
-  return <div ref={elementRef} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onClick={handleClick} className={`anime-profile-item ${className}`} data-block-id={block.id} data-variant-id={variantId} data-anime-effect={effect}>{children}</div>;
+  return <div ref={elementRef} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onClick={handleClick} className={`anime-profile-item ${className}`} data-block-id={block.id} data-variant-id={variantId} data-block-style={blockStyle} data-anime-effect={effect}>{children}</div>;
 };
 
 function animateBlock(element: HTMLElement, title: string, effect: AnimeBlockEffect, speed: 'slow' | 'normal' | 'fast', intensity: 'subtle' | 'medium' | 'expressive', accentColor?: string): void {

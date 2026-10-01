@@ -5,6 +5,7 @@ import {
   AnimeHoverEffect, 
   AnimeClickEffect,
   LinkBlockPayload, 
+  BlockStyleVariant,
 } from '../../types';
 import { 
   ANIME_BLOCK_EFFECTS, 
@@ -19,6 +20,7 @@ import {
   stopBlockAnimation 
 } from '../../utils/animeAnimations';
 import { validateBlockPayload } from '../../utils/blockValidator';
+import { BLOCK_STYLE_LABELS, getBlockStyleVariants } from '../../utils/blockStyleVariants';
 import { 
   X, 
   Plus, 
@@ -134,6 +136,7 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
   const [scheduleEnd, setScheduleEnd] = useState(block.schedule?.end ?? '');
   const [payload, setPayload] = useState<EditablePayload>(JSON.parse(JSON.stringify(block.payload)) as EditablePayload);
   const [blockStyle, setBlockStyle] = useState(block.style || {});
+  const styleVariants = getBlockStyleVariants(block.type);
 
   // Anime.js Animation Configuration State
   const legacyAnimation = (block.payload as Partial<LinkBlockPayload>).animation;
@@ -287,9 +290,21 @@ export const BlockEditModal: React.FC<BlockEditModalProps> = ({ block, isOpen, o
           </div>
 
           <details className="rounded-xl bg-canvas/70 border border-line p-3.5">
-            <summary className="cursor-pointer text-xs font-semibold text-body">Per-block style override</summary>
+            <summary className="cursor-pointer text-xs font-semibold text-body">Premium block styling</summary>
             <div className="grid grid-cols-2 gap-3 mt-3">
+              <label className="text-[11px] text-muted col-span-2">Visual treatment
+                <select
+                  value={blockStyle.variant || styleVariants[0]}
+                  onChange={(e) => setBlockStyle(prev => ({ ...prev, variant: e.target.value as BlockStyleVariant }))}
+                  className="mt-1 w-full px-2 py-1.5 rounded bg-surface border border-line text-xs text-ink"
+                  aria-label={`Visual treatment for ${block.type} block`}
+                >
+                  {styleVariants.map((variant) => <option key={variant} value={variant}>{BLOCK_STYLE_LABELS[variant] || variant.replace(/-/g, ' ')}</option>)}
+                </select>
+                <span className="block mt-1 text-[10px] text-subtle">A compact, responsive style family is applied to the public page preview.</span>
+              </label>
               <label className="text-[11px] text-muted">Background<input value={blockStyle.backgroundColor || ''} onChange={(e) => setBlockStyle(prev => ({ ...prev, backgroundColor: e.target.value || undefined }))} placeholder="#ffffff or transparent" className="mt-1 w-full px-2 py-1.5 rounded bg-surface border border-line text-xs text-ink" /></label>
+              <label className="text-[11px] text-muted">Background image URL<input type="url" value={blockStyle.backgroundImage || ''} onChange={(e) => setBlockStyle(prev => ({ ...prev, backgroundImage: e.target.value || undefined }))} placeholder="https://.../image.jpg" className="mt-1 w-full px-2 py-1.5 rounded bg-surface border border-line text-xs text-ink" /></label>
               <label className="text-[11px] text-muted">Text color<input value={blockStyle.textColor || ''} onChange={(e) => setBlockStyle(prev => ({ ...prev, textColor: e.target.value || undefined }))} placeholder="#ffffff" className="mt-1 w-full px-2 py-1.5 rounded bg-surface border border-line text-xs text-ink" /></label>
               <label className="text-[11px] text-muted">Radius (px)<input type="number" min="0" max="999" value={blockStyle.borderRadius ?? ''} onChange={(e) => setBlockStyle(prev => ({ ...prev, borderRadius: e.target.value === '' ? undefined : Number(e.target.value) }))} className="mt-1 w-full px-2 py-1.5 rounded bg-surface border border-line text-xs text-ink" /></label>
               <label className="text-[11px] text-muted">Height (px)<input type="number" min="40" max="240" value={blockStyle.height ?? ''} onChange={(e) => setBlockStyle(prev => ({ ...prev, height: e.target.value === '' ? undefined : Number(e.target.value) }))} className="mt-1 w-full px-2 py-1.5 rounded bg-surface border border-line text-xs text-ink" /></label>

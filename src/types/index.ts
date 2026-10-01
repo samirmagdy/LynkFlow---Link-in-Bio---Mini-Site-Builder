@@ -37,6 +37,20 @@ export type BlockType =
   | 'emailSignup'
   | 'contact';
 
+/** Premium visual treatments shared by the block editor and public renderer. */
+export type BlockStyleVariant =
+  | 'solid' | 'outline' | 'soft' | 'image' | 'featured'
+  | 'framed' | 'cinematic' | 'full-bleed' | 'split' | 'captioned'
+  | 'grid' | 'bento' | 'masonry' | 'filmstrip' | 'editorial'
+  | 'peek' | 'card' | 'spotlight' | 'compact' | 'offer' | 'service'
+  | 'display' | 'body' | 'quote' | 'announcement' | 'stat'
+  | 'hairline' | 'gradient' | 'numbered' | 'icon' | 'spacer'
+  | 'accordion' | 'directory' | 'tabbed' | 'nested' | 'glass'
+  | 'columns' | 'searchable' | 'avatar' | 'logo' | 'rating'
+  | 'download' | 'row' | 'media-kit' | 'stack' | 'gated'
+  | 'inline' | 'conversational' | 'booking' | 'newsletter' | 'conversion' | 'benefits'
+  | 'email' | 'whatsapp' | 'phone' | 'methods';
+
 export interface SocialLink {
   id: string;
   platform: 'instagram' | 'tiktok' | 'twitter' | 'youtube' | 'spotify' | 'github' | 'linkedin' | 'email' | 'discord' | 'threads' | 'whatsapp';
@@ -315,6 +329,8 @@ export interface Block {
 }
 
 interface BlockStyleOverride {
+  /** Premium visual treatment selected per block; falls back to the theme family. */
+  variant?: BlockStyleVariant;
   backgroundColor?: string;
   textColor?: string;
   borderRadius?: number;
