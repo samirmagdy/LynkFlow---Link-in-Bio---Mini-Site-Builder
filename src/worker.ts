@@ -397,6 +397,23 @@ async function sendDigitalDeliveryEmail(env: Env, to: string, customerName: stri
   return response.ok;
 }
 
+async function sendMembershipWelcomeEmail(env: Env, to: string, customerName: string | undefined, membershipName: string, manageUrl: string): Promise<boolean> {
+  if (!env.RESEND_API_KEY) return false;
+  const greeting = customerName ? `Hi ${escapeHtml(customerName)},` : 'Hi,';
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev',
+      to,
+      subject: `Your ${membershipName} membership is active`,
+      html: `<p>${greeting}</p><p>Thanks for joining <strong>${escapeHtml(membershipName)}</strong>. Your recurring membership is active.</p><p><a href="${escapeHtml(manageUrl)}">Manage billing or cancel membership</a></p><p>Keep this email so you can manage your subscription later.</p>`,
+    }),
+  });
+  if (!response.ok) console.error('Membership welcome email failed', await response.text());
+  return response.ok;
+}
+
 async function publishedProductDelivery(env: Env, profileId: string, blockId: string): Promise<{ productName: string; deliveryUrl: string; isCourse: boolean } | null> {
   const response = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(profileId)}&select=snapshot`, env);
   const rows = await response.json() as Array<{ snapshot?: PublicSnapshot }>;
@@ -2715,6 +2732,14 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     });
     if (delivery && customerEmail && deliveryUrl && await sendDigitalDeliveryEmail(env, customerEmail, customerName, delivery.productName, deliveryUrl, delivery.isCourse)) {
       await supabaseRequest(`product_orders?stripe_session_id=eq.${encodeURIComponent(String(object.id || event.id))}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ delivery_sent_at: new Date().toISOString() }) });
+    }
+    if (commerceType === 'membership' && customerEmail && subscriptionId && String(object.customer || '').startsWith('cus_')) {
+      try {
+        const portal = await stripeRequest('/v1/billing_portal/sessions', env, new URLSearchParams({ customer: String(object.customer), return_url: `${env.APP_URL || new URL(request.url).origin}/@${encodeURIComponent(metadata.profile_username || '')}` }), `membership-portal-${String(object.id || event.id)}`);
+        if (typeof portal.url === 'string' && portal.url) await sendMembershipWelcomeEmail(env, customerEmail, customerName, String(metadata.profile_username ? `${metadata.profile_username} membership` : 'creator membership'), portal.url);
+      } catch (error) {
+        console.error('Membership portal session or welcome email failed', error);
+      }
     }
     await supabaseRequest('stripe_events', env, { method: 'POST', headers: { prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify({ id: event.id, event_type: event.type }) });
     return json({ received: true });
