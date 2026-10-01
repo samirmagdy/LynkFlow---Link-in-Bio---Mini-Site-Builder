@@ -13,6 +13,14 @@ export function createPublishedSnapshot(profile: Profile, publisherEmail: string
     username: profile.username.toLowerCase(),
     displayName: profile.displayName || `@${profile.username}`,
     bio: profile.bio || '',
+    nowStatus: profile.nowStatus?.text?.trim()
+      ? {
+          label: profile.nowStatus.label?.trim() || 'Now',
+          text: profile.nowStatus.text.trim(),
+          ...(profile.nowStatus.url?.trim() ? { url: profile.nowStatus.url.trim() } : {}),
+          updatedAt: profile.nowStatus.updatedAt || now
+        }
+      : undefined,
     avatarUrl: profile.avatarUrl || '',
     category: profile.category || 'Creator',
     starterSiteId: profile.starterSiteId,

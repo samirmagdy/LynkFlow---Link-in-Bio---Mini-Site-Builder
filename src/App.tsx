@@ -193,6 +193,7 @@ const AppContent: React.FC = () => {
           username: resolutionResult.snapshot.username,
           displayName: resolutionResult.snapshot.displayName,
           bio: resolutionResult.snapshot.bio,
+          nowStatus: resolutionResult.snapshot.nowStatus,
           avatarUrl: resolutionResult.snapshot.avatarUrl,
           category: resolutionResult.snapshot.category,
           verified: resolutionResult.snapshot.verified,

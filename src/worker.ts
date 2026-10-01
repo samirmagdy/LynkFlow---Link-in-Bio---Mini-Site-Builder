@@ -1467,6 +1467,13 @@ function createPublicSnapshot(data: Record<string, unknown>, profileId: string, 
     username,
     displayName: String(data.displayName || `@${username}`),
     bio: String(data.bio || ''),
+    ...(data.nowStatus && typeof data.nowStatus === 'object' && String((data.nowStatus as Record<string, unknown>).text || '').trim()
+      ? { nowStatus: {
+          label: String((data.nowStatus as Record<string, unknown>).label || 'Now').trim().slice(0, 32),
+          text: String((data.nowStatus as Record<string, unknown>).text).trim().slice(0, 180),
+          ...((data.nowStatus as Record<string, unknown>).url ? { url: String((data.nowStatus as Record<string, unknown>).url).trim().slice(0, 2048) } : {}),
+          updatedAt: String((data.nowStatus as Record<string, unknown>).updatedAt || publishedAt)
+        } } : {}),
     avatarUrl: String(data.avatarUrl || ''),
     category: String(data.category || 'Creator'),
     starterSiteId: typeof data.starterSiteId === 'string' ? data.starterSiteId : undefined,

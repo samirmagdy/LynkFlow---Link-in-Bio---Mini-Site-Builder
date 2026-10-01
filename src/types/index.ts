@@ -475,6 +475,7 @@ export interface PublishedProfileSnapshot {
   username: string;
   displayName: string;
   bio: string;
+  nowStatus?: ProfileNowStatus;
   avatarUrl: string;
   category: string;
   starterSiteId?: string;
@@ -496,6 +497,13 @@ export interface PublishedProfileSnapshot {
   };
   publishedAt: string;
   publishedBy: string;
+}
+
+export interface ProfileNowStatus {
+  label: string;
+  text: string;
+  url?: string;
+  updatedAt?: string;
 }
 
 export interface PreviewToken {
@@ -523,6 +531,8 @@ export interface Profile {
   username: string;
   displayName: string;
   bio: string;
+  /** A lightweight, time-stamped status shown near the public profile header. */
+  nowStatus?: ProfileNowStatus;
   avatarUrl: string;
   category: string;
   verified: boolean;

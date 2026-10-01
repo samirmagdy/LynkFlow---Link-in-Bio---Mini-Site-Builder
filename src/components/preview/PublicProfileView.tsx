@@ -563,6 +563,33 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </p>
           )}
 
+          {profile.nowStatus?.text?.trim() && (
+            <div
+              className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] shadow-sm anime-profile-item"
+              style={{
+                borderColor: 'var(--theme-border, #30394D)',
+                backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))',
+                color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))'
+              }}
+              aria-label={`${profile.nowStatus.label || 'Now'}: ${profile.nowStatus.text}`}
+            >
+              <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--theme-accent,#6366F1)] opacity-50" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--theme-accent,#6366F1)]" />
+              </span>
+              <span className="font-semibold">{profile.nowStatus.label || 'Now'}</span>
+              <span className="opacity-60">·</span>
+              {safePublicHref(profile.nowStatus.url) ? (
+                <a href={safePublicHref(profile.nowStatus.url) || '#'} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">
+                  {profile.nowStatus.text}
+                  <ExternalLink className="ml-1 inline h-3 w-3" aria-hidden="true" />
+                </a>
+              ) : (
+                <span className="truncate">{profile.nowStatus.text}</span>
+              )}
+            </div>
+          )}
+
           {(profile.verified || Number(profile.followerCount) > 0) && <div className="mb-4 flex flex-wrap items-center justify-center gap-2 text-[11px]" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>
             {profile.verified && <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))' }}><ShieldCheck className="h-3.5 w-3.5 text-blue-500" /> Verified</span>}
             {Number(profile.followerCount) > 0 && <span className="rounded-full border px-2.5 py-1" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))' }}>{new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(Number(profile.followerCount))} followers</span>}

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
 import { Profile, SocialLink } from '../../types';
-import { Plus, Trash2, Globe, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Globe, ShieldCheck, ExternalLink, Radio } from 'lucide-react';
 
 interface ProfileHeaderEditorProps {
   onOpenSeoModal?: () => void;
@@ -20,6 +20,20 @@ export const ProfileHeaderEditor: React.FC<ProfileHeaderEditorProps> = ({ onOpen
     updateDraftProfile(prev => ({
       ...prev,
       [field]: value
+    }));
+  };
+
+  const handleNowStatusChange = (field: 'label' | 'text' | 'url', value: string) => {
+    updateDraftProfile(prev => ({
+      ...prev,
+      nowStatus: {
+        label: prev.nowStatus?.label || 'Now',
+        text: prev.nowStatus?.text || '',
+        url: prev.nowStatus?.url || '',
+        ...prev.nowStatus,
+        [field]: value,
+        updatedAt: new Date().toISOString()
+      }
     }));
   };
 
@@ -162,6 +176,54 @@ export const ProfileHeaderEditor: React.FC<ProfileHeaderEditorProps> = ({ onOpen
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Current status: a lightweight public signal that makes the page feel alive. */}
+      <div className="rounded-2xl border border-line bg-canvas/70 p-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-success/10 text-success"><Radio className="h-4 w-4" /></span>
+            <div>
+              <p className="text-xs font-semibold text-ink">Current status</p>
+              <p className="text-[11px] text-muted">Give visitors a quick reason to come back.</p>
+            </div>
+          </div>
+          <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-body">
+            <input
+              type="checkbox"
+              checked={Boolean(activeProfile.nowStatus)}
+              onChange={event => handleFieldChange('nowStatus', event.target.checked ? { label: 'Now', text: '', updatedAt: new Date().toISOString() } : undefined)}
+              className="h-4 w-4 rounded border-line-strong bg-surface text-accent focus:ring-0"
+            />
+            Show on page
+          </label>
+        </div>
+        {activeProfile.nowStatus && (
+          <div className="mt-3 grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)]">
+            <input
+              value={activeProfile.nowStatus.label}
+              onChange={event => handleNowStatusChange('label', event.target.value.slice(0, 32))}
+              aria-label="Current status label"
+              placeholder="Now"
+              className="min-h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none focus:border-accent"
+            />
+            <input
+              value={activeProfile.nowStatus.text}
+              onChange={event => handleNowStatusChange('text', event.target.value.slice(0, 180))}
+              aria-label="Current status message"
+              placeholder="Working on a new collection…"
+              className="min-h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none focus:border-accent"
+            />
+            <input
+              value={activeProfile.nowStatus.url || ''}
+              onChange={event => handleNowStatusChange('url', event.target.value.slice(0, 2048))}
+              aria-label="Current status link"
+              placeholder="Optional link (https://…)"
+              type="url"
+              className="min-h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none focus:border-accent sm:col-span-2"
+            />
+          </div>
+        )}
       </div>
 
       {/* SEO & Social Card Summary Strip */}
