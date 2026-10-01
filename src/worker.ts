@@ -2255,7 +2255,8 @@ async function publishLinkedInPost(request: Request, env: Env): Promise<Response
   const content = String(input.content || '').trim();
   const targetUrl = String(input.targetUrl || '').trim();
   if (!content || content.length > 2800) return apiError('VALIDATION_ERROR', 'Message must be between 1 and 2800 characters.', 422);
-  if (input.profileId && !canManageProfile(user, input.profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  const profileId = String(input.profileId || '').trim();
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
   if (targetUrl) {
     const targetCheck = validateUrl(targetUrl);
     if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
@@ -2284,12 +2285,13 @@ async function publishTikTokPost(request: Request, env: Env): Promise<Response> 
   const mediaUrl = String(input.mediaUrl || '').trim();
   if (!content || content.length > 2200) return apiError('VALIDATION_ERROR', 'TikTok caption must be between 1 and 2200 characters.', 422);
   if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) return apiError('VALIDATION_ERROR', 'A public HTTPS video URL is required for TikTok.', 422);
-  if (input.profileId && !canManageProfile(user, input.profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  const profileId = String(input.profileId || '').trim();
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
   const connection = await activeTikTokConnection(user.id, env);
   if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect TikTok before publishing.', 409);
   try {
     const result = await publishTikTokVideoWithConnection(connection, content, mediaUrl, env);
-    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: input.profileId || '', provider: 'tiktok', content, target_url: null, media_url: mediaUrl, scheduled_at: new Date().toISOString(), status: 'publishing', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
+    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'tiktok', content, target_url: null, media_url: mediaUrl, scheduled_at: new Date().toISOString(), status: 'publishing', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
     return json({ data: { provider: 'tiktok', providerPostId: result.providerPostId, status: 'processing' }, requestId: crypto.randomUUID() }, 202);
   } catch (error) {
     if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
@@ -2363,12 +2365,12 @@ async function cancelSocialPublication(request: Request, env: Env, publicationId
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
   if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot cancel social posts.', 403);
-  const existingResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,status,profile_id`, env);
-  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string }>;
+  const existingResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,status,profile_id,provider`, env);
+  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string; provider: 'linkedin' | 'tiktok' }>;
   if (!existing[0] || !canManageProfile(user, existing[0].profile_id)) return apiError('NOT_FOUND', 'Scheduled post not found.', 404);
   if (existing[0].status !== 'scheduled') return apiError('CONFLICT', 'Only scheduled posts can be cancelled.', 409);
   await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }) });
-  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.linkedin.schedule_cancelled', target: publicationId, occurred_at: new Date().toISOString(), details: 'Cancelled scheduled LinkedIn publication.' }) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: `social.${existing[0].provider}.schedule_cancelled`, target: publicationId, occurred_at: new Date().toISOString(), details: `Cancelled scheduled ${existing[0].provider} publication.` }) });
   return json({ success: true });
 }
 

@@ -17,7 +17,8 @@ const BROADCAST_PROVIDERS = PROVIDERS.filter(provider => provider.id !== 'email'
 function defaultScheduleTime(): string {
   const value = new Date(Date.now() + 60 * 60_000);
   value.setSeconds(0, 0);
-  return value.toISOString().slice(0, 16);
+  const offset = value.getTimezoneOffset();
+  return new Date(value.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
 function shareUrl(provider: ShareProvider, content: string, targetUrl: string): string {
