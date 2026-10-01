@@ -36,22 +36,22 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
   }> = [
     {
       type: 'link',
-      title: 'Link Card',
-      description: 'Redirect visitors to any website, product, portfolio, or newsletter',
+      title: 'Link Button',
+      description: 'Send visitors to your website, shop, portfolio, or social page',
       icon: <Link2 className="w-5 h-5 text-accent" />,
       badge: 'Core'
     },
     {
       type: 'form',
-      title: 'Lead & Subscribe Form',
-      description: 'Collect email signups, quote inquiries, or messages directly into your inbox',
+      title: 'Contact Form',
+      description: 'Collect email signups, project inquiries, or messages in one place',
       icon: <MailCheck className="w-5 h-5 text-success" />,
       badge: 'Conversion'
     },
     {
       type: 'media',
-      title: 'Video / Embed',
-      description: 'Embed YouTube videos, reels, Spotify players, or image banners',
+      title: 'Photo or Video',
+      description: 'Share a photo, video, reel, or audio moment with your audience',
       icon: <Video className="w-5 h-5 text-danger" />
     },
     {
@@ -62,8 +62,8 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
     },
     {
       type: 'carousel',
-      title: 'Image Carousel',
-      description: 'Present a swipeable sequence of images with optional links',
+      title: 'Swipeable Photos',
+      description: 'Let visitors swipe through a sequence of images',
       icon: <GalleryHorizontal className="w-5 h-5 text-warning" />
     },
     {
@@ -82,8 +82,8 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
     },
     {
       type: 'folder',
-      title: 'Folder / Collection',
-      description: 'Collapsible group of related links or sub-resources to keep page clean',
+      title: 'Link Collection',
+      description: 'Keep related links together in a neat expandable section',
       icon: <FolderTree className="w-5 h-5 text-warning" />
     },
     {
@@ -94,8 +94,8 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
     },
     {
       type: 'faq',
-      title: 'FAQ Accordion',
-      description: 'Answer frequent audience questions in interactive expandable panels',
+      title: 'Frequently Asked Questions',
+      description: 'Answer common questions with simple expandable answers',
       icon: <HelpCircle className="w-5 h-5 text-accent-soft" />
     },
     {
@@ -112,8 +112,8 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
     },
     {
       type: 'contact',
-      title: 'Direct Contact',
-      description: 'Quick mailto or phone dial action card with subject preset',
+      title: 'Contact Me',
+      description: 'Give visitors a quick way to email, call, or message you',
       icon: <PhoneCall className="w-5 h-5 text-info" />
     },
     {
@@ -159,7 +159,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                     {item.title}
                   </span>
                   {item.badge && (
-                    <span className="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded-full bg-surface-2 text-body">
+                    <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 rounded-full bg-surface-2 text-body">
                       {item.badge}
                     </span>
                   )}

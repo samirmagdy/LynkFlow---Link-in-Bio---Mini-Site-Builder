@@ -18,6 +18,30 @@ export interface BackgroundUploadResult {
   placeholderUrl?: string;
 }
 
+export interface BlockUploadResult {
+  url: string;
+  path: string;
+}
+
+/** Uploads creator media without exposing storage details in block editors. */
+export async function uploadBlockAsset(file: File, profileId: string): Promise<BlockUploadResult> {
+  if (!supabase) throw new Error('File uploads are not configured yet.');
+  if (!profileId) throw new Error('Choose a profile before uploading a file.');
+  if (!file.size || file.size > MAX_BYTES) throw new Error('Files must be 50 MB or smaller.');
+  const allowed = new Set(['application/pdf', 'application/zip', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+  const isMedia = file.type.startsWith('image/') || file.type.startsWith('video/');
+  if (!isMedia && !allowed.has(file.type)) throw new Error('Choose an image, video, PDF, document, or ZIP file.');
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('Sign in before uploading a file.');
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-100) || 'upload';
+  const path = `${userData.user.id}/${profileId}/blocks/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type, cacheControl: '31536000', upsert: false });
+  if (error) throw new Error(error.message || 'File upload failed.');
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  if (!data.publicUrl) throw new Error('The uploaded file could not be opened.');
+  return { url: data.publicUrl, path };
+}
+
 export interface BackgroundAsset {
   id: string;
   profileId?: string | null;
