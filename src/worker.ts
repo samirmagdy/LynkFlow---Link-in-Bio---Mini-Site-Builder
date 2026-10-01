@@ -606,8 +606,18 @@ async function requestCustomerLibrary(request: Request, env: Env): Promise<Respo
   if (!validEmail) return contentType.includes('application/x-www-form-urlencoded') ? customerLibraryMessagePage('Enter a valid email address and try again.', 422) : apiError('VALIDATION_ERROR', 'A valid email address is required.', 422);
 
   const ordersResponse = await supabaseRequest(`product_orders?customer_email=ilike.${encodeURIComponent(email)}&payment_status=eq.paid&select=id&limit=1`, env);
+  if (!ordersResponse.ok) {
+    return contentType.includes('application/x-www-form-urlencoded')
+      ? customerLibraryMessagePage('The purchase library is temporarily unavailable. Please try again shortly.', 503)
+      : apiError('PERSISTENCE_ERROR', 'The purchase library is temporarily unavailable. Please retry.', 503);
+  }
   const orders = await ordersResponse.json() as Array<{ id: string }>;
-  if (orders.length && env.RESEND_API_KEY) {
+  if (orders.length && !env.RESEND_API_KEY) {
+    return contentType.includes('application/x-www-form-urlencoded')
+      ? customerLibraryMessagePage('Purchase access email is temporarily unavailable. Please try again shortly.', 503)
+      : apiError('EMAIL_DELIVERY_UNAVAILABLE', 'Purchase access email is not configured. Please retry later.', 503);
+  }
+  if (orders.length) {
     const cooldownSince = new Date(Date.now() - 60 * 1000).toISOString();
     const recentSessionResponse = await supabaseRequest(`customer_library_sessions?customer_email=ilike.${encodeURIComponent(email)}&created_at=gt.${encodeURIComponent(cooldownSince)}&select=id&limit=1`, env);
     const recentSessions = recentSessionResponse.ok ? await recentSessionResponse.json() as Array<{ id: string }> : [];
@@ -643,11 +653,13 @@ async function customerLibraryPage(request: Request, env: Env): Promise<Response
   }
   const tokenHash = await hashValue(token, env.FORM_IP_HASH_SECRET || env.SUPABASE_URL || 'lynkflow-customer-library');
   const sessionResponse = await supabaseRequest(`customer_library_sessions?token_hash=eq.${encodeURIComponent(tokenHash)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,customer_email,expires_at&limit=1`, env);
+  if (!sessionResponse.ok) return customerLibraryMessagePage('The purchase library is temporarily unavailable. Please try again shortly.', 503);
   const sessions = await sessionResponse.json() as Array<{ id: string; customer_email: string; expires_at: string }>;
   const session = sessions[0];
   if (!session) return customerLibraryMessagePage('This access link is invalid or expired.', 404);
   await supabaseRequest(`customer_library_sessions?id=eq.${encodeURIComponent(session.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ last_used_at: new Date().toISOString() }) });
   const ordersResponse = await supabaseRequest(`product_orders?customer_email=ilike.${encodeURIComponent(session.customer_email)}&payment_status=eq.paid&order=created_at.desc&limit=50&select=id,profile_id,block_id,commerce_type,membership_status,delivery_url,created_at,paid_at`, env);
+  if (!ordersResponse.ok) return customerLibraryMessagePage('The purchase library is temporarily unavailable. Please try again shortly.', 503);
   const orders = await ordersResponse.json() as CustomerLibraryOrder[];
   const profileCache = new Map<string, Promise<Array<{ username?: string; snapshot?: PublicSnapshot }>>>();
   const items = (await Promise.all(orders.map(async order => {
