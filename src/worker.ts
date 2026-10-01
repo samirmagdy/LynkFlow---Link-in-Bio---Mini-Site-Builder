@@ -85,7 +85,7 @@ function deploymentHealth(env: Env): Response {
     email: requiredBindings.email.every(binding => Boolean(envValues[binding])),
     stripe: requiredBindings.stripe.every(binding => Boolean(envValues[binding])),
     webhooks: requiredBindings.webhooks.every(binding => Boolean(envValues[binding])),
-    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET))),
+    socialOAuth: Boolean(envValues.SOCIAL_OAUTH_ENCRYPTION_KEY && ((envValues.LINKEDIN_CLIENT_ID && envValues.LINKEDIN_CLIENT_SECRET) || (envValues.TIKTOK_CLIENT_KEY && envValues.TIKTOK_CLIENT_SECRET) || (envValues.META_APP_ID && envValues.META_APP_SECRET))),
     instagramAutomations: Boolean(envValues.META_APP_ID && envValues.META_APP_SECRET && envValues.META_VERIFY_TOKEN && envValues.SOCIAL_OAUTH_ENCRYPTION_KEY),
     customDomains: requiredBindings.customDomains.every(binding => Boolean(envValues[binding])),
     supportRouting: requiredBindings.supportRouting.every(binding => Boolean(envValues[binding])),
@@ -2417,14 +2417,16 @@ function socialOAuthRedirect(request: Request, env: Env, path: string): string {
   return new URL(path, `${base.replace(/\/$/, '')}/`).toString();
 }
 
-type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram';
+type SocialOAuthProvider = 'linkedin' | 'tiktok' | 'instagram' | 'facebook';
 
 function socialOAuthConfigured(env: Env, provider: SocialOAuthProvider): boolean {
   const providerConfigured = provider === 'linkedin'
     ? Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET)
     : provider === 'tiktok'
       ? Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET)
-      : Boolean(env.META_APP_ID && env.META_APP_SECRET && env.META_VERIFY_TOKEN);
+      : provider === 'instagram'
+        ? Boolean(env.META_APP_ID && env.META_APP_SECRET && env.META_VERIFY_TOKEN)
+        : Boolean(env.META_APP_ID && env.META_APP_SECRET);
   return Boolean(providerConfigured && env.SOCIAL_OAUTH_ENCRYPTION_KEY && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
@@ -2586,6 +2588,59 @@ async function finishInstagramOAuth(request: Request, env: Env): Promise<Respons
   await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ id: `social_${oauthState.workspace_id}_instagram_${instagram.id}`, workspace_id: oauthState.workspace_id, provider: 'instagram', provider_account_id: instagram.id, account_name: instagram.username || account.name || 'Instagram account', access_token_ciphertext: await encryptSocialToken(account.access_token, env), refresh_token_ciphertext: null, token_expires_at: null, scopes: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages'], status: 'active', updated_at: now.toISOString() }) });
   await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: 'instagram-oauth', action: 'social.instagram.connected', target: instagram.id, occurred_at: now.toISOString(), details: 'Instagram automation connection established.' }) });
   return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/forms')}?instagram=connected`, 302);
+}
+
+async function startFacebookOAuth(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role !== 'owner') return apiError('FORBIDDEN', 'Only the workspace owner can connect social accounts.', 403);
+  if (!socialOAuthConfigured(env, 'facebook')) return apiError('SERVICE_UNAVAILABLE', 'Facebook publishing is not configured yet.', 503);
+  const state = randomSecret(32);
+  await supabaseRequest('social_oauth_states', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `oauth_${crypto.randomUUID()}`, workspace_id: user.id, provider: 'facebook', state_hash: await sha256(state), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }) });
+  const authorize = new URL(`https://www.facebook.com/${env.META_GRAPH_API_VERSION || 'v23.0'}/dialog/oauth`);
+  authorize.searchParams.set('client_id', env.META_APP_ID!);
+  authorize.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/facebook/callback'));
+  authorize.searchParams.set('state', state);
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('scope', 'pages_show_list,pages_read_engagement,pages_manage_posts');
+  return Response.redirect(authorize.toString(), 302);
+}
+
+async function finishFacebookOAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const failure = (reason: string) => Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?facebook=error&reason=${encodeURIComponent(reason)}`, 302);
+  if (!code || !state || !socialOAuthConfigured(env, 'facebook')) return failure('configuration');
+  const stateResponse = await supabaseRequest(`social_oauth_states?state_hash=eq.${encodeURIComponent(await sha256(state))}&provider=eq.facebook&used_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,workspace_id`, env);
+  const states = await stateResponse.json() as Array<{ id: string; workspace_id: string }>;
+  const oauthState = states[0];
+  if (!oauthState) return failure('expired');
+  const markUsed = await supabaseRequest(`social_oauth_states?id=eq.${encodeURIComponent(oauthState.id)}&used_at=is.null`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ used_at: new Date().toISOString() }) });
+  if (!(await markUsed.json() as unknown[]).length) return failure('replayed');
+  const tokenUrl = new URL(`${metaGraphBase(env)}/oauth/access_token`);
+  tokenUrl.searchParams.set('client_id', env.META_APP_ID!);
+  tokenUrl.searchParams.set('client_secret', env.META_APP_SECRET!);
+  tokenUrl.searchParams.set('redirect_uri', socialOAuthRedirect(request, env, '/api/social/facebook/callback'));
+  tokenUrl.searchParams.set('code', code);
+  const tokenResponse = await fetch(tokenUrl.toString());
+  if (!tokenResponse.ok) return failure('token_exchange');
+  const token = await tokenResponse.json() as { access_token?: string };
+  if (!token.access_token) return failure('token_exchange');
+  const accountsUrl = new URL(`${metaGraphBase(env)}/me/accounts`);
+  accountsUrl.searchParams.set('fields', 'id,name,access_token');
+  accountsUrl.searchParams.set('access_token', token.access_token);
+  const accountsResponse = await fetch(accountsUrl.toString());
+  if (!accountsResponse.ok) return failure('page_lookup');
+  const accountsBody = await accountsResponse.json() as { data?: Array<{ id?: string; name?: string; access_token?: string }> };
+  const pages = (accountsBody.data || []).filter(page => page.id && page.access_token);
+  if (!pages.length) return failure('facebook_page_required');
+  const now = new Date().toISOString();
+  for (const page of pages) {
+    await supabaseRequest('social_connections?on_conflict=workspace_id,provider,provider_account_id', env, { method: 'POST', headers: { prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ id: `social_${oauthState.workspace_id}_facebook_${page.id}`, workspace_id: oauthState.workspace_id, provider: 'facebook', provider_account_id: page.id, account_name: page.name || 'Facebook Page', access_token_ciphertext: await encryptSocialToken(page.access_token!, env), refresh_token_ciphertext: null, token_expires_at: null, scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'], status: 'active', updated_at: now }) });
+  }
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: oauthState.workspace_id, actor: 'facebook-oauth', action: 'social.facebook.connected', target: pages.map(page => page.id).join(','), occurred_at: now, details: `Connected ${pages.length} Facebook Page${pages.length === 1 ? '' : 's'} for publishing.` }) });
+  return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?facebook=connected`, 302);
 }
 
 async function listSocialConnections(request: Request, env: Env): Promise<Response> {
@@ -2771,6 +2826,28 @@ async function activeInstagramConnection(workspaceId: string, env: Env): Promise
   return rows[0] || null;
 }
 
+async function activeFacebookConnection(workspaceId: string, env: Env): Promise<LinkedInConnectionRow | null> {
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(workspaceId)}&provider=eq.facebook&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const rows = await response.json() as LinkedInConnectionRow[];
+  return rows[0] || null;
+}
+
+async function publishFacebookWithConnection(connection: LinkedInConnectionRow, content: string, targetUrl: string, env: Env): Promise<{ providerPostId: string }> {
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const response = await fetch(`${metaGraphBase(env)}/${encodeURIComponent(connection.provider_account_id)}/feed`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ message: content.slice(0, 63206), ...(targetUrl ? { link: targetUrl } : {}), access_token: accessToken }),
+  });
+  if (response.status === 401 || response.status === 190) throw new Error('CONNECTION_EXPIRED');
+  if (!response.ok) throw new Error('PROVIDER_ERROR');
+  const body = await response.json() as { id?: string; post_id?: string };
+  const providerPostId = body.post_id || body.id;
+  if (!providerPostId) throw new Error('PROVIDER_ERROR');
+  return { providerPostId };
+}
+
 async function publishInstagramMediaWithConnection(connection: LinkedInConnectionRow, content: string, mediaUrl: string, mediaType: 'image' | 'video', env: Env): Promise<{ providerPostId: string }> {
   if (!mediaUrl || !validateUrl(mediaUrl).isValid || !/^https?:$/i.test(new URL(mediaUrl).protocol)) throw new Error('MEDIA_REQUIRED');
   if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
@@ -2912,6 +2989,38 @@ async function publishInstagramPost(request: Request, env: Env): Promise<Respons
     if (error instanceof Error && error.message === 'MEDIA_REQUIRED') return apiError('VALIDATION_ERROR', 'A public HTTPS image or video URL is required for Instagram.', 422);
     if (error instanceof Error && error.message === 'PROVIDER_TIMEOUT') return apiError('PROVIDER_TIMEOUT', 'Instagram is still processing this media. Try again shortly.', 504);
     return apiError('PROVIDER_ERROR', 'Instagram could not publish this media. No success was recorded.', 502);
+  }
+}
+
+async function publishFacebookPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot publish to social accounts.', 403);
+  let input: { content?: string; targetUrl?: string; profileId?: string; shareEventId?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 63206) return apiError('VALIDATION_ERROR', 'Facebook message must be between 1 and 63206 characters.', 422);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  }
+  const connection = await activeFacebookConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect a Facebook Page before publishing.', 409);
+  try {
+    const result = await publishFacebookWithConnection(connection, content, targetUrl, env);
+    const now = new Date().toISOString();
+    await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'facebook', content, target_url: targetUrl || null, media_url: null, media_type: 'image', scheduled_at: now, status: 'published', provider_post_id: result.providerPostId, last_error: null, attempt_count: 1, share_event_id: input.shareEventId || null, created_by: user.email, created_at: now, updated_at: now }) });
+    if (input.shareEventId) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(input.shareEventId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+    return json({ data: { provider: 'facebook', providerPostId: result.providerPostId, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
+      await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+      return apiError('CONNECTION_EXPIRED', 'Facebook rejected this connection. Reconnect and try again.', 401);
+    }
+    return apiError('PROVIDER_ERROR', 'Facebook could not publish this post. No success was recorded.', 502);
   }
 }
 
@@ -3958,6 +4067,14 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await finishInstagramOAuth(request, env); } catch (error) { console.error('Finish Instagram OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/forms')}?instagram=error&reason=server`, 302); }
     }
+    if (url.pathname === '/api/social/facebook/start') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await startFacebookOAuth(request, env); } catch (error) { return internalApiError('Start Facebook OAuth failed', error, 'Unable to connect Facebook.'); }
+    }
+    if (url.pathname === '/api/social/facebook/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await finishFacebookOAuth(request, env); } catch (error) { console.error('Finish Facebook OAuth failed', error); return Response.redirect(`${socialOAuthRedirect(request, env, '/studio/social')}?facebook=error&reason=server`, 302); }
+    }
     if (url.pathname === '/api/webhooks/instagram') {
       try { return await handleInstagramWebhook(request, env); } catch (error) { console.error('Instagram webhook failed', error); return apiError('WEBHOOK_FAILED', 'Instagram webhook could not be processed.', 500); }
     }
@@ -3999,6 +4116,10 @@ export default {
     if (url.pathname === '/api/social/instagram/post') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishInstagramPost(request, env); } catch (error) { return internalApiError('Publish Instagram post failed', error, 'Unable to publish to Instagram.'); }
+    }
+    if (url.pathname === '/api/social/facebook/post') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await publishFacebookPost(request, env); } catch (error) { return internalApiError('Publish Facebook post failed', error, 'Unable to publish to Facebook.'); }
     }
     if (url.pathname === '/api/social/publications') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
