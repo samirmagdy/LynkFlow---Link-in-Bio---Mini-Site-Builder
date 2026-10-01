@@ -1,10 +1,13 @@
-import type { Profile } from '../types';
+import type { Block, Profile, SocialLink } from '../types';
 
 interface CreateProfileInput {
   username: string;
   displayName: string;
   category: string;
   theme: Profile['theme'];
+  bio?: string;
+  socialLinks?: Array<Pick<SocialLink, 'platform'>>;
+  starterBlocks?: Array<{ type: Block['type']; title: string; payload: Record<string, unknown> }>;
 }
 
 const createIdFactory = (prefix: string) => {
@@ -24,12 +27,44 @@ export function createProfile(input: CreateProfileInput): Profile {
   const displayName = input.displayName || username;
   const now = new Date().toISOString();
   const theme = input.theme;
+  const starterBlocks = input.starterBlocks?.length
+    ? input.starterBlocks
+    : [
+        {
+          type: 'link' as const,
+          title: 'My Official Website',
+          payload: { url: 'https://example.com', subtitle: 'Portfolio, client inquiries and store', highlightBadge: 'Official', animation: 'none' as const }
+        },
+        {
+          type: 'link' as const,
+          title: 'Featured Project / Recent Work',
+          payload: { url: 'https://example.com/project', subtitle: 'Check out our latest release', highlightBadge: 'New', animation: 'shimmer' as const }
+        },
+        {
+          type: 'form' as const,
+          title: 'Get In Touch',
+          payload: {
+            formType: 'contact' as const,
+            description: 'Send a direct message or booking inquiry',
+            fields: [
+              { id: 'f-name', label: 'Your Name', type: 'text' as const, required: true },
+              { id: 'f-email', label: 'Email', type: 'email' as const, required: true },
+              { id: 'f-msg', label: 'Message', type: 'textarea' as const, required: true }
+            ],
+            submitButtonText: 'Send Message',
+            successMessage: 'Message received! Will respond shortly.'
+          }
+        }
+      ];
+  const socialPlatforms = input.socialLinks?.length
+    ? input.socialLinks
+    : [{ platform: 'instagram' as const }, { platform: 'twitter' as const }, { platform: 'email' as const }];
 
   return {
     id: profileId(),
     username,
     displayName,
-    bio: 'Welcome to my official links, portfolio, and projects.',
+    bio: input.bio?.trim() || 'Welcome to my official links, portfolio, and projects.',
     avatarUrl: '',
     category: input.category || 'Creator',
     verified: false,
@@ -37,56 +72,27 @@ export function createProfile(input: CreateProfileInput): Profile {
     publishedVersion: 1,
     directLinkMode: false,
     socialPosition: 'top',
-    socialLinks: [
-      { id: socialId(), platform: 'instagram', url: 'https://instagram.com', active: true },
-      { id: socialId(), platform: 'twitter', url: 'https://x.com', active: true },
-      { id: socialId(), platform: 'email', url: 'mailto:contact@domain.com', active: true }
-    ],
+    socialLinks: socialPlatforms.map(({ platform }) => ({
+      id: socialId(),
+      platform,
+      url: platform === 'email' ? 'mailto:contact@domain.com' : `https://${platform === 'twitter' ? 'x' : platform}.com`,
+      active: true
+    })),
     theme,
     tabs: [{
       id: tabId(),
       title: 'Main',
       slug: 'main',
       position: 0,
-      blocks: [
-        {
-          id: blockId(),
-          type: 'link',
-          title: 'My Official Website',
-          position: 0,
-          isHidden: false,
-          clicks: 0,
-          payload: { url: 'https://example.com', subtitle: 'Portfolio, client inquiries and store', highlightBadge: 'Official', animation: 'none' }
-        },
-        {
-          id: blockId(),
-          type: 'link',
-          title: 'Featured Project / Recent Work',
-          position: 1,
-          isHidden: false,
-          clicks: 0,
-          payload: { url: 'https://example.com/project', subtitle: 'Check out our latest release', highlightBadge: 'New', animation: 'shimmer' }
-        },
-        {
-          id: blockId(),
-          type: 'form',
-          title: 'Get In Touch',
-          position: 2,
-          isHidden: false,
-          clicks: 0,
-          payload: {
-            formType: 'contact',
-            description: 'Send a direct message or booking inquiry',
-            fields: [
-              { id: 'f-name', label: 'Your Name', type: 'text', required: true },
-              { id: 'f-email', label: 'Email', type: 'email', required: true },
-              { id: 'f-msg', label: 'Message', type: 'textarea', required: true }
-            ],
-            submitButtonText: 'Send Message',
-            successMessage: 'Message received! Will respond shortly.'
-          }
-        }
-      ]
+      blocks: starterBlocks.map((block, position) => ({
+        id: blockId(),
+        type: block.type,
+        title: block.title,
+        position,
+        isHidden: false,
+        clicks: 0,
+        payload: structuredClone(block.payload) as unknown as Block['payload']
+      }))
     }],
     qrConfig: {
       fgColor: theme.textColor,

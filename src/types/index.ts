@@ -784,6 +784,7 @@ export interface UserAccount {
 
 export interface StarterProfileBlueprint {
   category: string;
+  personaTemplateId?: string;
   handle: string;
   displayName: string;
   bio: string;

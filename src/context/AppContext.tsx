@@ -16,7 +16,7 @@ import {
   BrandKit,
   StarterProfileBlueprint,
 } from '../types';
-import { 
+import {
   INITIAL_PROFILES, 
   INITIAL_WORKSPACE, 
   INITIAL_ANALYTICS, 
@@ -24,6 +24,7 @@ import {
   INITIAL_AUDIT_LOGS,
   THEME_PRESETS
 } from '../data/mockData';
+import { PERSONA_TEMPLATES } from '../data/personaTemplates';
 import { StandardTheme } from '../types/themeSchema';
 import { normalizeTheme, toLegacyCompatTheme } from '../utils/themeEngine';
 import { enforceBrandKitThemePolicy } from '../utils/brandKitPermissions';
@@ -1105,7 +1106,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
   };
 
-  const createNewProfile = async (username: string, displayName: string, category: string, themeId?: string): Promise<string> => {
+  const createNewProfile = async (
+    username: string,
+    displayName: string,
+    category: string,
+    themeId?: string,
+    starter?: StarterProfileBlueprint
+  ): Promise<string> => {
     // BIL-003: Authoritative entitlement check for profile creation
     const check = billingService.checkFeatureEntitlement(workspace, 'create_profile', {
       currentProfileCount: profiles.length
@@ -1117,7 +1124,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
     }
 
     const selectedTheme = THEME_PRESETS.find(t => t.id === themeId) || THEME_PRESETS[0];
-    const newProfile = createProfileRecord({ username, displayName, category, theme: selectedTheme });
+    const normalizedCategory = category.toLowerCase();
+    const personaId = starter?.personaTemplateId || (normalizedCategory.includes('music')
+      ? 'music-artist'
+      : normalizedCategory.includes('beauty')
+        ? 'beauty-service'
+        : normalizedCategory.includes('hospitality')
+          ? 'small-business-shop'
+          : normalizedCategory.includes('tech')
+            ? 'coach-consultant'
+            : normalizedCategory.includes('agency')
+              ? 'creator-portfolio'
+              : 'creator-portfolio');
+    const persona = PERSONA_TEMPLATES.find(template => template.id === personaId);
+    const newProfile = createProfileRecord({
+      username,
+      displayName,
+      category,
+      theme: selectedTheme,
+      bio: starter?.bio || persona?.bio,
+      socialLinks: persona?.socialLinks,
+      starterBlocks: persona?.blocks
+    });
 
     if (isSupabaseConfigured && user.id !== 'usr-guest') {
       try {
@@ -2236,7 +2264,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
         starter.handle,
         starter.displayName || starter.handle,
         starter.category,
-        starter.themeId
+        starter.themeId,
+        starter
       );
       if (!profileId) return;
     }

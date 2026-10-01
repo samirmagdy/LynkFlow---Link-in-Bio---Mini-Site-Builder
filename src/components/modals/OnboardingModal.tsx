@@ -15,11 +15,11 @@ import { Dialog } from '../common/Dialog';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
 const CATEGORIES = [
-  { id: 'Creator & Artist', label: 'Creator & Visual Artist', desc: 'Photography, portfolio, YouTube cinema reels & digital prints' },
-  { id: 'Design Agency & Studio', label: 'Agency & Studio', desc: 'Client case studies, quote intake forms & font licenses' },
-  { id: 'Hospitality & Culinary', label: 'Culinary & Hospitality', desc: 'Menus, reservations, cookbook preorders & masterclasses' },
-  { id: 'Podcaster & Musician', label: 'Musician & Audio', desc: 'Spotify streams, tour tickets, merch shop & newsletter' },
-  { id: 'Tech & Startup', label: 'Tech & Modern Founder', desc: 'Product demos, investor deck, beta signups & calendar booking' }
+  { id: 'Creator & Artist', personaTemplateId: 'creator-portfolio', label: 'Creator & Visual Artist', desc: 'Photography, portfolio, YouTube cinema reels & digital prints' },
+  { id: 'Design Agency & Studio', personaTemplateId: 'creator-portfolio', label: 'Agency & Studio', desc: 'Client case studies, quote intake forms & font licenses' },
+  { id: 'Hospitality & Culinary', personaTemplateId: 'small-business-shop', label: 'Culinary & Hospitality', desc: 'Menus, reservations, cookbook preorders & masterclasses' },
+  { id: 'Podcaster & Musician', personaTemplateId: 'music-artist', label: 'Musician & Audio', desc: 'Spotify streams, tour tickets, merch shop & newsletter' },
+  { id: 'Tech & Startup', personaTemplateId: 'coach-consultant', label: 'Tech & Modern Founder', desc: 'Product demos, investor deck, beta signups & calendar booking' }
 ];
 
 const ThemePreviewCard: React.FC<{ theme: (typeof THEME_PRESETS)[number]; selected: boolean }> = ({ theme, selected }) => {
@@ -80,6 +80,7 @@ export const OnboardingModal: React.FC = () => {
     } else if (step === 3) {
       const blueprint: StarterProfileBlueprint = {
         category,
+        personaTemplateId: CATEGORIES.find(item => item.id === category)?.personaTemplateId,
         handle: handleCheck.normalized,
         displayName: displayName.trim() || handleCheck.normalized,
         bio: bio.trim() || `Official links, portfolio and releases for ${displayName.trim() || handleCheck.normalized}.`,
