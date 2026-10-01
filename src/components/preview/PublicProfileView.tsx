@@ -343,6 +343,22 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     }
   };
 
+  const handleDownloadVCard = () => {
+    const escapeVCard = (value: string) => value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+    const email = profile.socialLinks.find(link => link.active && link.platform === 'email')?.url.replace(/^mailto:/i, '').split('?')[0];
+    const socialUrls = profile.socialLinks.filter(link => link.active && link.platform !== 'email' && safePublicHref(link.url)).map(link => `item1.X-SOCIALPROFILE;type=${link.platform.toUpperCase()}:${safePublicHref(link.url)}`).join('\n');
+    const lines = [
+      'BEGIN:VCARD', 'VERSION:3.0', `FN:${escapeVCard(profile.displayName || profile.username)}`, `N:${escapeVCard(profile.displayName || profile.username)};;;;`, `URL:${window.location.href}`,
+      profile.bio ? `NOTE:${escapeVCard(profile.bio)}` : '', email ? `EMAIL;TYPE=INTERNET:${escapeVCard(email)}` : '', socialUrls, 'END:VCARD'
+    ].filter(Boolean).join('\n');
+    const url = URL.createObjectURL(new Blob([lines], { type: 'text/vcard;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${(profile.username || 'creator').replace(/[^a-z0-9_-]/gi, '-')}.vcf`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const toggleFolder = (blockId: string) => {
     setOpenFolders(prev => ({ ...prev, [blockId]: !prev[blockId] }));
   };
@@ -546,6 +562,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               {profile.bio}
             </p>
           )}
+
+          <button type="button" onClick={handleDownloadVCard} className="mb-4 inline-flex min-h-9 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition hover:scale-[1.02]" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
+            <Download className="h-3.5 w-3.5" /> Save contact
+          </button>
 
           {/* Social Icons Bar (Top Position) */}
           {socialIconPlacement === 'header' && profile.socialLinks.some(s => s.active && safePublicHref(s.url)) && (

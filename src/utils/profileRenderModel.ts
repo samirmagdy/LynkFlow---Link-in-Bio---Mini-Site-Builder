@@ -5,6 +5,7 @@ export interface RenderableBlockLike {
   id?: string;
   isHidden?: boolean;
   position?: number;
+  pinned?: boolean;
   conversionRole?: string;
   schedule?: { enabled?: boolean; start?: string; end?: string } | null;
 }
@@ -102,6 +103,7 @@ export function resolveRenderableBlocks<TBlock extends RenderableBlockLike>(tab:
     return true;
   });
   const score = (block: TBlock) => {
+    if (block.pinned) return -1;
     if (theme.conversion?.primaryBlockId === block.id) return 0;
     if (theme.conversion?.secondaryBlockId === block.id) return 1;
     if (theme.layout?.ctaPosition === 'first' && block.conversionRole === 'primary') return 0;

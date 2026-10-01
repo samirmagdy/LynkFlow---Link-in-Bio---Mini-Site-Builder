@@ -76,6 +76,11 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
     updateBlock(currentTab.id, block.id, { isHidden: !block.isHidden });
   };
 
+  const handleTogglePin = (block: Block) => {
+    activateDraftPreview();
+    updateBlock(currentTab.id, block.id, { pinned: !block.pinned });
+  };
+
   const handleMoveUp = (index: number) => {
     if (index > 0) {
       activateDraftPreview();
@@ -369,6 +374,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
                 onDuplicateBlock={(id) => { activateDraftPreview(); duplicateBlock(currentTab.id, id); }}
                 onRemoveBlock={(id) => { activateDraftPreview(); removeBlock(currentTab.id, id); }}
                 onToggleHide={handleToggleHide}
+                onTogglePin={handleTogglePin}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
                 onReorder={(from, to) => { activateDraftPreview(); reorderBlocks(currentTab.id, from, to); }}

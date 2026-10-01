@@ -346,6 +346,8 @@ export interface Block {
   payload: BlockPayload;
   position: number;
   isHidden: boolean;
+  /** Keep this conversion link at the top of its tab. */
+  pinned?: boolean;
   schedule?: {
     enabled: boolean;
     start?: string; // ISO date

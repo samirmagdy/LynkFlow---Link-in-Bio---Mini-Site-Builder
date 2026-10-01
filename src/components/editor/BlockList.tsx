@@ -35,6 +35,7 @@ import {
   ,GalleryHorizontal
   ,ShoppingBag
   ,HandCoins
+  ,Pin
 } from 'lucide-react';
 import { ProductIllustration } from '../illustration/ProductIllustration';
 
@@ -44,6 +45,7 @@ interface BlockListProps {
   onDuplicateBlock: (blockId: string) => void;
   onRemoveBlock: (blockId: string) => void;
   onToggleHide: (block: Block) => void;
+  onTogglePin: (block: Block) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onReorder?: (fromIndex: number, toIndex: number) => void;
@@ -55,6 +57,7 @@ export const BlockList: React.FC<BlockListProps> = ({
   onDuplicateBlock,
   onRemoveBlock,
   onToggleHide,
+  onTogglePin,
   onMoveUp,
   onMoveDown,
   onReorder
@@ -394,6 +397,16 @@ export const BlockList: React.FC<BlockListProps> = ({
                 className="p-1.5 rounded-lg text-accent hover:text-white hover:bg-indigo-950 transition-colors cursor-pointer"
               >
                 <Play className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onTogglePin(block)}
+                aria-label={block.pinned ? `Unpin ${block.title}` : `Pin ${block.title} to the top`}
+                title={block.pinned ? 'Remove from top' : 'Keep at top'}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${block.pinned ? 'text-accent bg-accent/10' : 'text-muted hover:text-accent hover:bg-surface-2'}`}
+              >
+                <Pin className="w-3.5 h-3.5" />
               </button>
 
               <button
