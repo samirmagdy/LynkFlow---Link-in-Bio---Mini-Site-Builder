@@ -1,7 +1,7 @@
 import { publicProfileStyles, renderPublicProfileBody } from '../src/worker';
 
 const snapshot = {
-  username: 'contract-test', displayName: 'Contract Test', bio: 'English and العربية content', avatarUrl: 'https://images.example/avatar.webp', socialLinks: [{ id: 'social-1', platform: 'instagram', url: 'https://instagram.com/contract', active: true }],
+  username: 'contract-test', displayName: 'Contract Test', bio: 'English and العربية content', avatarUrl: 'https://images.example/avatar.webp', verified: true, followerCount: 12500, socialLinks: [{ id: 'social-1', platform: 'instagram', url: 'https://instagram.com/contract', active: true }],
   standardTheme: { language: 'ar', direction: 'rtl', profile: { showAvatar: true } },
   tabs: [{ blocks: [
     { type: 'link', title: 'Link', payload: { url: 'https://example.com' } },
@@ -59,7 +59,7 @@ const unsafeHtml = renderPublicProfileBody({
 if (/href="javascript:|src="javascript:/.test(unsafeHtml)) throw new Error('Public renderer must reject unsafe persisted URLs.');
 const backgroundStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', focalPoint: { x: 30, y: 70 } }, responsive: { mobile: { maxWidth: 680, pageX: 12, pageY: 16, blockGap: 10, avatarSize: 72, headingScale: .9, imageHeight: 240, textAlign: 'left', blockVisibility: 'all' } } } });
 const normalizedSafetyStyles = publicProfileStyles({ standardTheme: { background: { type: 'image', assetUrl: 'https://images.unsplash.com/contract-background.jpg', position: 'center; color:red', focalPoint: { x: 'bad', y: 'bad' } }, tokens: { spacing: { pageX: 'bad' } } } });
-const requiredMarkers = ['data-block-id="contract-0"', 'data-block-id="contract-1"', 'data-block-id="contract-2"', 'data-block-id="contract-3"', 'data-block-id="contract-4"', 'data-block-id="contract-5"', 'data-block-id="contract-6"', 'data-block-id="contract-7"', 'data-block-id="contract-8"', 'data-block-id="contract-9"', 'data-block-id="contract-10"', 'data-block-id="contract-11"', 'data-block-id="contract-12"', 'data-block-id="contract-13"', 'data-block-id="contract-14"', 'data-block-id="contract-15"', 'Get tickets', 'Leave a tip', 'Save contact', '<video', '<track', 'dir="rtl"'];
+const requiredMarkers = ['data-block-id="contract-0"', 'data-block-id="contract-1"', 'data-block-id="contract-2"', 'data-block-id="contract-3"', 'data-block-id="contract-4"', 'data-block-id="contract-5"', 'data-block-id="contract-6"', 'data-block-id="contract-7"', 'data-block-id="contract-8"', 'data-block-id="contract-9"', 'data-block-id="contract-10"', 'data-block-id="contract-11"', 'data-block-id="contract-12"', 'data-block-id="contract-13"', 'data-block-id="contract-14"', 'data-block-id="contract-15"', 'Get tickets', 'Leave a tip', 'Save contact', 'Verified', 'followers', '<video', '<track', 'dir="rtl"'];
 const failures = requiredMarkers.filter(marker => !html.includes(marker));
 if ((html.match(/data-block-style="/g) || []).length !== snapshot.tabs[0].blocks.length) failures.push('every rendered block must carry a resolved premium style');
 if (!tabHtml.includes('role="tablist"') || !tabHtml.includes('aria-selected="true"') || tabHtml.indexOf('Primary') > tabHtml.indexOf('Secondary') || tabHtml.includes('Must not render')) failures.push('server tab navigation, active-tab isolation or CTA ordering');
