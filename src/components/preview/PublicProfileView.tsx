@@ -21,7 +21,8 @@ import {
   Flag, 
   ArrowLeft,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  ShoppingBag
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { billingService } from '../../services/billingService';
@@ -217,6 +218,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     ...cssVars
   };
   const variants = standardTheme.componentVariants || { link: 'solid' as const, image: 'rounded' as const, socialIcons: 'line' as const, form: 'card' as const };
+  const hasShopOffers = profile.tabs.some(tab => tab.blocks.some(block => ['product', 'course', 'tip', 'membership'].includes(block.type)));
   const responsiveVisibility = (rule: NonNullable<StandardTheme['responsive']['mobile']>) => {
     const mode = rule.blockVisibility || 'all';
     return `--theme-media-display:${mode === 'hide-media' ? 'none' : 'block'};--theme-social-display:${mode === 'hide-socials' ? 'none' : 'flex'};`;
@@ -598,6 +600,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           <button type="button" onClick={handleDownloadVCard} className="mb-4 inline-flex min-h-9 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition hover:scale-[1.02]" style={{ borderColor: 'var(--theme-border, #30394D)', backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
             <Download className="h-3.5 w-3.5" /> Save contact
           </button>
+
+          {hasShopOffers && (
+            <a href={`/@${encodeURIComponent(profile.username)}/shop`} className="mb-4 inline-flex min-h-9 items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold transition hover:scale-[1.02]" style={{ backgroundColor: 'var(--theme-accent, #6366F1)', color: 'var(--theme-accent-text, #FFFFFF)' }}>
+              <ShoppingBag className="h-3.5 w-3.5" /> Shop offers
+            </a>
+          )}
 
           {/* Social Icons Bar (Top Position) */}
           {socialIconPlacement === 'header' && profile.socialLinks.some(s => s.active && safePublicHref(s.url)) && (

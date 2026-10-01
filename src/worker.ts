@@ -6,6 +6,7 @@ import { createThemeDesignPersistence, mergeSparseOverride } from './utils/desig
 import {
   escapeHtml,
   safePublicHref,
+  safePublicMediaUrl,
   xmlEscape,
   publicProfileUrl,
   renderPublicProfileBody,
@@ -151,13 +152,45 @@ async function publicProfileResponse(request: Request, env: Env, username: strin
   return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'public, max-age=60, s-maxage=300' } });
 }
 
+async function publicShopResponse(request: Request, env: Env, username: string): Promise<Response> {
+  const origin = new URL(request.url).origin;
+  const profileResponse = await supabaseRequest(`published_profiles?username=eq.${encodeURIComponent(username)}&select=username,snapshot`, env);
+  const rows = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
+  const snapshot = rows[0]?.snapshot;
+  if (!snapshot) return new Response('<!doctype html><title>Shop unavailable</title><main style="font:16px system-ui;max-width:560px;margin:64px auto;padding:24px"><h1>Shop unavailable</h1><p>This creator page is not published.</p></main>', { status: 404, headers: { 'content-type': 'text/html;charset=UTF-8', 'x-robots-tag': 'noindex' } });
+  const products = (snapshot.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : [])
+    .filter(block => ['product', 'course', 'tip', 'membership'].includes(String(block.type)))
+    .map(block => ({ id: String(block.id || ''), type: String(block.type || 'product'), title: String(block.title || 'Offer'), payload: block.payload && typeof block.payload === 'object' ? block.payload as Record<string, unknown> : {} }))
+    .filter(product => product.id && (product.payload.checkoutEnabled === true || safePublicHref(product.payload.url)));
+  const displayName = escapeHtml(snapshot.displayName || snapshot.username || username);
+  const description = escapeHtml(snapshot.bio || `Offers from ${snapshot.displayName || username}`);
+  const cards = products.length ? products.map(product => {
+    const payload = product.payload;
+    const image = safePublicMediaUrl(payload.image);
+    const title = escapeHtml(product.title);
+    const body = escapeHtml(payload.description || '');
+    const price = payload.amount || payload.price;
+    const currency = escapeHtml(String(payload.currency || 'USD').toUpperCase());
+    const priceMarkup = price ? `<span class="price">${currency} ${escapeHtml(price)}${product.type === 'membership' ? `<small> / ${payload.interval === 'year' ? 'year' : 'month'}</small>` : ''}</span>` : '';
+    const media = image ? `<img src="${escapeHtml(image)}" alt="${title}" loading="lazy">` : '';
+    const action = payload.checkoutEnabled === true
+      ? `<form action="/api/public/product-checkout/redirect" method="post"><input type="hidden" name="username" value="${escapeHtml(username)}"><input type="hidden" name="blockId" value="${escapeHtml(product.id)}"><button type="submit">${escapeHtml(payload.buttonLabel || (product.type === 'course' ? 'Enroll now' : product.type === 'membership' ? 'Become a member' : product.type === 'tip' ? 'Leave a tip' : 'Buy now'))} <span aria-hidden="true">→</span></button></form>`
+      : `<a class="secondary" href="${escapeHtml(safePublicHref(payload.url) || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(payload.buttonLabel || 'View offer')} <span aria-hidden="true">↗</span></a>`;
+    return `<article class="offer">${media}<div class="offer-body"><div class="offer-heading"><h2>${title}</h2>${priceMarkup}</div>${body ? `<p>${body}</p>` : ''}${action}</div></article>`;
+  }).join('') : '<div class="empty"><h2>Nothing is available yet</h2><p>Check back soon for new offers.</p></div>';
+  const canonical = `${origin}/@${encodeURIComponent(username)}/shop`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="${description}"><link rel="canonical" href="${escapeHtml(canonical)}"><meta name="robots" content="index,follow"><title>Shop · ${displayName} | LynkFlow</title><style>body{margin:0;background:#f6f6fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:0 auto;padding:42px 18px 72px}.header{text-align:center;margin-bottom:28px}.eyebrow{color:#5b4bff;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.header h1{margin:8px 0 6px;font-size:clamp(34px,7vw,58px);line-height:1.02;letter-spacing:-.05em}.header p{margin:0 auto;color:#666678;max-width:52ch}.offers{display:grid;gap:16px}.offer{overflow:hidden;border:1px solid #dfdfea;border-radius:22px;background:#fff;box-shadow:0 14px 38px #27274a0d}.offer img{display:block;width:100%;aspect-ratio:16/8;object-fit:cover}.offer-body{padding:20px}.offer-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.offer h2{margin:0;font-size:20px;line-height:1.2}.offer p{margin:9px 0 0;color:#68687a;line-height:1.55}.price{flex:none;color:#5142e8;font-size:15px;font-weight:800;text-align:right}.price small{display:block;color:#77778a;font-size:10px;font-weight:600}.offer form,.offer .secondary{display:block;margin-top:18px}.offer button,.offer .secondary{box-sizing:border-box;width:100%;border:0;border-radius:12px;padding:12px 14px;background:#5142e8;color:#fff;font:inherit;font-weight:750;text-align:center;text-decoration:none;cursor:pointer}.offer .secondary{background:#f0effd;color:#5142e8}.empty{padding:38px 22px;border:1px dashed #cfcfe0;border-radius:20px;text-align:center;background:#fff}.empty h2{margin:0;font-size:20px}.empty p{color:#68687a}.footer{text-align:center;margin-top:32px;color:#858596;font-size:12px}.footer a{color:inherit}@media(max-width:520px){.shell{padding:28px 14px 56px}.offer-body{padding:16px}.offer-heading{display:block}.price{display:block;margin-top:9px;text-align:left}}</style></head><body><main class="shell"><header class="header"><div class="eyebrow">${displayName} · shop</div><h1>Choose what helps you move forward.</h1><p>${description}</p></header><section class="offers" aria-label="Available offers">${cards}</section><footer class="footer"><a href="${escapeHtml(origin)}/@${escapeHtml(username)}">Back to profile</a> · Powered by LynkFlow</footer></main></body></html>`;
+  return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'public, max-age=60', 'content-security-policy': "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; img-src 'self' https: data:; style-src 'unsafe-inline'; form-action 'self'; script-src 'none'" } });
+}
+
 async function sitemapResponse(_request: Request, env: Env): Promise<Response> {
   const origin = env.APP_URL && !env.APP_URL.includes('workers.dev') ? env.APP_URL.replace(/\/$/, '') : PUBLIC_SITE_ORIGIN;
   const response = await supabaseRequest('published_profiles?select=username,updated_at,snapshot&order=updated_at.desc', env);
-  const rows = await response.json() as Array<{ username?: string; updated_at?: string; snapshot?: { seo?: { noIndex?: boolean } } }>;
+  const rows = await response.json() as Array<{ username?: string; updated_at?: string; snapshot?: { seo?: { noIndex?: boolean }; tabs?: Array<{ blocks?: Array<{ type?: string }> }> } }>;
   const urls = rows.filter(row => row.username && !row.snapshot?.seo?.noIndex).map(row => `<url><loc>${xmlEscape(publicProfileUrl(origin, row.username!))}</loc>${row.updated_at ? `<lastmod>${xmlEscape(row.updated_at)}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority></url>`).join('');
+  const shopUrls = rows.filter(row => row.username && !row.snapshot?.seo?.noIndex && row.snapshot?.tabs?.some(tab => tab.blocks?.some(block => ['product', 'course', 'tip', 'membership'].includes(String(block.type))))).map(row => `<url><loc>${xmlEscape(`${origin}/@${encodeURIComponent(row.username!)}/shop`)}</loc>${row.updated_at ? `<lastmod>${xmlEscape(row.updated_at)}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.7</priority></url>`).join('');
   const marketingUrls = Object.keys(SEO_LANDING_PAGES).map(path => `<url><loc>${xmlEscape(`${origin}${path}`)}</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>`).join('');
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${xmlEscape(`${origin}/`)}</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>${marketingUrls}${urls}</urlset>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${xmlEscape(`${origin}/`)}</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>${marketingUrls}${urls}${shopUrls}</urlset>`;
   return new Response(xml, { headers: { 'content-type': 'application/xml;charset=UTF-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
 }
 
@@ -4444,7 +4477,14 @@ async function createCheckout(request: Request, env: Env): Promise<Response> {
 async function createPublicProductCheckout(request: Request, env: Env): Promise<Response> {
   if (!stripeCheckoutConfigured(env)) return json({ error: 'Secure checkout is temporarily unavailable.' }, 503);
   let input: { username?: string; blockId?: string };
-  try { input = await request.json(); } catch { return json({ error: 'Request body must be valid JSON.' }, 400); }
+  try {
+    if (request.method === 'POST' && request.headers.get('content-type')?.includes('application/x-www-form-urlencoded')) {
+      const form = await request.formData();
+      input = { username: String(form.get('username') || ''), blockId: String(form.get('blockId') || '') };
+    } else {
+      input = await request.json();
+    }
+  } catch { return json({ error: 'Request body must be valid JSON or form data.' }, 400); }
   const username = String(input.username || '').trim().toLowerCase().replace(/^@/, '');
   const blockId = String(input.blockId || '').trim();
   if (!/^[a-z0-9._-]{1,80}$/.test(username) || !/^[a-zA-Z0-9_-]{1,120}$/.test(blockId)) {
@@ -4456,7 +4496,7 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
   const snapshot = profileRow?.snapshot;
   if (!snapshot) return json({ error: 'Published profile not found.' }, 404);
   const blocks = (snapshot.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
-  const block = blocks.find(candidate => candidate.id === blockId && (candidate.type === 'product' || candidate.type === 'course' || candidate.type === 'tip'));
+  const block = blocks.find(candidate => candidate.id === blockId && (candidate.type === 'product' || candidate.type === 'course' || candidate.type === 'tip' || candidate.type === 'membership'));
   const payload = block?.payload || {};
   if (!block || payload.checkoutEnabled !== true) return json({ error: 'This block does not offer secure checkout.' }, 404);
   const physicalProduct = block.type === 'product' && payload.physicalProduct === true;
@@ -4497,6 +4537,10 @@ async function createPublicProductCheckout(request: Request, env: Env): Promise<
     for (const [index, country] of ['US', 'CA', 'GB', 'AU', 'DE', 'FR', 'AE', 'SA'].entries()) params.set(`shipping_address_collection[allowed_countries][${index}]`, country);
   }
   const session = await stripeRequest('/v1/checkout/sessions', env, params);
+  if (new URL(request.url).pathname === '/api/public/product-checkout/redirect') {
+    if (typeof session.url !== 'string' || !session.url) return json({ error: 'Stripe did not return a checkout URL.' }, 502);
+    return Response.redirect(session.url, 303);
+  }
   return json({ url: session.url, sessionId: session.id });
 }
 
@@ -4703,6 +4747,11 @@ export default {
       if (!['GET', 'POST'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await courseProgressResponse(request, env); } catch (error) { console.error('Course progress request failed', error); return apiError('PERSISTENCE_ERROR', 'Course progress is temporarily unavailable.', 503); }
     }
+    const shopMatch = url.pathname.match(/^\/@([a-z0-9](?:[a-z0-9_-]{1,28}[a-z0-9])?)\/shop$/i);
+    if (shopMatch) {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await publicShopResponse(request, env, shopMatch[1].toLowerCase()); } catch (error) { console.error('Public shop rendering failed', error); return new Response('Shop temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
+    }
     let publicHandlePath = '';
     try { publicHandlePath = url.pathname.startsWith('/@') ? decodeURIComponent(url.pathname.slice(2)) : ''; } catch { publicHandlePath = ''; }
     const isReservedDevPath = publicHandlePath === 'react-refresh' || publicHandlePath === 'vite';
@@ -4799,6 +4848,10 @@ export default {
     if (url.pathname === '/api/public/product-checkout') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await createPublicProductCheckout(request, env); } catch (error) { return internalApiError('Create product checkout failed', error, 'Unable to start secure checkout.', 502); }
+    }
+    if (url.pathname === '/api/public/product-checkout/redirect') {
+      if (request.method !== 'POST') return new Response('Method not allowed.', { status: 405 });
+      try { return await createPublicProductCheckout(request, env); } catch (error) { return new Response('Unable to start checkout.', { status: 502, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
     }
     if (url.pathname === '/api/public/audience/unsubscribe') {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
