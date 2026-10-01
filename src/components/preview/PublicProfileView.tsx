@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Profile, ThemeConfig, Block, FormBlockPayload, FolderBlockPayload, FaqBlockPayload, LinkBlockPayload, MediaBlockPayload, GalleryBlockPayload, CarouselBlockPayload, ProductBlockPayload, TextBlockPayload, DividerBlockPayload, TestimonialBlockPayload, FileBlockPayload, ContactBlockPayload } from '../../types';
+import { Profile, ThemeConfig, Block, FormBlockPayload, FolderBlockPayload, FaqBlockPayload, LinkBlockPayload, MediaBlockPayload, GalleryBlockPayload, CarouselBlockPayload, ProductBlockPayload, EventBlockPayload, TextBlockPayload, DividerBlockPayload, TestimonialBlockPayload, FileBlockPayload, ContactBlockPayload } from '../../types';
 import { Avatar } from '../common/Avatar';
 import { 
   ExternalLink, 
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { billingService } from '../../services/billingService';
+import { createPublicProductCheckoutSession } from '../../services/publicProductCheckoutService';
 import { sanitizeMediaEmbed, validateUrl } from '../../utils/blockValidator';
 import { compileThemeToCssVariables } from '../../utils/themeEngine';
 import type { StandardTheme } from '../../types/themeSchema';
@@ -85,6 +86,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [formHoneypots, setFormHoneypots] = useState<Record<string, string>>({});
   const [formIdempotencyKeys, setFormIdempotencyKeys] = useState<Record<string, string>>({});
   const [isSubmittingForm, setIsSubmittingForm] = useState<Record<string, boolean>>({});
+  const [productCheckoutStatus, setProductCheckoutStatus] = useState<Record<string, 'loading' | 'error'>>({});
+  const [productCheckoutErrors, setProductCheckoutErrors] = useState<Record<string, string>>({});
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Consent Gating (AN-005)
@@ -316,6 +319,18 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       setTimeout(() => {
         window.open(safeUrl, '_blank', 'noopener,noreferrer');
       }, 140);
+    }
+  };
+
+  const handleProductCheckout = async (blockId: string) => {
+    setProductCheckoutStatus(previous => ({ ...previous, [blockId]: 'loading' }));
+    setProductCheckoutErrors(previous => ({ ...previous, [blockId]: '' }));
+    try {
+      const checkoutUrl = await createPublicProductCheckoutSession(profile.username, blockId);
+      window.location.assign(checkoutUrl);
+    } catch (error) {
+      setProductCheckoutStatus(previous => ({ ...previous, [blockId]: 'error' }));
+      setProductCheckoutErrors(previous => ({ ...previous, [blockId]: error instanceof Error ? error.message : 'Unable to open secure checkout.' }));
     }
   };
 
@@ -847,11 +862,38 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 const payload = block.payload as ProductBlockPayload;
                 const productHref = safePublicHref(payload.url);
                 const productImageHref = safePublicHref(payload.image);
+                const checkoutEnabled = payload.checkoutEnabled === true;
+                const checkoutLoading = productCheckoutStatus[block.id] === 'loading';
+                const checkoutError = productCheckoutErrors[block.id];
+                const productContent = <div className="p-4"><div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-sm">{block.title}</h4>{payload.price && <span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || '$'} {payload.price}</span>}</div>{payload.description && <p className="text-xs mt-1" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{payload.description}</p>}{checkoutEnabled ? <><button type="button" disabled={checkoutLoading} onClick={() => void handleProductCheckout(block.id)} className="mt-3 inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-semibold disabled:cursor-wait disabled:opacity-70" style={{ backgroundColor: 'var(--theme-accent, #6366F1)', color: 'var(--theme-accent-text, #FFFFFF)' }}>{checkoutLoading ? 'Opening checkout…' : payload.buttonLabel || 'Buy now'}</button>{checkoutError && <p role="alert" className="mt-2 text-xs" style={{ color: 'var(--theme-danger, #B42318)' }}>{checkoutError}</p>}</> : <span className="inline-flex mt-3 text-xs font-semibold" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.buttonLabel || 'View product'} <ExternalLink className="w-3 h-3 ml-1" /></span>}</div>;
+                if (checkoutEnabled) {
+                  return <div key={block.id} className={`${cardClasses} overflow-hidden block`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>{productImageHref && <img src={productImageHref} alt={block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px) var(--theme-card-radius, 16px) 0 0' }} />}{productContent}</div>;
+                }
                 return (
                   <a key={block.id} href={productHref || undefined} target="_blank" rel="noopener noreferrer" aria-disabled={!productHref || undefined} title={!productHref ? 'This product destination still needs to be configured.' : undefined} className={`${cardClasses} overflow-hidden block ${productHref ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
                     {productImageHref && <img src={productImageHref} alt={block.title} loading="lazy" className="w-full aspect-[4/3] object-cover" style={{ borderRadius: 'var(--theme-card-radius, 16px) var(--theme-card-radius, 16px) 0 0' }} />}
-                    <div className="p-4"><div className="flex items-start justify-between gap-3"><h4 className="font-semibold text-sm">{block.title}</h4>{payload.price && <span className="font-bold text-sm" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.currency || '$'} {payload.price}</span>}</div>{payload.description && <p className="text-xs mt-1" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{payload.description}</p>}<span className="inline-flex mt-3 text-xs font-semibold" style={{ color: 'var(--theme-accent, #6366F1)' }}>{payload.buttonLabel || 'View product'} <ExternalLink className="w-3 h-3 ml-1" /></span></div>
+                    {productContent}
                   </a>
+                );
+              }
+
+              case 'event': {
+                const payload = block.payload as EventBlockPayload;
+                const eventHref = safePublicHref(payload.url);
+                const eventDate = payload.date ? new Date(`${payload.date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date to be announced';
+                return (
+                  <div key={block.id} className={`${cardClasses} flex items-start gap-3 p-4`} style={{ backgroundColor: 'var(--theme-card-bg, var(--theme-panel-bg, #151B2A))', border: '1px solid var(--theme-card-border, var(--theme-border, #30394D))', color: 'var(--theme-card-text, var(--theme-text-primary, #F8FAFC))' }}>
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-center" style={{ backgroundColor: 'var(--theme-accent, #6366F1)', color: 'var(--theme-accent-text, #FFFFFF)' }}>
+                      <span className="text-[10px] font-bold uppercase leading-tight">{eventDate.split(' ')[0]}</span>
+                      <span className="text-lg font-bold leading-none">{eventDate.match(/\d+/)?.[0] || '—'}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-semibold">{block.title}</h4>
+                      <p className="mt-1 text-xs" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{eventDate}{payload.time ? ` · ${payload.time}` : ''}{payload.location ? ` · ${payload.location}` : ''}</p>
+                      {payload.description && <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--theme-card-subtitle, var(--theme-text-secondary, #94A3B8))' }}>{payload.description}</p>}
+                      {eventHref && <a href={eventHref} target="_blank" rel="noopener noreferrer" onClick={(event) => handleLinkClick(block.id, eventHref, event)} className="mt-3 inline-flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold" style={{ backgroundColor: 'var(--theme-accent, #6366F1)', color: 'var(--theme-accent-text, #FFFFFF)' }}>{payload.buttonLabel || 'Learn more'} <ExternalLink className="ml-1 h-3 w-3" /></a>}
+                    </div>
+                  </div>
                 );
               }
 

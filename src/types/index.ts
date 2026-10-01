@@ -26,6 +26,7 @@ export type BlockType =
   | 'media' 
   | 'gallery'
   | 'carousel'
+  | 'event'
   | 'product'
   | 'text' 
   | 'divider' 
@@ -208,6 +209,16 @@ export interface ProductBlockPayload {
   currency?: string;
   url: string;
   buttonLabel?: string;
+  checkoutEnabled?: boolean;
+}
+
+export interface EventBlockPayload {
+  date: string;
+  time?: string;
+  location?: string;
+  description?: string;
+  url?: string;
+  buttonLabel?: string;
 }
 
 export interface TextBlockPayload {
@@ -298,6 +309,7 @@ type BlockPayload =
   | MediaBlockPayload 
   | GalleryBlockPayload
   | CarouselBlockPayload
+  | EventBlockPayload
   | ProductBlockPayload
   | TextBlockPayload 
   | DividerBlockPayload 

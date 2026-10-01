@@ -14,6 +14,7 @@ import {
   Images,
   GalleryHorizontal,
   ShoppingBag,
+  CalendarDays,
   X 
 } from 'lucide-react';
 import { Dialog } from '../common/Dialog';
@@ -72,6 +73,13 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
       description: 'Feature an item with image, price, description, and purchase link',
       icon: <ShoppingBag className="w-5 h-5 text-lime-400" />,
       badge: 'Commerce'
+    },
+    {
+      type: 'event',
+      title: 'Event or Release',
+      description: 'Promote a launch, tour date, workshop, livestream, or booking moment',
+      icon: <CalendarDays className="w-5 h-5 text-accent" />,
+      badge: 'Growth'
     },
     {
       type: 'emailSignup',

@@ -170,9 +170,23 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
     case 'product': {
       const url = getString(payload, 'url');
       const image = getString(payload, 'image');
-      if (!url) errors.push('Product block requires a destination URL.');
-      else if (!validateUrl(url).isValid) errors.push('Product destination URL is invalid.');
+      const checkoutEnabled = payload.checkoutEnabled === true;
+      if (!checkoutEnabled && !url) errors.push('Product block requires a destination URL.');
+      if (url && !validateUrl(url).isValid) errors.push('Product destination URL is invalid.');
       if (image && !validateUrl(image).isValid) errors.push('Product image URL is invalid.');
+      if (checkoutEnabled) {
+        const price = Number(getString(payload, 'price'));
+        if (!Number.isFinite(price) || price <= 0) errors.push('Product checkout requires a valid positive price.');
+        if (!getString(payload, 'currency')) errors.push('Product checkout requires a currency.');
+      }
+      break;
+    }
+
+    case 'event': {
+      const date = getString(payload, 'date');
+      const url = getString(payload, 'url');
+      if (!date) errors.push('Event block requires a date.');
+      if (url && !validateUrl(url).isValid) errors.push('Event registration URL is invalid.');
       break;
     }
 

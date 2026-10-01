@@ -15,6 +15,7 @@ import {
 } from './workerPublicRendering';
 import type { PublicSnapshot } from './workerPublicRendering';
 import { searchPexelsMedia } from './workerPexels';
+import { normalizeProductCurrency, parseProductPrice } from './utils/productCheckout';
 export { publicProfileStyles, renderPublicProfileBody } from './workerPublicRendering';
 
 interface Env {
@@ -2127,6 +2128,46 @@ async function createCheckout(request: Request, env: Env): Promise<Response> {
   return json({ url: session.url, sessionId: session.id });
 }
 
+async function createPublicProductCheckout(request: Request, env: Env): Promise<Response> {
+  if (!stripeCheckoutConfigured(env)) return json({ error: 'Secure checkout is temporarily unavailable.' }, 503);
+  let input: { username?: string; blockId?: string };
+  try { input = await request.json(); } catch { return json({ error: 'Request body must be valid JSON.' }, 400); }
+  const username = String(input.username || '').trim().toLowerCase().replace(/^@/, '');
+  const blockId = String(input.blockId || '').trim();
+  if (!/^[a-z0-9._-]{1,80}$/.test(username) || !/^[a-zA-Z0-9_-]{1,120}$/.test(blockId)) {
+    return json({ error: 'A valid profile and product are required.' }, 400);
+  }
+  const profileResponse = await supabaseRequest(`published_profiles?username=eq.${encodeURIComponent(username)}&select=username,snapshot`, env);
+  const rows = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
+  const snapshot = rows[0]?.snapshot;
+  if (!snapshot) return json({ error: 'Published profile not found.' }, 404);
+  const blocks = (snapshot.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []);
+  const block = blocks.find(candidate => candidate.id === blockId && candidate.type === 'product');
+  const payload = block?.payload || {};
+  if (!block || payload.checkoutEnabled !== true) return json({ error: 'This product does not offer secure checkout.' }, 404);
+  const price = parseProductPrice(payload.price);
+  const currency = normalizeProductCurrency(payload.currency);
+  if (!price || !currency) return json({ error: 'This product has incomplete checkout details.' }, 422);
+  const productName = String(block.title || 'LynkFlow product').trim().slice(0, 120) || 'LynkFlow product';
+  const description = String(payload.description || '').trim().slice(0, 500);
+  const params = new URLSearchParams({
+    mode: 'payment',
+    'line_items[0][price_data][currency]': currency,
+    'line_items[0][price_data][unit_amount]': String(price.amountInCents),
+    'line_items[0][price_data][product_data][name]': productName,
+    'line_items[0][quantity]': '1',
+    success_url: `${env.APP_URL}/@${encodeURIComponent(username)}?purchase=success`,
+    cancel_url: `${env.APP_URL}/@${encodeURIComponent(username)}?purchase=cancelled`,
+    'metadata[profile_username]': username,
+    'metadata[block_id]': blockId,
+  });
+  if (description) params.set('line_items[0][price_data][product_data][description]', description);
+  const image = safePublicHref(payload.image);
+  if (image) params.set('line_items[0][price_data][product_data][images][0]', image);
+  const session = await stripeRequest('/v1/checkout/sessions', env, params);
+  return json({ url: session.url, sessionId: session.id });
+}
+
 async function cancelStripeSubscription(request: Request, env: Env): Promise<Response> {
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return json({ error: 'Authentication required.' }, 401);
@@ -2333,6 +2374,10 @@ export default {
     if (url.pathname === '/api/stripe/checkout') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
       try { return await createCheckout(request, env); } catch (error) { return internalApiError('Create checkout failed', error, 'Unable to start checkout.', 502); }
+    }
+    if (url.pathname === '/api/public/product-checkout') {
+      if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+      try { return await createPublicProductCheckout(request, env); } catch (error) { return internalApiError('Create product checkout failed', error, 'Unable to start secure checkout.', 502); }
     }
     if (url.pathname === '/api/stripe/cancel') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);

@@ -22,6 +22,32 @@ const CATEGORIES = [
   { id: 'Tech & Startup', label: 'Tech & Modern Founder', desc: 'Product demos, investor deck, beta signups & calendar booking' }
 ];
 
+const ThemePreviewCard: React.FC<{ theme: (typeof THEME_PRESETS)[number]; selected: boolean }> = ({ theme, selected }) => {
+  const pageBackground = theme.bgGradient || theme.bgColor;
+  return (
+    <div
+      className="relative h-36 overflow-hidden rounded-xl border border-black/10 p-2.5 shadow-sm transition-transform duration-200 group-hover:scale-[1.02]"
+      style={{ background: pageBackground, color: theme.textColor, fontFamily: theme.fontBody }}
+      aria-hidden="true"
+    >
+      <div className="flex items-center gap-2">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full" style={{ backgroundColor: theme.accentColor, color: theme.cardTextColor }}>LF</span>
+        <span className="h-2 w-16 rounded-full opacity-90" style={{ backgroundColor: theme.textColor }} />
+      </div>
+      <span className="mt-2 block h-1.5 w-24 rounded-full opacity-60" style={{ backgroundColor: theme.subtitleColor }} />
+      <div className="mt-3 space-y-1.5">
+        {[0, 1, 2].map(index => (
+          <div key={index} className="flex items-center gap-2 rounded-lg px-2 py-2" style={{ backgroundColor: theme.cardBg, border: `1px solid ${theme.cardBorder}`, color: theme.cardTextColor }}>
+            <span className="h-1.5 flex-1 rounded-full opacity-85" style={{ backgroundColor: theme.cardTextColor }} />
+            <span className="h-1.5 w-5 rounded-full opacity-55" style={{ backgroundColor: theme.cardSubtitleColor }} />
+          </div>
+        ))}
+      </div>
+      {selected && <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-white text-black shadow-sm"><Check className="h-3 w-3" /></span>}
+    </div>
+  );
+};
+
 export const OnboardingModal: React.FC = () => {
   const { 
     isOnboardingOpen, 
@@ -73,9 +99,9 @@ export const OnboardingModal: React.FC = () => {
               <span>Step {step} of 3</span>
             </div>
             <h2 id="onboarding-modal-title" className="text-xl font-extrabold text-ink font-display tracking-tight">
-              {step === 1 && 'What is your primary goal?'}
+              {step === 1 && 'What are you building?'}
               {step === 2 && 'Claim your handle & profile'}
-              {step === 3 && 'Choose your starting visual system'}
+              {step === 3 && 'Choose your page direction'}
             </h2>
           </div>
 
@@ -232,10 +258,10 @@ export const OnboardingModal: React.FC = () => {
         {step === 3 && (
           <form onSubmit={handleNextStep} className="space-y-4">
             <p className="text-xs text-muted">
-              Pick an initial theme preset. Every theme enforces WCAG AA contrast compliance and can be customized with our design token studio.
+              Choose the look that feels most like you. You can change the colors, background, type, and layout at any time.
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {THEME_PRESETS.map((thm) => {
                 const isSelected = selectedThemeId === thm.id;
                 return (
@@ -243,18 +269,18 @@ export const OnboardingModal: React.FC = () => {
                     key={thm.id}
                     type="button"
                     onClick={() => setSelectedThemeId(thm.id)}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden ${
+                    aria-label={`Choose ${thm.name} page direction`}
+                    className={`group rounded-2xl border p-2 text-left transition-all cursor-pointer relative overflow-hidden ${
                       isSelected 
                         ? 'border-indigo-500 bg-accent-surface text-ink ring-2 ring-indigo-500/20' 
-                        : 'border-line bg-canvas text-muted hover:border-line-strong'
+                        : 'border-line bg-canvas text-muted hover:border-line-strong hover:shadow-sm'
                     }`}
                   >
-                    <div 
-                      className="w-full h-8 rounded-lg mb-2 border border-ink/10 shadow-xs"
-                      style={{ background: thm.bgGradient || thm.bgColor }}
-                    />
-                    <div className="text-xs font-bold text-ink truncate">{thm.name}</div>
-                    <div className="text-[10px] text-subtle font-mono mt-0.5">{thm.fontDisplay}</div>
+                    <ThemePreviewCard theme={thm} selected={isSelected} />
+                    <div className="px-1.5 pb-1 pt-2">
+                      <div className="truncate text-xs font-bold text-ink">{thm.name}</div>
+                      <div className="mt-0.5 text-[10px] text-subtle">A ready-to-edit creator page</div>
+                    </div>
                   </button>
                 );
               })}

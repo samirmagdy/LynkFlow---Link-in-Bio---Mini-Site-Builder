@@ -3,6 +3,7 @@ import type {
   BlockType,
   ContactBlockPayload,
   DividerBlockPayload,
+  EventBlockPayload,
   FaqBlockPayload,
   FileBlockPayload,
   FolderBlockPayload,
@@ -54,7 +55,11 @@ function createDefaultBlock(blockType: BlockType, customTitle?: string): Block {
       break;
     case 'product':
       title = customTitle || 'Featured Product';
-      payload = { image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1200', description: 'Add a product description', price: '49', currency: 'USD', url: 'https://example.com', buttonLabel: 'Shop now' };
+      payload = { image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1200', description: 'Add a product description', price: '49', currency: 'USD', url: 'https://example.com', buttonLabel: 'Shop now', checkoutEnabled: false };
+      break;
+    case 'event':
+      title = customTitle || 'Upcoming Event';
+      payload = { date: '2026-06-15', time: '7:00 PM', location: 'Add venue or online details', description: 'Share what visitors can expect.', url: 'https://example.com', buttonLabel: 'Get tickets' } as EventBlockPayload;
       break;
     case 'text':
       title = customTitle || 'Heading Text';

@@ -5,6 +5,7 @@ export const BLOCK_STYLE_VARIANTS = {
   media: ['framed', 'cinematic', 'full-bleed', 'split', 'captioned'] as const,
   gallery: ['grid', 'bento', 'masonry', 'filmstrip', 'editorial'] as const,
   carousel: ['peek', 'full-bleed', 'card', 'filmstrip', 'editorial'] as const,
+  event: ['spotlight', 'compact', 'calendar', 'featured', 'row'] as const,
   product: ['spotlight', 'compact', 'offer', 'service', 'editorial'] as const,
   text: ['display', 'body', 'quote', 'announcement', 'stat'] as const,
   divider: ['hairline', 'gradient', 'numbered', 'icon', 'spacer'] as const,
