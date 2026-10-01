@@ -277,7 +277,7 @@ export interface FileBlockPayload {
 export interface FormField {
   id: string;
   label: string;
-  type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox';
+  type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox' | 'date' | 'time';
   placeholder?: string;
   options?: string[]; // for select dropdown
   required: boolean;
@@ -285,7 +285,7 @@ export interface FormField {
 }
 
 export interface FormBlockPayload {
-  formType: 'newsletter' | 'contact' | 'lead' | 'feedback' | 'custom';
+  formType: 'newsletter' | 'contact' | 'lead' | 'feedback' | 'booking' | 'custom';
   description?: string;
   fields: FormField[];
   submitButtonText: string;
@@ -656,7 +656,7 @@ export interface FormSubmission {
   profileId: string;
   blockId: string;
   formTitle: string;
-  formType?: 'newsletter' | 'contact' | 'lead' | 'feedback' | 'custom';
+  formType?: 'newsletter' | 'contact' | 'lead' | 'feedback' | 'booking' | 'custom';
   data: Record<string, string>;
   responderEmail?: string;
   responderName?: string;

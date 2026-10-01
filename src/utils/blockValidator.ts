@@ -245,6 +245,11 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       if (!Array.isArray(payload.fields) || payload.fields.length === 0) {
         errors.push('Form block requires at least one field.');
       }
+      if (payload.formType === 'booking') {
+        const fields = Array.isArray(payload.fields) ? payload.fields as Array<Record<string, unknown>> : [];
+        if (!fields.some(field => field.type === 'email')) errors.push('Booking requests require an email field.');
+        if (!fields.some(field => field.type === 'date')) errors.push('Booking requests require a preferred date field.');
+      }
       break;
     }
 
