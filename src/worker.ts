@@ -1481,6 +1481,33 @@ async function executeScheduledProfilePublishes(env: Env, scheduledTime = Date.n
   }
 }
 
+async function executeScheduledSocialPublications(env: Env, scheduledTime = Date.now()): Promise<void> {
+  const dueResponse = await supabaseRequest(`social_publications?status=eq.scheduled&scheduled_at=lte.${encodeURIComponent(new Date(scheduledTime).toISOString())}&select=id,workspace_id,profile_id,provider,content,target_url,share_event_id,attempt_count&order=scheduled_at.asc&limit=100`, env);
+  const due = await dueResponse.json() as Array<{ id: string; workspace_id: string; profile_id: string; provider: string; content: string; target_url?: string | null; share_event_id?: string | null; attempt_count?: number }>;
+  for (const publication of due) {
+    const marked = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: 'publishing', attempt_count: Number(publication.attempt_count || 0) + 1, updated_at: new Date().toISOString() }) });
+    const claimed = await marked.json() as unknown[];
+    if (!claimed.length) continue;
+    try {
+      if (publication.provider !== 'linkedin') throw new Error('Unsupported social provider.');
+      const connection = await activeLinkedInConnection(publication.workspace_id, env);
+      if (!connection) throw new Error('LinkedIn connection is unavailable.');
+      const result = await publishLinkedInWithConnection(connection, publication.content, publication.target_url || '', env);
+      await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'published', provider_post_id: result.providerPostId, last_error: null, updated_at: new Date().toISOString() }) });
+      if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed' }) });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Scheduled social publication failed.';
+      if (reason === 'CONNECTION_EXPIRED') {
+        const expiredConnection = await activeLinkedInConnection(publication.workspace_id, env);
+        if (expiredConnection) await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(expiredConnection.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
+      }
+      await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publication.id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed', last_error: reason === 'CONNECTION_EXPIRED' ? 'LinkedIn connection expired. Reconnect and retry.' : reason, updated_at: new Date().toISOString() }) });
+      if (publication.share_event_id) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(publication.share_event_id)}&workspace_id=eq.${encodeURIComponent(publication.workspace_id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'failed' }) });
+      console.error(`Scheduled social publication failed for ${publication.id}`, error);
+    }
+  }
+}
+
 async function unpublishDashboardProfile(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2093,6 +2120,28 @@ async function disconnectSocialConnection(request: Request, env: Env, connection
   return json({ success: true });
 }
 
+type LinkedInConnectionRow = { id: string; provider_account_id: string; access_token_ciphertext: string; token_expires_at?: string | null };
+
+async function publishLinkedInWithConnection(connection: LinkedInConnectionRow, content: string, targetUrl: string, env: Env): Promise<{ providerPostId: string | null }> {
+  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) throw new Error('CONNECTION_EXPIRED');
+  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
+  const commentary = targetUrl ? `${content}\n${targetUrl}` : content;
+  const linkedinResponse = await fetch('https://api.linkedin.com/rest/posts', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', 'linkedin-version': env.LINKEDIN_VERSION || '202603', 'x-restli-protocol-version': '2.0.0' },
+    body: JSON.stringify({ author: `urn:li:person:${connection.provider_account_id}`, commentary, visibility: 'PUBLIC', distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] }, lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false }),
+  });
+  if (linkedinResponse.status === 401) throw new Error('CONNECTION_EXPIRED');
+  if (!linkedinResponse.ok) throw new Error('PROVIDER_ERROR');
+  return { providerPostId: linkedinResponse.headers.get('x-restli-id') || null };
+}
+
+async function activeLinkedInConnection(workspaceId: string, env: Env): Promise<LinkedInConnectionRow | null> {
+  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(workspaceId)}&provider=eq.linkedin&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
+  const rows = await response.json() as LinkedInConnectionRow[];
+  return rows[0] || null;
+}
+
 async function publishLinkedInPost(request: Request, env: Env): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -2107,27 +2156,66 @@ async function publishLinkedInPost(request: Request, env: Env): Promise<Response
     const targetCheck = validateUrl(targetUrl);
     if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
   }
-  const response = await supabaseRequest(`social_connections?workspace_id=eq.${encodeURIComponent(user.id)}&provider=eq.linkedin&status=eq.active&select=id,provider_account_id,access_token_ciphertext,token_expires_at&order=updated_at.desc&limit=1`, env);
-  const connections = await response.json() as Array<{ id: string; provider_account_id: string; access_token_ciphertext: string; token_expires_at?: string | null }>;
-  const connection = connections[0];
+  const connection = await activeLinkedInConnection(user.id, env);
   if (!connection) return apiError('CONNECTION_REQUIRED', 'Connect LinkedIn before publishing.', 409);
-  if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) {
-    await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
-    return apiError('CONNECTION_EXPIRED', 'Reconnect LinkedIn before publishing.', 401);
-  }
-  const accessToken = await decryptSocialToken(connection.access_token_ciphertext, env);
-  const commentary = targetUrl ? `${content}\n${targetUrl}` : content;
-  const linkedinResponse = await fetch('https://api.linkedin.com/rest/posts', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', 'linkedin-version': env.LINKEDIN_VERSION || '202603', 'x-restli-protocol-version': '2.0.0' },
-    body: JSON.stringify({ author: `urn:li:person:${connection.provider_account_id}`, commentary, visibility: 'PUBLIC', distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] }, lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false }),
-  });
-  if (linkedinResponse.status === 401) {
+  try {
+    const result = await publishLinkedInWithConnection(connection, content, targetUrl, env);
+    return json({ data: { provider: 'linkedin', providerPostId: result.providerPostId, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONNECTION_EXPIRED') {
     await supabaseRequest(`social_connections?id=eq.${encodeURIComponent(connection.id)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'expired', updated_at: new Date().toISOString() }) });
     return apiError('CONNECTION_EXPIRED', 'LinkedIn rejected this connection. Reconnect and try again.', 401);
+    }
+    return apiError('PROVIDER_ERROR', 'LinkedIn could not publish this post. No success was recorded.', 502);
   }
-  if (!linkedinResponse.ok) return apiError('PROVIDER_ERROR', 'LinkedIn could not publish this post. No success was recorded.', 502);
-  return json({ data: { provider: 'linkedin', providerPostId: linkedinResponse.headers.get('x-restli-id') || null, status: 'published' }, requestId: crypto.randomUUID() }, 201);
+}
+
+async function listSocialPublications(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  const profileId = new URL(request.url).searchParams.get('profileId');
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to view this profile.', 403);
+  const response = await supabaseRequest(`social_publications?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=eq.${encodeURIComponent(profileId)}&select=id,profile_id,provider,content,target_url,scheduled_at,status,provider_post_id,last_error,attempt_count,share_event_id,created_at,updated_at&order=scheduled_at.desc&limit=50`, env);
+  return json({ data: await response.json(), requestId: crypto.randomUUID() });
+}
+
+async function scheduleLinkedInPost(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot schedule social posts.', 403);
+  let input: { content?: string; targetUrl?: string; profileId?: string; scheduledAt?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = String(input.profileId || '').trim();
+  const content = String(input.content || '').trim();
+  const targetUrl = String(input.targetUrl || '').trim();
+  const scheduledAt = Date.parse(String(input.scheduledAt || ''));
+  if (!profileId || !canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to publish this profile.', 403);
+  if (!content || content.length > 2800) return apiError('VALIDATION_ERROR', 'Message must be between 1 and 2800 characters.', 422);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now() + 60_000) return apiError('VALIDATION_ERROR', 'Choose a future publish time at least one minute from now.', 422);
+  if (targetUrl) {
+    const targetCheck = validateUrl(targetUrl);
+    if (!targetCheck.isValid || !/^https?:$/i.test(new URL(targetUrl).protocol)) return apiError('VALIDATION_ERROR', 'A valid HTTPS page URL is required.', 422);
+  }
+  if (!await activeLinkedInConnection(user.id, env)) return apiError('CONNECTION_REQUIRED', 'Connect LinkedIn before scheduling.', 409);
+  const shareEvent = { id: `share_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'linkedin', content, target_url: targetUrl, status: 'initiated', created_at: new Date().toISOString() };
+  await supabaseRequest('social_share_events', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(shareEvent) });
+  const publication = { id: `social_pub_${crypto.randomUUID()}`, workspace_id: user.id, profile_id: profileId, provider: 'linkedin', content, target_url: targetUrl || null, scheduled_at: new Date(scheduledAt).toISOString(), status: 'scheduled', provider_post_id: null, last_error: null, attempt_count: 0, share_event_id: shareEvent.id, created_by: user.email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await supabaseRequest('social_publications', env, { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(publication) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.linkedin.scheduled', target: publication.id, occurred_at: publication.created_at, details: `Scheduled LinkedIn publication for ${publication.scheduled_at}.` }) });
+  return json({ data: publication, requestId: crypto.randomUUID() }, 201);
+}
+
+async function cancelSocialPublication(request: Request, env: Env, publicationId: string): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot cancel social posts.', 403);
+  const existingResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,status,profile_id`, env);
+  const existing = await existingResponse.json() as Array<{ id: string; status: string; profile_id: string }>;
+  if (!existing[0] || !canManageProfile(user, existing[0].profile_id)) return apiError('NOT_FOUND', 'Scheduled post not found.', 404);
+  if (existing[0].status !== 'scheduled') return apiError('CONFLICT', 'Only scheduled posts can be cancelled.', 409);
+  await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.scheduled`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'social.linkedin.schedule_cancelled', target: publicationId, occurred_at: new Date().toISOString(), details: 'Cancelled scheduled LinkedIn publication.' }) });
+  return json({ success: true });
 }
 
 async function listBookingRequests(request: Request, env: Env): Promise<Response> {
@@ -2923,6 +3011,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
 export default {
   async scheduled(controller: { scheduledTime: number }, env: Env, _context: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
     await executeScheduledProfilePublishes(env, controller.scheduledTime);
+    await executeScheduledSocialPublications(env, controller.scheduledTime);
     await retryPendingWebhooks(env);
   },
   async fetch(request: Request, env: Env, context: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
@@ -3054,6 +3143,18 @@ export default {
     if (url.pathname === '/api/social/linkedin/post') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await publishLinkedInPost(request, env); } catch (error) { return internalApiError('Publish LinkedIn post failed', error, 'Unable to publish to LinkedIn.'); }
+    }
+    if (url.pathname === '/api/social/publications') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await listSocialPublications(request, env); } catch (error) { return internalApiError('List social publications failed', error, 'Unable to load scheduled posts.'); }
+    }
+    if (url.pathname === '/api/social/linkedin/schedule') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await scheduleLinkedInPost(request, env); } catch (error) { return internalApiError('Schedule LinkedIn post failed', error, 'Unable to schedule LinkedIn post.'); }
+    }
+    if (url.pathname.startsWith('/api/social/publications/')) {
+      if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await cancelSocialPublication(request, env, decodeURIComponent(url.pathname.slice('/api/social/publications/'.length))); } catch (error) { return internalApiError('Cancel social publication failed', error, 'Unable to cancel scheduled post.'); }
     }
     if (url.pathname === '/api/social/shares') {
       if (request.method === 'GET') {
