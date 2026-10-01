@@ -905,6 +905,19 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     const matchesSearch = !normalizedThemeSearch || `${preset.name} ${category} ${preset.tokens.typography.displayFamily}`.toLowerCase().includes(normalizedThemeSearch);
     return matchesCategory && matchesSearch;
   });
+  const personaForTheme = (preset: StandardTheme): PersonaTemplate => {
+    const category = (preset.category || '').toLowerCase();
+    const personaId = category.includes('music') || category.includes('audio') || category.includes('entertainment')
+      ? 'music-artist'
+      : category.includes('beauty') || category.includes('salon') || category.includes('wellness')
+        ? 'beauty-service'
+        : category.includes('bakery') || category.includes('food') || category.includes('shop') || category.includes('business')
+          ? 'small-business-shop'
+          : category.includes('finance') || category.includes('professional') || category.includes('coach')
+            ? 'coach-consultant'
+            : 'creator-portfolio';
+    return PERSONA_TEMPLATES.find(template => template.id === personaId) || PERSONA_TEMPLATES[0];
+  };
   const changeEditorMode = (mode: 'quick' | 'advanced') => {
     setEditorMode(mode);
     if (mode === 'quick' && !QUICK_CUSTOMIZE_TABS.includes(activeTab)) {
@@ -922,15 +935,17 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
     if (!stage.tabs.includes(activeTab)) setActiveTab(stage.tabs[0]);
   };
 
-  const applyPersonaTemplate = (template: PersonaTemplate) => {
+  const applyPersonaTemplate = (template: PersonaTemplate, themeOverride?: StandardTheme) => {
     requestConfirmation({
-      title: `Use ${template.name} starter?`,
-      message: 'This replaces the current draft blocks with the persona starter structure. Your published page will not change until you publish.',
-      confirmLabel: 'Use starter',
+      title: themeOverride ? `Use ${themeOverride.name} with starter content?` : `Use ${template.name} starter?`,
+      message: themeOverride
+        ? `This applies the complete theme and replaces the current draft blocks with a ${template.name.toLowerCase()} starter structure. Your published page will not change until you publish.`
+        : 'This replaces the current draft blocks with the persona starter structure. Your published page will not change until you publish.',
+      confirmLabel: themeOverride ? 'Use theme and starter' : 'Use starter',
       destructive: true,
       onConfirm: () => {
         const stamp = Date.now();
-        applyTheme(composeStarterSiteTheme(template));
+        applyTheme(themeOverride || composeStarterSiteTheme(template));
         updateDraftProfile(prev => ({
       ...prev,
       starterSiteId: template.id,
@@ -1340,6 +1355,7 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                       <div className="mt-3.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3 pt-2.5 border-t border-line/60">
                         <button type="button" onClick={() => previewPreset(preset)} className="min-h-9 rounded-lg border border-line px-2 py-1.5 text-[11px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors">Preview</button>
                         <button type="button" onClick={() => applyMarketplaceTheme(preset)} className="min-h-9 rounded-lg bg-ink px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-ink/85 cursor-pointer transition-colors sm:col-span-2">Use this theme</button>
+                        {editorMode === 'quick' && <button type="button" onClick={() => applyPersonaTemplate(personaForTheme(preset), preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors sm:col-span-3">Use with starter content</button>}
                         {editorMode === 'advanced' && <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors sm:col-span-3">Apply layout only</button>}
                       </div>
                     </div>
