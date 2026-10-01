@@ -345,6 +345,7 @@ export interface MembershipBlockPayload {
   buttonLabel?: string;
   checkoutEnabled?: boolean;
   benefits?: string[];
+  deliveryUrl?: string;
 }
 
 type BlockPayload =

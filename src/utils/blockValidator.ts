@@ -211,6 +211,7 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       if (!['month', 'year'].includes(interval)) errors.push('Membership requires a monthly or annual interval.');
       if (payload.checkoutEnabled !== true && !getString(payload, 'url')) errors.push('Membership requires secure checkout or a destination URL.');
       if (getString(payload, 'url') && !validateUrl(getString(payload, 'url')).isValid) errors.push('Membership destination URL is invalid.');
+      if (getString(payload, 'deliveryUrl') && !validateUrl(getString(payload, 'deliveryUrl')).isValid) errors.push('Membership access link is invalid.');
       break;
     }
 

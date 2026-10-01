@@ -2705,7 +2705,7 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     const customerName = typeof customerDetails.name === 'string' ? customerDetails.name : undefined;
     const delivery = paymentStatus === 'paid' ? await publishedProductDelivery(env, metadata.profile_id, metadata.block_id) : null;
     const commerceType = ['product', 'course', 'tip', 'membership'].includes(metadata.commerce_type) ? metadata.commerce_type : 'product';
-    const protectedAccessToken = delivery && paymentStatus === 'paid' && ['product', 'course'].includes(commerceType) ? randomSecret(48) : undefined;
+    const protectedAccessToken = delivery && paymentStatus === 'paid' && ['product', 'course', 'membership'].includes(commerceType) ? randomSecret(48) : undefined;
     const protectedAccessUrl = protectedAccessToken ? `${env.APP_URL || new URL(request.url).origin}/course-access?token=${encodeURIComponent(protectedAccessToken)}` : undefined;
     const deliveryUrl = protectedAccessUrl || delivery?.deliveryUrl || null;
     const subscriptionId = String(object.subscription || '').startsWith('sub_') ? String(object.subscription) : null;
