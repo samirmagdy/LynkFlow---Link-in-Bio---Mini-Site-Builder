@@ -470,14 +470,73 @@ async function publishedProductDelivery(env: Env, profileId: string, blockId: st
   }
 }
 
+type CourseAccessOrder = {
+  workspace_id?: string;
+  profile_id?: string;
+  block_id?: string;
+  customer_name?: string;
+  access_token_expires_at?: string;
+};
+
+async function resolveCourseAccessOrder(token: string, env: Env): Promise<{ tokenHash: string; order: CourseAccessOrder | null }> {
+  const tokenHash = await sha256(token);
+  const orderResponse = await supabaseRequest(`product_orders?access_token_hash=eq.${encodeURIComponent(tokenHash)}&payment_status=eq.paid&select=workspace_id,profile_id,block_id,customer_name,access_token_expires_at`, env);
+  const orders = await orderResponse.json() as CourseAccessOrder[];
+  const order = orders[0];
+  if (!order?.profile_id || !order.block_id || (order.access_token_expires_at && new Date(order.access_token_expires_at).getTime() <= Date.now())) return { tokenHash, order: null };
+  return { tokenHash, order };
+}
+
+async function getPublishedCourseBlock(env: Env, order: CourseAccessOrder): Promise<{ snapshot: PublicSnapshot; block: Record<string, any> } | null> {
+  if (!order.profile_id || !order.block_id) return null;
+  const profileResponse = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(order.profile_id)}&select=username,snapshot`, env);
+  const profiles = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
+  const snapshot = profiles[0]?.snapshot;
+  const block = (snapshot?.tabs || []).flatMap(tab => Array.isArray(tab.blocks) ? tab.blocks : []).find(candidate => candidate.id === order.block_id && candidate.type === 'course') as Record<string, any> | undefined;
+  return snapshot && block ? { snapshot, block } : null;
+}
+
+async function courseProgressResponse(request: Request, env: Env): Promise<Response> {
+  let token = new URL(request.url).searchParams.get('token')?.trim() || '';
+  let input: { token?: string; lessonId?: string; completed?: boolean } = {};
+  if (request.method === 'POST') {
+    try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+    token = typeof input.token === 'string' ? input.token.trim() : '';
+  }
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return apiError('NOT_FOUND', 'Paid access link is invalid or expired.', 404);
+  const { tokenHash, order } = await resolveCourseAccessOrder(token, env);
+  if (!order?.workspace_id) return apiError('NOT_FOUND', 'Paid access link is invalid or expired.', 404);
+  const course = await getPublishedCourseBlock(env, order);
+  if (!course) return apiError('NOT_FOUND', 'This course is no longer available.', 404);
+  const lessons = Array.isArray(course.block.payload?.lessons) ? course.block.payload.lessons as Array<Record<string, unknown>> : [];
+  const lessonIds = new Set(lessons.map((lesson, index) => String(lesson.id || `lesson-${index + 1}`)));
+
+  if (request.method === 'GET') {
+    const progressResponse = await supabaseRequest(`course_lesson_progress?access_token_hash=eq.${encodeURIComponent(tokenHash)}&block_id=eq.${encodeURIComponent(String(order.block_id))}&completed_at=not.is.null&select=lesson_id`, env);
+    const rows = progressResponse.ok ? await progressResponse.json() as Array<{ lesson_id?: string }> : [];
+    return json({ data: { completedLessonIds: rows.map(row => row.lesson_id).filter((id): id is string => typeof id === 'string' && lessonIds.has(id)) }, requestId: crypto.randomUUID() });
+  }
+
+  if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+  const lessonId = typeof input.lessonId === 'string' ? input.lessonId.trim() : '';
+  if (!lessonId || !lessonIds.has(lessonId) || typeof input.completed !== 'boolean') return apiError('VALIDATION_ERROR', 'lessonId and completed are required for a valid course lesson.', 422);
+  const now = new Date().toISOString();
+  const saveResponse = await supabaseRequest('course_lesson_progress?on_conflict=access_token_hash,lesson_id', env, {
+    method: 'POST',
+    headers: { prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify({ access_token_hash: tokenHash, workspace_id: order.workspace_id, profile_id: order.profile_id, block_id: order.block_id, lesson_id: lessonId, completed_at: input.completed ? now : null, updated_at: now })
+  });
+  if (!saveResponse.ok) return apiError('PERSISTENCE_ERROR', 'Lesson progress could not be saved.', 503);
+  const progressResponse = await supabaseRequest(`course_lesson_progress?access_token_hash=eq.${encodeURIComponent(tokenHash)}&block_id=eq.${encodeURIComponent(String(order.block_id))}&completed_at=not.is.null&select=lesson_id`, env);
+  const rows = progressResponse.ok ? await progressResponse.json() as Array<{ lesson_id?: string }> : [];
+  return json({ data: { completedLessonIds: rows.map(row => row.lesson_id).filter((id): id is string => typeof id === 'string' && lessonIds.has(id)) }, requestId: crypto.randomUUID() });
+}
+
 async function courseAccessResponse(request: Request, env: Env): Promise<Response> {
   const token = new URL(request.url).searchParams.get('token')?.trim() || '';
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return new Response('Paid access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
-  const tokenHash = await sha256(token);
-  const orderResponse = await supabaseRequest(`product_orders?access_token_hash=eq.${encodeURIComponent(tokenHash)}&payment_status=eq.paid&select=profile_id,block_id,customer_name,access_token_expires_at`, env);
-  const orders = await orderResponse.json() as Array<{ profile_id?: string; block_id?: string; customer_name?: string; access_token_expires_at?: string }>;
-  const order = orders[0];
-  if (!order?.profile_id || !order.block_id || (order.access_token_expires_at && new Date(order.access_token_expires_at).getTime() <= Date.now())) return new Response('Paid access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
+  const { tokenHash, order } = await resolveCourseAccessOrder(token, env);
+  if (!order?.profile_id || !order.block_id) return new Response('Paid access link is invalid or expired.', { status: 404, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } });
   const profileResponse = await supabaseRequest(`published_profiles?profile_id=eq.${encodeURIComponent(order.profile_id)}&select=username,snapshot`, env);
   const profiles = await profileResponse.json() as Array<{ username?: string; snapshot?: PublicSnapshot }>;
   const snapshot = profiles[0]?.snapshot;
@@ -486,19 +545,26 @@ async function courseAccessResponse(request: Request, env: Env): Promise<Respons
   const payload = block.payload || {};
   const isCourse = block.type === 'course';
   const lessons = isCourse && Array.isArray(payload.lessons) ? payload.lessons as Array<Record<string, unknown>> : [];
+  const progressResponse = isCourse ? await supabaseRequest(`course_lesson_progress?access_token_hash=eq.${encodeURIComponent(tokenHash)}&block_id=eq.${encodeURIComponent(order.block_id)}&completed_at=not.is.null&select=lesson_id`, env) : null;
+  const progressRows = progressResponse?.ok ? await progressResponse.json() as Array<{ lesson_id?: string }> : [];
+  const completedLessonIds = new Set(progressRows.map(row => row.lesson_id).filter((id): id is string => Boolean(id)));
   const lessonMarkup = lessons.map((lesson, index) => {
+    const lessonId = String(lesson.id || `lesson-${index + 1}`);
+    const completed = completedLessonIds.has(lessonId);
     const href = safePublicHref(lesson.contentUrl);
     const title = escapeHtml(lesson.title || `Lesson ${index + 1}`);
     const detail = [lesson.duration, lesson.description].filter(Boolean).map(escapeHtml).join(' · ');
-    return `<li><span class="number">${index + 1}</span><span class="lesson"><strong>${title}</strong>${detail ? `<small>${detail}</small>` : ''}</span>${href ? `<a href="${escapeHtml(href)}" rel="noopener noreferrer">Open lesson</a>` : '<span class="locked">Included</span>'}</li>`;
+    return `<li data-lesson-id="${escapeHtml(lessonId)}" class="${completed ? 'completed' : ''}"><button type="button" class="lesson-toggle" aria-pressed="${completed ? 'true' : 'false'}" aria-label="Mark ${title} ${completed ? 'incomplete' : 'complete'}"><span class="number">${completed ? '✓' : index + 1}</span></button><span class="lesson"><strong>${title}</strong>${detail ? `<small>${detail}</small>` : ''}</span>${href ? `<a href="${escapeHtml(href)}" rel="noopener noreferrer">Open lesson</a>` : '<span class="locked">Included</span>'}</li>`;
   }).join('');
   const title = escapeHtml(block.title || (isCourse ? 'Your course' : 'Your purchase'));
   const description = escapeHtml(payload.description || (isCourse ? 'Your course access is ready.' : 'Your paid content is ready.'));
   const customer = escapeHtml(order.customer_name || 'there');
   const contentHref = !isCourse ? safePublicHref(payload.deliveryUrl) : null;
-  const contentMarkup = !isCourse ? (contentHref ? `<p><a class="primary" href="${escapeHtml(contentHref)}" rel="noopener noreferrer">Open your purchase</a></p>` : '<p>Your purchase is confirmed, but its delivery link is temporarily unavailable.</p>') : `<ul>${lessonMarkup || '<li>Your course lessons will appear here.</li>'}</ul>`;
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title} · Paid access</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:0 auto;padding:48px 20px 80px}.eyebrow{color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.card{margin-top:20px;padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(30px,6vw,52px);line-height:1.05;letter-spacing:-.04em}p{color:#5b5b6b}ul{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:10px}li{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e4e4ec;border-radius:14px}.number{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#eeeaff;color:#5848ec;font-weight:800;font-size:13px}.lesson{min-width:0;flex:1}.lesson small{display:block;color:#777789;margin-top:2px}a{color:#5142e8;font-weight:700;text-decoration:none}.primary{display:inline-flex;padding:12px 16px;border-radius:12px;background:#5142e8;color:#fff}</style></head><body><main class="shell"><div class="eyebrow">LynkFlow paid access</div><section class="card"><p>Welcome, ${customer}.</p><h1>${title}</h1><p>${description}</p>${contentMarkup}</section></main></body></html>`;
-  return new Response(html, { status: 200, headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'private,no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" } });
+  const progressSummary = isCourse ? `<p id="progress-summary" class="progress-summary">${completedLessonIds.size} of ${lessons.length} lessons complete</p>` : '';
+  const contentMarkup = !isCourse ? (contentHref ? `<p><a class="primary" href="${escapeHtml(contentHref)}" rel="noopener noreferrer">Open your purchase</a></p>` : '<p>Your purchase is confirmed, but its delivery link is temporarily unavailable.</p>') : `${progressSummary}<ul>${lessonMarkup || '<li>Your course lessons will appear here.</li>'}</ul>`;
+  const progressScript = isCourse ? `<script>const list=document.querySelector('ul');const summary=document.querySelector('#progress-summary');const token=new URLSearchParams(location.search).get('token');list?.addEventListener('click',async(event)=>{const button=event.target.closest('.lesson-toggle');if(!button||!token)return;const item=button.closest('[data-lesson-id]');const completed=button.getAttribute('aria-pressed')!=='true';button.disabled=true;try{const response=await fetch('/api/public/course-progress',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token,lessonId:item.dataset.lessonId,completed})});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Progress could not be saved.');const ids=new Set(body.data.completedLessonIds);document.querySelectorAll('[data-lesson-id]').forEach(row=>{const done=ids.has(row.dataset.lessonId);row.classList.toggle('completed',done);const toggle=row.querySelector('.lesson-toggle');toggle.setAttribute('aria-pressed',String(done));toggle.setAttribute('aria-label','Mark '+(row.querySelector('strong')?.textContent||'lesson')+' '+(done?'incomplete':'complete'));row.querySelector('.number').textContent=done?'✓':String([...document.querySelectorAll('[data-lesson-id]')].indexOf(row)+1)});summary.textContent=ids.size+' of '+document.querySelectorAll('[data-lesson-id]').length+' lessons complete';}catch(error){alert(error.message||'Progress could not be saved.');}finally{button.disabled=false;}});</script>` : '';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title} · Paid access</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:0 auto;padding:48px 20px 80px}.eyebrow{color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.card{margin-top:20px;padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(30px,6vw,52px);line-height:1.05;letter-spacing:-.04em}p{color:#5b5b6b}.progress-summary{font-size:13px;font-weight:700;color:#5848ec}ul{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:10px}li{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e4e4ec;border-radius:14px}li.completed{border-color:#76c9a8;background:#f1fbf6}.lesson-toggle{border:0;background:transparent;padding:0;cursor:pointer}.lesson-toggle:disabled{cursor:wait;opacity:.6}.number{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#eeeaff;color:#5848ec;font-weight:800;font-size:13px}.completed .number{background:#1c9c68;color:#fff}.lesson{min-width:0;flex:1}.lesson small{display:block;color:#777789;margin-top:2px}a{color:#5142e8;font-weight:700;text-decoration:none}.primary{display:inline-flex;padding:12px 16px;border-radius:12px;background:#5142e8;color:#fff}</style></head><body><main class="shell"><div class="eyebrow">LynkFlow paid access</div><section class="card"><p>Welcome, ${customer}.</p><h1>${title}</h1><p>${description}</p>${contentMarkup}</section></main>${progressScript}</body></html>`;
+  return new Response(html, { status: 200, headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'private,no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'" } });
 }
 
 async function hashValue(value: string, secret: string): Promise<string> {
@@ -3771,6 +3837,10 @@ export default {
     if (url.pathname === '/course-access') {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await courseAccessResponse(request, env); } catch (error) { console.error('Course access rendering failed', error); return new Response('Course access is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
+    }
+    if (url.pathname === '/api/public/course-progress') {
+      if (!['GET', 'POST'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await courseProgressResponse(request, env); } catch (error) { console.error('Course progress request failed', error); return apiError('PERSISTENCE_ERROR', 'Course progress is temporarily unavailable.', 503); }
     }
     let publicHandlePath = '';
     try { publicHandlePath = url.pathname.startsWith('/@') ? decodeURIComponent(url.pathname.slice(2)) : ''; } catch { publicHandlePath = ''; }
