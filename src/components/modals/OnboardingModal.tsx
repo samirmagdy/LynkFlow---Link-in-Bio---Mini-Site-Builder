@@ -22,7 +22,7 @@ const CATEGORIES = PERSONA_TEMPLATES.map(template => ({
   desc: template.description,
 }));
 
-const ThemePreviewCard: React.FC<{ theme: (typeof THEME_PRESETS)[number]; selected: boolean }> = ({ theme, selected }) => {
+const ThemePreviewCard: React.FC<{ theme: (typeof THEME_PRESETS)[number]; selected: boolean; persona?: (typeof PERSONA_TEMPLATES)[number] }> = ({ theme, selected, persona }) => {
   const pageBackground = theme.bgGradient || theme.bgColor;
   return (
     <div
@@ -34,12 +34,13 @@ const ThemePreviewCard: React.FC<{ theme: (typeof THEME_PRESETS)[number]; select
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full" style={{ backgroundColor: theme.accentColor, color: theme.cardTextColor }}>LF</span>
         <span className="h-2 w-16 rounded-full opacity-90" style={{ backgroundColor: theme.textColor }} />
       </div>
-      <span className="mt-2 block h-1.5 w-24 rounded-full opacity-60" style={{ backgroundColor: theme.subtitleColor }} />
+      <div className="mt-2 truncate text-[10px] font-bold" style={{ color: theme.textColor }}>{persona?.name || 'Your creator page'}</div>
+      <span className="mt-1 block h-1.5 w-28 rounded-full opacity-60" style={{ backgroundColor: theme.subtitleColor }} />
       <div className="mt-3 space-y-1.5">
-        {[0, 1, 2].map(index => (
-          <div key={index} className="flex items-center gap-2 rounded-lg px-2 py-2" style={{ backgroundColor: theme.cardBg, border: `1px solid ${theme.cardBorder}`, color: theme.cardTextColor }}>
-            <span className="h-1.5 flex-1 rounded-full opacity-85" style={{ backgroundColor: theme.cardTextColor }} />
-            <span className="h-1.5 w-5 rounded-full opacity-55" style={{ backgroundColor: theme.cardSubtitleColor }} />
+        {(persona?.blocks.slice(0, 3) || [{ title: 'Featured link' }, { title: 'About you' }, { title: 'Contact' }]).map((block, index) => (
+          <div key={`${block.title}-${index}`} className="flex items-center gap-2 rounded-lg px-2 py-2" style={{ backgroundColor: theme.cardBg, border: `1px solid ${theme.cardBorder}`, color: theme.cardTextColor }}>
+            <span className="min-w-0 flex-1 truncate text-[8px] font-semibold" style={{ color: theme.cardTextColor }}>{block.title}</span>
+            <span className="h-1.5 w-5 shrink-0 rounded-full opacity-55" style={{ backgroundColor: theme.cardSubtitleColor }} />
           </div>
         ))}
       </div>
@@ -70,6 +71,7 @@ export const OnboardingModal: React.FC = () => {
 
   const existingHandles = profiles.map(p => p.username);
   const handleCheck = validateHandle(handle, existingHandles);
+  const selectedPersona = PERSONA_TEMPLATES.find(template => template.id === selectedPersonaId);
 
   const handleNextStep = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,7 +288,7 @@ export const OnboardingModal: React.FC = () => {
                         : 'border-line bg-canvas text-muted hover:border-line-strong hover:shadow-sm'
                     }`}
                   >
-                    <ThemePreviewCard theme={thm} selected={isSelected} />
+                    <ThemePreviewCard theme={thm} selected={isSelected} persona={selectedPersona} />
                     <div className="px-1.5 pb-1 pt-2">
                       <div className="truncate text-xs font-bold text-ink">{thm.name}</div>
                       <div className="mt-0.5 text-[10px] text-subtle">A ready-to-edit creator page</div>
