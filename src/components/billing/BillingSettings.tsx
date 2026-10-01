@@ -479,7 +479,7 @@ export const BillingSettings: React.FC = () => {
           Invoices &amp; Billing History
         </h4>
 
-        {workspace.invoices.length === 0 ? (
+        {(workspace.invoices || []).length === 0 ? (
           <p className="text-xs text-subtle py-4 text-center">No invoices yet. Invoices appear after each billing cycle.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -495,7 +495,7 @@ export const BillingSettings: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line/60 font-mono">
-                {workspace.invoices.map(inv => (
+                {(workspace.invoices || []).map(inv => (
                   <tr key={inv.id} className="hover:bg-surface-2/30">
                     <td className="py-2.5 text-ink">{inv.id}</td>
                     <td className="py-2.5 text-muted">{inv.date}</td>

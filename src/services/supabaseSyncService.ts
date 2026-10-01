@@ -144,6 +144,10 @@ export async function loadCloudState(): Promise<CloudState | null> {
     trialEndsAt: cloudWorkspace.trial_ends_at,
     providerCustomerId: cloudWorkspace.provider_customer_id,
     providerSubscriptionId: cloudWorkspace.provider_subscription_id,
+    // Older workspaces may not have these client-side collections in settings.
+    // Keep the hydrated contract complete so studio pages can render safely.
+    profiles: Array.isArray(cloudWorkspace.settings?.profiles) ? cloudWorkspace.settings.profiles : [],
+    invoices: Array.isArray(cloudWorkspace.settings?.invoices) ? cloudWorkspace.settings.invoices : [],
     members: (memberRows || []).map(row => ({
       id: row.id,
       email: row.email,
