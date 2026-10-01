@@ -1945,6 +1945,21 @@ async function createSocialShareEvent(request: Request, env: Env): Promise<Respo
   return json({ data: saved[0] || row, requestId: crypto.randomUUID() }, 201);
 }
 
+async function updateSocialShareEvent(request: Request, env: Env, shareId: string): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  let input: { status?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  if (!['completed', 'failed'].includes(input.status || '')) return apiError('VALIDATION_ERROR', 'Share status must be completed or failed.', 422);
+  const existingResponse = await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(shareId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,profile_id`, env);
+  const existing = await existingResponse.json() as Array<{ id: string; profile_id: string }>;
+  if (!existing[0] || !canManageProfile(user, existing[0].profile_id)) return apiError('NOT_FOUND', 'Share event not found.', 404);
+  const response = await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(shareId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify({ status: input.status }) });
+  if (!response.ok) return apiError('PERSISTENCE_ERROR', 'Share status could not be saved. Please retry.', 503);
+  const rows = await response.json() as Array<Record<string, unknown>>;
+  return json({ data: rows[0] || { id: shareId, status: input.status }, requestId: crypto.randomUUID() });
+}
+
 async function listBookingRequests(request: Request, env: Env): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
@@ -2832,6 +2847,11 @@ export default {
         try { return await createSocialShareEvent(request, env); } catch (error) { return internalApiError('Create social share event failed', error, 'Unable to record share handoff.'); }
       }
       return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+    }
+    if (url.pathname.startsWith('/api/social/shares/')) {
+      if (request.method !== 'PATCH') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      const shareId = decodeURIComponent(url.pathname.slice('/api/social/shares/'.length));
+      try { return await updateSocialShareEvent(request, env, shareId); } catch (error) { return internalApiError('Update social share event failed', error, 'Unable to update share status.'); }
     }
     if (url.pathname === '/api/bookings') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);

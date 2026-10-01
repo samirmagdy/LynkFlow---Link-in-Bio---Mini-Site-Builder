@@ -32,3 +32,11 @@ export async function recordSocialShare(profileId: string, provider: ShareProvid
   if (!response.ok || !body.data) throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to record share.');
   return body.data;
 }
+
+export async function completeSocialShare(id: string, status: 'completed' | 'failed'): Promise<void> {
+  const response = await authorizedRequest(`/api/social/shares/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (!response.ok) {
+    const body = await response.json() as { error?: string | { message?: string } };
+    throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to update share status.');
+  }
+}
