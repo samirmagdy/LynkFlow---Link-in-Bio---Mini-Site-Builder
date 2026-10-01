@@ -1239,6 +1239,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; lightweight?: bo
 
   // Block management
   const addBlock = (tabId: string, blockType: BlockType, customTitle?: string) => {
+    const workspaceMember = workspace.members?.find(member => member.email.toLowerCase() === user.email.toLowerCase());
+    if (workspaceMember?.role === 'viewer') {
+      showToast('Viewers cannot add blocks. Ask a workspace manager for edit access.');
+      return;
+    }
+    if (blockType === 'form' || blockType === 'emailSignup') {
+      const check = billingService.checkFeatureEntitlement(workspace, 'lead_form');
+      if (!check.allowed) {
+        showToast(check.reason || 'Lead capture forms require a paid plan.');
+        return;
+      }
+    }
     updateDraftProfile(prev => addProfileBlock(prev, tabId, blockType, customTitle));
     showToast(`Added ${blockType} block`);
   };

@@ -1195,6 +1195,13 @@ async function handleApiProfileSubresource(request: Request, env: Env, profileId
     const payload = data.payload && typeof data.payload === 'object' && !Array.isArray(data.payload) ? data.payload : null;
     const allowedTypes = new Set(['link', 'media', 'gallery', 'carousel', 'event', 'product', 'course', 'tip', 'membership', 'text', 'divider', 'folder', 'faq', 'testimonial', 'file', 'form', 'emailSignup', 'contact']);
     if (!tabId || !type || !allowedTypes.has(type) || !title || !payload) return apiError('VALIDATION_ERROR', 'tabId, type, title and payload are required.', 422);
+    if (type === 'form' || type === 'emailSignup') {
+      const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(auth.workspaceId)}&select=plan`, env);
+      const workspaceRows = await workspaceResponse.json() as Array<{ plan?: string }>;
+      if (!['pro', 'agency'].includes(String(workspaceRows[0]?.plan || ''))) {
+        return apiError('ENTITLEMENT_REQUIRED', 'Lead capture forms require a Creator Pro or Agency plan.', 403);
+      }
+    }
     const targetTab = tabs.find(tab => tab.id === tabId);
     if (!targetTab) return apiError('NOT_FOUND', 'Target tab not found.', 404);
     const blockValidation = validateBlockPayload(type as BlockType, payload);
