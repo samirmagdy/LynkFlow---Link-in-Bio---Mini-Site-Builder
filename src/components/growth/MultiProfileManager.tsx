@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { billingService } from '../../services/billingService';
 import { ProfileRole } from '../../types';
+import { AgencyAnalyticsPanel } from './AgencyAnalyticsPanel';
 import {
   Users,
   Plus,
@@ -295,6 +296,8 @@ export const MultiProfileManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      <AgencyAnalyticsPanel />
 
       {/* New Profile Form */}
       {showNewProfileForm && (

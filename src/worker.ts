@@ -2345,6 +2345,61 @@ async function listProductOrders(request: Request, env: Env): Promise<Response> 
   return json({ data: await response.json(), requestId: crypto.randomUUID() });
 }
 
+async function listAgencyAnalytics(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot access portfolio analytics.', 403);
+  const workspaceResponse = await supabaseRequest(`workspaces?id=eq.${encodeURIComponent(user.id)}&select=plan,status,current_period_end`, env);
+  const workspace = (await workspaceResponse.json() as Array<{ plan?: string; status?: string; current_period_end?: string }>)[0];
+  const workspaceExpired = workspace?.status === 'canceled' && Boolean(workspace.current_period_end && workspace.current_period_end < new Date().toISOString());
+  if (!workspace || workspaceExpired || workspace.plan !== 'agency') return apiError('ENTITLEMENT_REQUIRED', 'Portfolio analytics requires the Agency plan.', 403);
+
+  const requestedDays = Number(new URL(request.url).searchParams.get('days') || 30);
+  const maxDays = 730;
+  if (!Number.isInteger(requestedDays) || requestedDays < 1 || requestedDays > maxDays) return apiError('VALIDATION_ERROR', `days must be an integer between 1 and ${maxDays}.`, 422);
+  const since = new Date(Date.now() - requestedDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const profilesResponse = await supabaseRequest(`profiles?workspace_id=eq.${encodeURIComponent(user.id)}&select=id,username,display_name,status`, env);
+  if (!profilesResponse.ok) return apiError('SERVICE_UNAVAILABLE', 'Portfolio profiles could not be loaded.', 503);
+  const allProfiles = await profilesResponse.json() as Array<{ id: string; username: string; display_name?: string | null; status?: string }>;
+  const profiles = allProfiles.filter(profile => canManageProfile(user, profile.id));
+  if (!profiles.length) return json({ data: { period: `${requestedDays}d`, totals: { pageViews: 0, uniqueVisitors: 0, clicks: 0, ctr: 0, orderCount: 0, salesCents: 0 }, profiles: [], generatedAt: new Date().toISOString() }, requestId: crypto.randomUUID() });
+
+  const profileIds = profiles.map(profile => profile.id);
+  const profileFilter = `in.(${profileIds.map(id => encodeURIComponent(id)).join(',')})`;
+  const [eventsResponse, ordersResponse] = await Promise.all([
+    supabaseRequest(`analytics_events?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=${profileFilter}&occurred_at=gte.${encodeURIComponent(since)}&is_bot=eq.false&select=profile_id,event_type,visitor_hash&limit=10000`, env),
+    supabaseRequest(`product_orders?workspace_id=eq.${encodeURIComponent(user.id)}&profile_id=${profileFilter}&payment_status=eq.paid&created_at=gte.${encodeURIComponent(since)}&select=profile_id,amount_total&limit=5000`, env),
+  ]);
+  if (!eventsResponse.ok || !ordersResponse.ok) return apiError('SERVICE_UNAVAILABLE', 'Portfolio analytics could not be loaded.', 503);
+  const events = await eventsResponse.json() as Array<{ profile_id?: string; event_type?: string; visitor_hash?: string | null }>;
+  const orders = await ordersResponse.json() as Array<{ profile_id?: string; amount_total?: number | null }>;
+  const metrics = new Map(profileIds.map(id => [id, { pageViews: 0, clicks: 0, visitors: new Set<string>(), orderCount: 0, salesCents: 0 }]));
+  for (const event of events) {
+    const metric = event.profile_id ? metrics.get(event.profile_id) : undefined;
+    if (!metric) continue;
+    if (event.event_type === 'page_view') {
+      metric.pageViews += 1;
+      if (event.visitor_hash) metric.visitors.add(event.visitor_hash);
+    }
+    if (event.event_type === 'block_click') metric.clicks += 1;
+  }
+  for (const order of orders) {
+    const metric = order.profile_id ? metrics.get(order.profile_id) : undefined;
+    if (!metric) continue;
+    metric.orderCount += 1;
+    const amount = Number(order.amount_total);
+    if (Number.isFinite(amount) && amount > 0) metric.salesCents += Math.round(amount);
+  }
+  const rows = profiles.map(profile => {
+    const metric = metrics.get(profile.id)!;
+    const uniqueVisitors = metric.visitors.size;
+    return { profileId: profile.id, username: profile.username, displayName: profile.display_name || profile.username, status: profile.status || 'draft', pageViews: metric.pageViews, uniqueVisitors, clicks: metric.clicks, ctr: metric.pageViews ? Math.round((metric.clicks / metric.pageViews) * 1000) / 10 : 0, orderCount: metric.orderCount, salesCents: metric.salesCents };
+  }).sort((a, b) => b.pageViews - a.pageViews || b.clicks - a.clicks);
+  const totals = rows.reduce((total, row) => ({ pageViews: total.pageViews + row.pageViews, uniqueVisitors: total.uniqueVisitors + row.uniqueVisitors, clicks: total.clicks + row.clicks, orderCount: total.orderCount + row.orderCount, salesCents: total.salesCents + row.salesCents }), { pageViews: 0, uniqueVisitors: 0, clicks: 0, orderCount: 0, salesCents: 0 });
+  return json({ data: { period: `${requestedDays}d`, totals: { ...totals, ctr: totals.pageViews ? Math.round((totals.clicks / totals.pageViews) * 1000) / 10 : 0 }, profiles: rows, generatedAt: new Date().toISOString() }, requestId: crypto.randomUUID() });
+}
+
 async function updateProductOrderFulfillment(request: Request, env: Env, orderId: string): Promise<Response> {
   const user = await getSupabaseUser(request, env);
   if (user instanceof Response) return user;
@@ -4812,6 +4867,10 @@ export default {
     if (url.pathname === '/api/analytics/social') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await listSocialAnalytics(request, env); } catch (error) { return internalApiError('Social analytics request failed', error, 'Unable to load social analytics.'); }
+    }
+    if (url.pathname === '/api/analytics/agency') {
+      if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await listAgencyAnalytics(request, env); } catch (error) { return internalApiError('Agency analytics request failed', error, 'Unable to load portfolio analytics.'); }
     }
     if (url.pathname === '/api/public/newsletter') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
