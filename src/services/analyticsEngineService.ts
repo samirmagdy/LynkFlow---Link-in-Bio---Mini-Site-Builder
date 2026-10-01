@@ -153,11 +153,12 @@ class AnalyticsEngineService {
    */
   public aggregateProfileAnalytics(
     profileId: string,
-    range: 'today' | '7d' | '30d' | '90d' | 'all',
+    range: 'today' | '7d' | '30d' | '90d' | 'all' | 'custom',
     timezone: string = 'UTC',
     allKnownBlocks: Array<{ id: string; title: string; type: string }> = [],
     sourceEvents?: AnalyticsEvent[],
-    maxHistoryDays: number = Infinity
+    maxHistoryDays: number = Infinity,
+    customRange?: { start: number; end: number }
   ): AnalyticsAggregateSummary {
     let rawEvents: AnalyticsEvent[] = sourceEvents ? [...sourceEvents] : [];
     if (!sourceEvents) {
@@ -188,13 +189,16 @@ class AnalyticsEngineService {
     // BIL-003: Enforce plan-level retention cap. The effective cutoff is the MOST RECENT
     // of: the requested range start OR the plan's retention window start.
     // This prevents free users from querying 90-day data even if events exist in storage.
-    const requestedCutoff = now - (durationMap[range] || durationMap['7d']);
+    const requestedCutoff = range === 'custom' && customRange && Number.isFinite(customRange.start)
+      ? customRange.start
+      : now - (durationMap[range] || durationMap['7d']);
     const planRetentionCutoff = isFinite(maxHistoryDays)
       ? now - maxHistoryDays * 24 * 60 * 60 * 1000
       : 0;
     const cutoff = Math.max(requestedCutoff, planRetentionCutoff);
 
-    const inRangeEvents = profileEvents.filter(e => e.timestamp >= cutoff);
+    const customEnd = range === 'custom' && customRange && Number.isFinite(customRange.end) ? customRange.end : now;
+    const inRangeEvents = profileEvents.filter(e => e.timestamp >= cutoff && e.timestamp <= customEnd);
 
     // 3. Core Totals Computation
     const pageViewEvents = inRangeEvents.filter(e => e.type === 'page_view');
@@ -215,7 +219,9 @@ class AnalyticsEngineService {
       ? Math.round((totalClicks / totalPageViews) * 1000) / 10 
       : 0;
 
-    const daysCount = range === 'today' ? 1 : range === '7d' ? 7 : range === '30d' ? 30 : 90;
+    const daysCount = range === 'custom' && customRange
+      ? Math.max(1, Math.ceil((customEnd - cutoff) / (24 * 60 * 60 * 1000)))
+      : range === 'today' ? 1 : range === '7d' ? 7 : range === '30d' ? 30 : 90;
     const averageDailyViews = Math.round(totalPageViews / Math.max(1, daysCount));
 
     // Consent opt-out rate calculation
@@ -228,7 +234,8 @@ class AnalyticsEngineService {
     const timeSeries = this.buildReconciledTimeSeries(
       inRangeEvents,
       range,
-      timezone
+      timezone,
+      range === 'custom' ? { start: cutoff, end: customEnd } : undefined
     );
 
     // 5. Block Performance & Historical Clicks Preservation (Edge Case 4)
@@ -384,12 +391,15 @@ class AnalyticsEngineService {
    */
   private buildReconciledTimeSeries(
     events: AnalyticsEvent[],
-    range: 'today' | '7d' | '30d' | '90d' | 'all',
-    timezone: string
+    range: 'today' | '7d' | '30d' | '90d' | 'all' | 'custom',
+    timezone: string,
+    customRange?: { start: number; end: number }
   ): TimeSeriesBucket[] {
     const buckets: Record<string, { views: number; visitors: Set<string>; clicks: number; qrScans: number; timestamp: number }> = {};
-    const days = range === 'today' ? 1 : range === '7d' ? 7 : range === '30d' ? 30 : 90;
-    const now = new Date();
+    const now = new Date(customRange?.end || Date.now());
+    const days = range === 'custom' && customRange
+      ? Math.min(730, Math.max(1, Math.ceil((customRange.end - customRange.start) / (24 * 60 * 60 * 1000))))
+      : range === 'today' ? 1 : range === '7d' ? 7 : range === '30d' ? 30 : 90;
 
     // Initialize all days in the range so the graph has zero-filled days rather than gaps
     for (let i = days - 1; i >= 0; i--) {

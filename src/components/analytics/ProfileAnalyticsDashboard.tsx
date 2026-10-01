@@ -37,7 +37,7 @@ import { analyticsEngineService, AnalyticsAggregateSummary } from '../../service
 import { billingService } from '../../services/billingService';
 import { SocialPerformanceCard } from './SocialPerformanceCard';
 
-type TimeRange = 'today' | '7d' | '30d' | '90d' | 'all';
+type TimeRange = 'today' | '7d' | '30d' | '90d' | 'all' | 'custom';
 type ChartType = 'area' | 'bar' | 'line';
 
 interface CustomTooltipProps {
@@ -88,6 +88,8 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
   const planHistoryDays = billingService.getWorkspaceEntitlements(workspace).analyticsHistoryDays;
 
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
   const [chartType, setChartType] = useState<ChartType>('area');
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState<boolean>(false);
@@ -134,9 +136,12 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
       timezone,
       allKnownBlocks,
       analytics,
-      planHistoryDays
+      planHistoryDays,
+      timeRange === 'custom' && customStart && customEnd
+        ? { start: new Date(`${customStart}T00:00:00`).getTime(), end: new Date(`${customEnd}T23:59:59.999`).getTime() }
+        : undefined
     );
-  }, [activeProfile.id, timeRange, timezone, allKnownBlocks, analytics, planHistoryDays]);
+  }, [activeProfile.id, timeRange, timezone, allKnownBlocks, analytics, planHistoryDays, customStart, customEnd]);
 
   const timeSeriesData = useMemo(() => {
     return aggregateSummary.timeSeries.map(bucket => ({
@@ -394,7 +399,7 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
         </div>
       </div>
 
-      <SocialPerformanceCard profileId={activeProfile.id} period={timeRange} />
+      {timeRange !== 'custom' && <SocialPerformanceCard profileId={activeProfile.id} period={timeRange} />}
 
       {/* Main Interactive Recharts Chart: Views & Clicks Over Time */}
       <div className="p-5 rounded-2xl bg-surface border border-line shadow-xl space-y-4">
@@ -467,7 +472,25 @@ export const ProfileAnalyticsDashboard: React.FC = () => {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!customStart || !customEnd) {
+                    setCustomEnd(new Date().toISOString().slice(0, 10));
+                    setCustomStart(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+                  }
+                  setTimeRange('custom');
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${timeRange === 'custom' ? 'bg-indigo-600 text-white' : 'text-muted hover:text-ink'}`}
+              >
+                Custom
+              </button>
             </div>
+            {timeRange === 'custom' && <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-line bg-canvas p-3">
+              <label className="text-[11px] font-semibold text-body">From<input type="date" value={customStart} max={customEnd || undefined} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-9 rounded-lg border border-line bg-surface px-2 text-xs font-normal text-ink" /></label>
+              <label className="text-[11px] font-semibold text-body">To<input type="date" value={customEnd} min={customStart || undefined} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-9 rounded-lg border border-line bg-surface px-2 text-xs font-normal text-ink" /></label>
+              <span className="text-[11px] text-muted">Custom ranges still respect your plan’s {planHistoryDays}-day history limit.</span>
+            </div>}
           </div>
         </div>
 

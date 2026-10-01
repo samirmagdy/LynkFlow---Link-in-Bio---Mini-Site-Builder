@@ -108,6 +108,20 @@ async function runAnalyticsTestSuite() {
   console.log('  ✓ Daily time-series buckets reconcile 100% with authoritative totals.');
   console.log(`  ✓ Bucket sum (${sumOfBucketViews} views, ${sumOfBucketClicks} clicks) == Totals (${summary.totalPageViews}, ${summary.totalClicks})\n`);
 
+  const customSummary = analyticsEngineService.aggregateProfileAnalytics(
+    profileA,
+    'custom',
+    'UTC',
+    [],
+    undefined,
+    365,
+    { start: Date.now() - 24 * 60 * 60 * 1000, end: Date.now() }
+  );
+  if (customSummary.totalPageViews !== 10 || customSummary.timeSeries.reduce((total, bucket) => total + bucket.views, 0) !== 10) {
+    throw new Error('Custom analytics range did not reconcile with authoritative totals.');
+  }
+  console.log('  ✓ Custom date range totals and time series reconcile correctly.\n');
+
   // -------------------------------------------------------------------------
   // TEST 3: BOT REJECTION & PRIVACY HASHING (AN-001, AN-003)
   // -------------------------------------------------------------------------
