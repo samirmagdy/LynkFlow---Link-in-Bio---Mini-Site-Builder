@@ -26,7 +26,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { billingService } from '../../services/billingService';
 import { createPublicProductCheckoutSession } from '../../services/publicProductCheckoutService';
-import { sanitizeMediaEmbed, validateUrl } from '../../utils/blockValidator';
+import { sanitizeMediaEmbed, validateAppUrl, validateUrl } from '../../utils/blockValidator';
 import { compileThemeToCssVariables } from '../../utils/themeEngine';
 import type { StandardTheme } from '../../types/themeSchema';
 import { getBlockVariantDefinition, resolveLinkVariant } from '../../utils/blockVariantRegistry';
@@ -721,6 +721,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   const linkVariant = resolveLinkVariant(requestedLinkVariant, variants.link || defaultVariant);
                   const minH = linkDefaults?.height ? `${linkDefaults.height}px` : '56px';
                   const thumbnailHref = safePublicHref(payload.thumbnailUrl);
+                  const appHref = validateAppUrl(payload.appUrl || '').isValid ? payload.appUrl?.trim() : null;
 
                   return (
                     <a
@@ -733,6 +734,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       onClick={(e) => {
                         if (!linkHref) {
                           e.preventDefault();
+                          return;
+                        }
+                        if (appHref) {
+                          e.preventDefault();
+                          window.location.assign(appHref);
+                          window.setTimeout(() => {
+                            if (document.visibilityState === 'visible') window.location.assign(linkHref);
+                          }, 900);
                           return;
                         }
                         handleLinkClick(block.id, linkHref, e);

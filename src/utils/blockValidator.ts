@@ -55,6 +55,15 @@ export function validateUrl(rawUrl: string, allowRelative = false): ValidationRe
   }
 }
 
+/** Validates an app/deep-link destination while rejecting executable schemes. */
+export function validateAppUrl(rawUrl: string): ValidationResult {
+  if (!rawUrl || !rawUrl.trim()) return { isValid: false, error: 'App link cannot be empty.' };
+  const trimmed = rawUrl.trim();
+  const match = trimmed.match(/^([a-z][a-z0-9+.-]*):/i);
+  if (!match || /^(javascript|data|vbscript)$/i.test(match[1])) return { isValid: false, error: 'Use a valid app link such as spotify:// or instagram://.' };
+  return { isValid: true, sanitizedValue: trimmed.slice(0, 2048) };
+}
+
 /**
  * Transforms external media URLs (YouTube, Vimeo, Spotify) into safe embed URLs.
  * Also returns fallback metadata if unrecognized.
@@ -130,6 +139,8 @@ export function validateBlockPayload(type: BlockType, payloadInput: unknown): { 
       }
       const thumbnailUrl = getString(payload, 'thumbnailUrl');
       if (thumbnailUrl && !validateUrl(thumbnailUrl).isValid) errors.push('Link thumbnail URL is invalid.');
+      const appUrl = getString(payload, 'appUrl');
+      if (appUrl && !validateAppUrl(appUrl).isValid) errors.push('Link app destination is invalid.');
       break;
     }
 

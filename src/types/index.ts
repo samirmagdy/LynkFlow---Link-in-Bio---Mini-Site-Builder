@@ -169,6 +169,8 @@ export interface BlockAnimationConfig {
 
 export interface LinkBlockPayload {
   url: string;
+  /** Optional native-app destination. `url` remains the web fallback. */
+  appUrl?: string;
   subtitle?: string;
   icon?: string;
   thumbnailUrl?: string;
