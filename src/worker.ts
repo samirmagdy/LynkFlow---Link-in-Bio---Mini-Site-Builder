@@ -2127,6 +2127,126 @@ async function resolvePreviewToken(request: Request, env: Env): Promise<Response
   return json({ data: { profile: { ...profileData, id: profile.id, username: profile.username } }, requestId: crypto.randomUUID() });
 }
 
+type ClientApprovalRow = {
+  id: string;
+  workspace_id: string;
+  profile_id: string;
+  preview_token_hash: string;
+  client_name: string;
+  client_email: string;
+  status: 'pending' | 'approved' | 'changes_requested' | 'expired' | 'revoked';
+  feedback?: string | null;
+  expires_at: string;
+  responded_at?: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+async function createClientApprovalRequest(request: Request, env: Env): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (!user.emailConfirmed) return apiError('EMAIL_VERIFICATION_REQUIRED', 'Verify your email before requesting client approval.', 403);
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot request client approval.', 403);
+  if (await supportWorkspacePlan(env, user.id) !== 'agency') return apiError('PLAN_REQUIRED', 'Client approval links are available on the Agency plan.', 403);
+
+  let input: { profileId?: string; clientName?: string; clientEmail?: string; ttlDays?: number };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const profileId = input.profileId?.trim();
+  const clientName = input.clientName?.trim().slice(0, 120);
+  const clientEmail = input.clientEmail?.trim().toLowerCase().slice(0, 254);
+  const ttlDays = Math.min(30, Math.max(1, Math.floor(Number(input.ttlDays || 7))));
+  if (!profileId || !clientName || !clientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+    return apiError('VALIDATION_ERROR', 'profileId, clientName, and a valid clientEmail are required.', 422);
+  }
+  if (!canManageProfile(user, profileId)) return apiError('FORBIDDEN', 'You do not have permission to request approval for this profile.', 403);
+
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profileId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=id,username`, env);
+  const profiles = await profileResponse.json() as Array<{ id: string; username: string }>;
+  const profile = profiles[0];
+  if (!profile) return apiError('NOT_FOUND', 'Profile not found.', 404);
+
+  const token = `approval_${randomSecret(32)}`;
+  const tokenHash = await sha256(token);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+  const id = `approval_${crypto.randomUUID()}`;
+  const saveResponse = await supabaseRequest('client_approval_requests', env, {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id, workspace_id: user.id, profile_id: profileId, preview_token_hash: tokenHash, client_name: clientName, client_email: clientEmail, expires_at: expiresAt, created_by: user.email, created_at: now.toISOString(), updated_at: now.toISOString() })
+  });
+  if (!saveResponse.ok) return apiError('PERSISTENCE_ERROR', 'Approval request could not be saved. Please retry.', 503);
+
+  const previewResponse = await supabaseRequest('preview_tokens', env, {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id: `pt_${crypto.randomUUID()}`, token_hash: tokenHash, workspace_id: user.id, profile_id: profileId, expires_at: expiresAt, created_by: user.email })
+  });
+  if (!previewResponse.ok) {
+    await supabaseRequest(`client_approval_requests?id=eq.${encodeURIComponent(id)}`, env, { method: 'DELETE', headers: { prefer: 'return=minimal' } });
+    return apiError('PERSISTENCE_ERROR', 'Approval preview could not be created. Please retry.', 503);
+  }
+  await supabaseRequest('audit_logs', env, {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: 'client_approval.requested', target: profileId, occurred_at: now.toISOString(), details: `Requested client approval from ${clientEmail} for @${profile.username}.` })
+  });
+  const origin = env.APP_URL || new URL(request.url).origin;
+  return json({ data: { id, profileId, username: profile.username, clientName, clientEmail, status: 'pending', expiresAt, approvalUrl: `${origin}/client-approval?token=${encodeURIComponent(token)}` }, requestId: crypto.randomUUID() }, 201);
+}
+
+async function resolveClientApproval(request: Request, env: Env): Promise<Response> {
+  const token = new URL(request.url).searchParams.get('token') || '';
+  if (!token) return apiError('NOT_FOUND', 'Approval link is invalid or expired.', 404);
+  const tokenHash = await sha256(token);
+  const response = await supabaseRequest(`client_approval_requests?preview_token_hash=eq.${encodeURIComponent(tokenHash)}&select=id,profile_id,client_name,status,feedback,expires_at,created_at`, env);
+  const rows = await response.json() as Array<Pick<ClientApprovalRow, 'id' | 'profile_id' | 'client_name' | 'status' | 'feedback' | 'expires_at' | 'created_at'>>;
+  const approval = rows[0];
+  if (!approval || new Date(approval.expires_at).getTime() <= Date.now() || approval.status === 'revoked') return apiError('NOT_FOUND', 'Approval link is invalid or expired.', 404);
+  if (new Date(approval.expires_at).getTime() <= Date.now() && approval.status === 'pending') approval.status = 'expired';
+  const profileResponse = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(approval.profile_id)}&select=username`, env);
+  const profiles = await profileResponse.json() as Array<{ username: string }>;
+  if (!profiles[0]) return apiError('NOT_FOUND', 'The profile is no longer available.', 404);
+  const origin = env.APP_URL || new URL(request.url).origin;
+  return json({ data: { ...approval, username: profiles[0].username, previewUrl: `${origin}/?view=public_standalone&u=${encodeURIComponent(profiles[0].username)}&previewToken=${encodeURIComponent(token)}` }, requestId: crypto.randomUUID() });
+}
+
+async function respondToClientApproval(request: Request, env: Env): Promise<Response> {
+  let input: { token?: string; action?: 'approved' | 'changes_requested'; feedback?: string };
+  try { input = await request.json(); } catch { return apiError('VALIDATION_ERROR', 'Request body must be valid JSON.', 400); }
+  const token = input.token?.trim() || '';
+  const action = input.action;
+  const feedback = String(input.feedback || '').trim().slice(0, 2000);
+  if (!token || !action || !['approved', 'changes_requested'].includes(action)) return apiError('VALIDATION_ERROR', 'token and a valid action are required.', 422);
+  if (action === 'changes_requested' && !feedback) return apiError('VALIDATION_ERROR', 'Please add a short note describing the requested changes.', 422);
+  const tokenHash = await sha256(token);
+  const lookup = await supabaseRequest(`client_approval_requests?preview_token_hash=eq.${encodeURIComponent(tokenHash)}&select=*`, env);
+  const rows = await lookup.json() as ClientApprovalRow[];
+  const approval = rows[0];
+  if (!approval || approval.status !== 'pending' || new Date(approval.expires_at).getTime() <= Date.now()) return apiError('CONFLICT', 'This approval request is no longer awaiting a response.', 409);
+  const now = new Date().toISOString();
+  const updateResponse = await supabaseRequest(`client_approval_requests?id=eq.${encodeURIComponent(approval.id)}&status=eq.pending`, env, {
+    method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: action, feedback: feedback || null, responded_at: now, updated_at: now })
+  });
+  if (!updateResponse.ok) return apiError('PERSISTENCE_ERROR', 'Your response could not be saved. Please retry.', 503);
+  await supabaseRequest('audit_logs', env, {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: approval.workspace_id, actor: approval.client_email, action: `client_approval.${action}`, target: approval.profile_id, occurred_at: now, details: feedback || `Client ${action.replace('_', ' ')} the draft.` })
+  });
+  return json({ data: { id: approval.id, status: action, respondedAt: now }, requestId: crypto.randomUUID() });
+}
+
+async function clientApprovalPage(request: Request, env: Env): Promise<Response> {
+  const token = new URL(request.url).searchParams.get('token') || '';
+  const response = await resolveClientApproval(new Request(`${new URL(request.url).origin}/api/public/client-approval?token=${encodeURIComponent(token)}`), env);
+  if (!response.ok) return new Response('<!doctype html><title>Approval link unavailable</title><main style="font:16px system-ui;max-width:560px;margin:64px auto;padding:24px"><h1>Approval link unavailable</h1><p>This link is invalid, expired, or has already been closed.</p></main>', { status: response.status, headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store' } });
+  const body = await response.json() as { data: { client_name: string; username: string; status: string; feedback?: string | null; previewUrl: string; expires_at: string } };
+  const data = body.data;
+  const safe = (value: unknown) => escapeHtml(String(value || ''));
+  const statusText = data.status === 'pending' ? 'Your review is waiting for a response.' : data.status === 'approved' ? 'This draft was approved.' : 'Changes were requested for this draft.';
+  const form = data.status === 'pending' ? `<form id="approval-form"><label>Optional note<textarea id="feedback" maxlength="2000" placeholder="Tell the creator what you think..."></textarea></label><div class="actions"><button class="approve" data-action="approved" type="button">Approve draft</button><button class="changes" data-action="changes_requested" type="button">Request changes</button></div><p id="result" role="status"></p></form>` : `<p class="result">${safe(data.feedback || statusText)}</p>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Review @${safe(data.username)} · LynkFlow</title><style>body{margin:0;background:#f5f5fb;color:#171725;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:720px;margin:0 auto;padding:48px 20px 80px}.card{padding:28px;border:1px solid #dedee8;border-radius:24px;background:#fff;box-shadow:0 18px 50px #20204012}h1{margin:8px 0;font-size:clamp(30px,6vw,52px);line-height:1.05;letter-spacing:-.04em}.eyebrow{color:#5b4bff;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}p{color:#5b5b6b}.preview{display:inline-flex;margin:18px 0;padding:12px 16px;border-radius:12px;background:#5142e8;color:#fff;font-weight:700;text-decoration:none}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}button{border:0;border-radius:12px;padding:12px 16px;font:inherit;font-weight:700;cursor:pointer}.approve{background:#16845b;color:#fff}.changes{background:#ecebfa;color:#4435bb}textarea{display:block;width:100%;box-sizing:border-box;min-height:100px;margin-top:8px;padding:12px;border:1px solid #d7d7e3;border-radius:12px;resize:vertical;font:inherit}label{display:block;font-weight:700}.result{margin-top:16px;color:#16845b;font-weight:700}@media(max-width:520px){.shell{padding:24px 14px}.card{padding:20px}.actions button{width:100%}}</style></head><body><main class="shell"><section class="card"><div class="eyebrow">LynkFlow client review</div><h1>Review @${safe(data.username)}</h1><p>Hello ${safe(data.client_name)}. ${safe(statusText)}</p><a class="preview" href="${safe(data.previewUrl)}" target="_blank" rel="noopener noreferrer">Open live draft preview ↗</a>${form}</section></main><script>const token=${JSON.stringify(token)};document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',async()=>{const result=document.querySelector('#result');const feedback=document.querySelector('#feedback')?.value.trim()||'';const action=button.dataset.action;button.disabled=true;result.textContent='Saving your response…';try{const response=await fetch('/api/public/client-approval',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token,action,feedback})});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Unable to save response.');result.textContent=action==='approved'?'Approved. The creator has been notified.':'Changes requested. The creator has been notified.';document.querySelectorAll('[data-action]').forEach(item=>item.disabled=true)}catch(error){result.textContent=error.message||'Unable to save response.';button.disabled=false}}));</script></body></html>`;
+  return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" } });
+}
+
 function profileApiResource(profile: { id: string; username: string; data: Record<string, unknown> }): Record<string, unknown> {
   return {
     id: profile.id, username: profile.username,
@@ -4575,6 +4695,10 @@ export default {
       if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
       try { return await courseAccessResponse(request, env); } catch (error) { console.error('Course access rendering failed', error); return new Response('Course access is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
     }
+    if (url.pathname === '/client-approval') {
+      if (request.method !== 'GET') return new Response('Method not allowed.', { status: 405 });
+      try { return await clientApprovalPage(request, env); } catch (error) { console.error('Client approval page failed', error); return new Response('Approval page is temporarily unavailable.', { status: 503, headers: { 'content-type': 'text/plain;charset=UTF-8', 'cache-control': 'no-store' } }); }
+    }
     if (url.pathname === '/api/public/course-progress') {
       if (!['GET', 'POST'].includes(request.method)) return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await courseProgressResponse(request, env); } catch (error) { console.error('Course progress request failed', error); return apiError('PERSISTENCE_ERROR', 'Course progress is temporarily unavailable.', 503); }
@@ -4651,9 +4775,22 @@ export default {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await createPreviewToken(request, env); } catch (error) { return internalApiError('Create preview token failed', error, 'Unable to create preview link.'); }
     }
+    if (url.pathname === '/api/profile/client-approval') {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await createClientApprovalRequest(request, env); } catch (error) { return internalApiError('Create client approval failed', error, 'Unable to create client approval link.'); }
+    }
     if (url.pathname === '/api/public/preview') {
       if (request.method !== 'GET') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await resolvePreviewToken(request, env); } catch (error) { return internalApiError('Resolve preview token failed', error, 'Unable to resolve preview link.'); }
+    }
+    if (url.pathname === '/api/public/client-approval') {
+      if (request.method === 'GET') {
+        try { return await resolveClientApproval(request, env); } catch (error) { return internalApiError('Resolve client approval failed', error, 'Unable to load approval request.'); }
+      }
+      if (request.method === 'POST') {
+        try { return await respondToClientApproval(request, env); } catch (error) { return internalApiError('Respond to client approval failed', error, 'Unable to save approval response.'); }
+      }
+      return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
     }
     if (url.pathname === '/api/stripe/checkout') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);

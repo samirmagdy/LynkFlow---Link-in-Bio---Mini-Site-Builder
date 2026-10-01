@@ -9,6 +9,7 @@ import { useApp } from '../../context/AppContext';
 import { billingService } from '../../services/billingService';
 import { ProfileRole } from '../../types';
 import { AgencyAnalyticsPanel } from './AgencyAnalyticsPanel';
+import { createClientApprovalRequest } from '../../services/clientApprovalService';
 import {
   Users,
   Plus,
@@ -228,6 +229,65 @@ function DeleteProfileModal({
   );
 }
 
+function ClientApprovalModal({
+  profile,
+  onClose,
+  showToast,
+}: {
+  profile: { id: string; username: string; displayName: string };
+  onClose: () => void;
+  showToast: (message: string) => void;
+}) {
+  const [clientName, setClientName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [approvalUrl, setApprovalUrl] = useState('');
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    if (!clientName.trim() || !clientEmail.trim()) { setError('Client name and email are required.'); return; }
+    setBusy(true); setError('');
+    try {
+      const result = await createClientApprovalRequest(profile.id, clientName.trim(), clientEmail.trim());
+      setApprovalUrl(result.approvalUrl);
+      showToast('Client approval link created.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Approval link could not be created.');
+    } finally { setBusy(false); }
+  };
+
+  const copyLink = async () => {
+    if (!approvalUrl) return;
+    await navigator.clipboard?.writeText(approvalUrl);
+    showToast('Approval link copied.');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="client-approval-title">
+      <div className="w-full max-w-md space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div><h3 id="client-approval-title" className="text-sm font-bold text-ink">Request client approval</h3><p className="mt-1 text-xs text-muted">Share a private draft review for @{profile.username} before publishing.</p></div>
+          <button type="button" onClick={onClose} aria-label="Close approval dialog" className="rounded-lg p-1 text-subtle hover:bg-surface-2 hover:text-ink"><X className="h-4 w-4" /></button>
+        </div>
+        {error && <div role="alert" className="rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div>}
+        {approvalUrl ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-success/30 bg-success/5 p-3"><p className="text-xs font-semibold text-success">Review link ready</p><p className="mt-1 break-all text-[11px] text-body">{approvalUrl}</p></div>
+            <div className="flex gap-2"><button type="button" onClick={() => void copyLink()} className="flex-1 rounded-xl bg-ink px-3 py-2.5 text-xs font-bold text-white">Copy link</button><a href={approvalUrl} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-line px-3 py-2.5 text-xs font-semibold text-body">Open</a></div>
+            <p className="text-[11px] leading-4 text-muted">The link expires in 7 days and lets the client approve the draft or request changes. Publishing remains under your team’s control.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="block text-xs font-semibold text-body">Client name<input value={clientName} onChange={event => setClientName(event.target.value)} placeholder="Alex Johnson" className="mt-1.5 w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm text-ink outline-none focus:border-accent" /></label>
+            <label className="block text-xs font-semibold text-body">Client email<input type="email" value={clientEmail} onChange={event => setClientEmail(event.target.value)} placeholder="client@company.com" className="mt-1.5 w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm text-ink outline-none focus:border-accent" /></label>
+            <button type="button" disabled={busy} onClick={() => void submit()} className="w-full rounded-xl bg-accent px-3 py-2.5 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-50">{busy ? 'Creating secure link…' : 'Create review link'}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const MultiProfileManager: React.FC = () => {
@@ -240,6 +300,7 @@ export const MultiProfileManager: React.FC = () => {
   const [newCategory, setNewCategory] = useState('Creator');
   const [selectedProfileIds, setSelectedProfileIds] = useState<Set<string>>(new Set());
   const [bulkPublishing, setBulkPublishing] = useState(false);
+  const [approvalTarget, setApprovalTarget] = useState<{ id: string; username: string; displayName: string } | null>(null);
 
   const entitlements = billingService.getWorkspaceEntitlements(workspace);
   const maxProfiles = entitlements.maxProfiles;
@@ -467,12 +528,25 @@ export const MultiProfileManager: React.FC = () => {
                   >
                     <Globe className="w-3.5 h-3.5" />
                   </button>
+                  {workspace.plan === 'agency' && (
+                    <button
+                      type="button"
+                      onClick={() => setApprovalTarget({ id: profile.id, username: profile.username, displayName: profile.displayName })}
+                      title="Request client approval"
+                      aria-label={`Request client approval for ${profile.username}`}
+                      className="rounded-lg p-1.5 text-subtle transition-colors hover:bg-indigo-500/10 hover:text-accent"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {approvalTarget && <ClientApprovalModal profile={approvalTarget} onClose={() => setApprovalTarget(null)} showToast={showToast} />}
 
       {/* PRO-005: Team Members */}
       <div className="p-6 rounded-2xl bg-surface border border-line space-y-4">
