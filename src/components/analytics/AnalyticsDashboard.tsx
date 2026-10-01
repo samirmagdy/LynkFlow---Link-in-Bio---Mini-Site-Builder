@@ -16,11 +16,81 @@ import {
 import { animateCounter, animateBarFill } from '../../utils/animeAnimations';
 import { animate, stagger } from 'animejs';
 import { analyticsEngineService, AnalyticsAggregateSummary } from '../../services/analyticsEngineService';
+import { loadProductOrders, ProductOrder } from '../../services/salesService';
+import { loadSocialAnalytics, SocialAnalyticsSummary } from '../../services/socialAnalyticsService';
 
 const ProfileAnalyticsDashboard = lazy(() => import('./ProfileAnalyticsDashboard').then(module => ({ default: module.ProfileAnalyticsDashboard })));
 
+const formatRevenue = (orders: ProductOrder[]) => {
+  const paid = orders.filter(order => order.payment_status === 'paid');
+  const total = paid.reduce((sum, order) => sum + order.amount_total, 0);
+  const currency = paid[0]?.currency || orders[0]?.currency || 'usd';
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency.toUpperCase(), maximumFractionDigits: 0 }).format(total / 100);
+};
+
+const GrowthOverview: React.FC<{
+  profile: ReturnType<typeof useApp>['activeProfile'];
+  submissions: ReturnType<typeof useApp>['submissions'];
+  pageViews: number;
+  ctr: number;
+}> = ({ profile, submissions, pageViews, ctr }) => {
+  const { setCurrentView } = useApp();
+  const [social, setSocial] = useState<SocialAnalyticsSummary | null>(null);
+  const [orders, setOrders] = useState<ProductOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dataWarning, setDataWarning] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void Promise.allSettled([loadSocialAnalytics(profile.id, '30d'), loadProductOrders(profile.id)]).then(results => {
+      if (cancelled) return;
+      const socialResult = results[0];
+      const ordersResult = results[1];
+      setSocial(socialResult.status === 'fulfilled' ? socialResult.value : null);
+      setOrders(ordersResult.status === 'fulfilled' ? ordersResult.value : []);
+      setDataWarning(results.some(result => result.status === 'rejected'));
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [profile.id]);
+
+  const profileSubmissions = submissions.filter(submission => submission.profileId === profile.id);
+  const paidOrders = orders.filter(order => order.payment_status === 'paid');
+  const hasCommerce = profile.tabs.some(tab => tab.blocks.some(block => ['product', 'course', 'tip', 'membership'].includes(block.type)));
+  const hasCapture = profile.tabs.some(tab => tab.blocks.some(block => ['form', 'emailSignup', 'contact'].includes(block.type)));
+  const publishedSocial = social?.published || 0;
+  const scheduledSocial = social?.scheduled || 0;
+
+  const nextAction = pageViews === 0
+    ? { title: 'Get your first visitor', body: 'Publish your page, then share it with your audience.', view: 'editor' as const, label: 'Review page' }
+    : !hasCapture
+      ? { title: 'Start collecting leads', body: 'Add a contact form or email signup so attention becomes an audience.', view: 'editor' as const, label: 'Add a capture block' }
+      : publishedSocial === 0
+        ? { title: 'Share your page', body: 'Connect a channel and publish your first campaign from one composer.', view: 'social' as const, label: 'Open publishing' }
+        : ctr < 2
+          ? { title: 'Improve your next step', body: 'Your page is getting views. Make the primary link clearer and more prominent.', view: 'editor' as const, label: 'Tune page blocks' }
+          : !hasCommerce
+            ? { title: 'Add a way to earn', body: 'Turn your most valuable offer into a product, course, tip, or membership.', view: 'editor' as const, label: 'Add an offer' }
+            : { title: 'Keep the momentum', body: 'Schedule the next campaign and review which channels are converting.', view: 'social' as const, label: 'Plan next campaign' };
+
+  return <section className="rounded-2xl border border-accent/20 bg-gradient-to-br from-accent/10 via-surface to-surface p-5" aria-labelledby="growth-overview-title">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" /><h3 id="growth-overview-title" className="text-sm font-bold text-ink">Growth overview</h3></div><p className="mt-1 text-xs leading-5 text-muted">The clearest next move for @{profile.username}, based on your real page activity.</p></div>
+      <button type="button" onClick={() => setCurrentView(nextAction.view)} className="min-h-9 shrink-0 rounded-lg bg-ink px-3 text-[11px] font-semibold text-white hover:opacity-90">{nextAction.label}</button>
+    </div>
+    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="rounded-xl border border-line bg-surface/80 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-subtle">Visitors</p><p className="mt-1 text-lg font-bold tabular-nums text-ink">{pageViews.toLocaleString()}</p><p className="text-[10px] text-muted">selected period</p></div>
+      <div className="rounded-xl border border-line bg-surface/80 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-subtle">Leads</p><p className="mt-1 text-lg font-bold tabular-nums text-ink">{profileSubmissions.length.toLocaleString()}</p><p className="text-[10px] text-muted">form responses</p></div>
+      <div className="rounded-xl border border-line bg-surface/80 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-subtle">Revenue</p><p className="mt-1 text-lg font-bold tabular-nums text-ink">{loading ? '—' : formatRevenue(orders)}</p><p className="text-[10px] text-muted">paid orders: {paidOrders.length}</p></div>
+      <div className="rounded-xl border border-line bg-surface/80 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-subtle">Publishing</p><p className="mt-1 text-lg font-bold tabular-nums text-ink">{loading ? '—' : publishedSocial.toLocaleString()}</p><p className="text-[10px] text-muted">{scheduledSocial} scheduled</p></div>
+    </div>
+    <div className="mt-4 flex flex-col gap-1.5 rounded-xl border border-accent/20 bg-surface/70 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold text-ink">{nextAction.title}</p><p className="mt-0.5 text-[11px] text-muted">{nextAction.body}</p></div><span className="text-[10px] font-semibold text-accent">Recommended next step</span></div>
+    {dataWarning && <p className="mt-3 text-[10px] text-warning">Some growth sources are unavailable right now; unavailable metrics are shown conservatively.</p>}
+  </section>;
+};
+
 export const AnalyticsDashboard: React.FC = () => {
-  const { activeProfile, analytics, user, showToast, appendAuditLog } = useApp();
+  const { activeProfile, analytics, submissions, user, showToast, appendAuditLog } = useApp();
   const [analyticsEngine, setAnalyticsEngine] = useState<'recharts' | 'anime'>('recharts');
   const [timeRange, setTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
 
@@ -143,6 +213,7 @@ export const AnalyticsDashboard: React.FC = () => {
 
   return (
     <div className="studio-page flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 max-w-6xl mx-auto w-full">
+      <GrowthOverview profile={activeProfile} submissions={submissions} pageViews={pageViews} ctr={parseFloat(ctr) || 0} />
       {/* Header & Range Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-line">
         <div>
