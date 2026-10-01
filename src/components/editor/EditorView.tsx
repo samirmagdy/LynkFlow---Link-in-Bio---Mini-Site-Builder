@@ -21,7 +21,10 @@ import {
   Save,
   History,
   Link2,
-  X
+  X,
+  CheckCircle2,
+  Circle,
+  Rocket
 } from 'lucide-react';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
 
@@ -103,6 +106,17 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
       setIsAddingTab(false);
     }
   };
+
+  const allBlocks = activeProfile.tabs.flatMap(tab => tab.blocks);
+  const launchChecklist = [
+    { id: 'identity', label: 'Add your profile identity', detail: 'Display name and profile image', complete: Boolean(activeProfile.displayName?.trim() && activeProfile.avatarUrl?.trim()) },
+    { id: 'bio', label: 'Write a short introduction', detail: 'Help visitors understand what you do', complete: Boolean(activeProfile.bio?.trim() && !activeProfile.bio.toLowerCase().includes('welcome to my')) },
+    { id: 'link', label: 'Add a real destination link', detail: 'Replace starter placeholders with your URL', complete: allBlocks.some(block => block.type === 'link' && /^https?:\/\//i.test(String((block.payload as { url?: unknown }).url || ''))) },
+    { id: 'capture', label: 'Choose a way to hear from people', detail: 'Add a form, booking link, or email signup', complete: allBlocks.some(block => ['form', 'emailSignup', 'contact'].includes(block.type)) },
+    { id: 'theme', label: 'Make the page feel like yours', detail: 'Choose a theme or adjust your background', complete: Boolean(activeProfile.standardTheme?.name || activeProfile.theme?.name) }
+  ];
+  const completedLaunchItems = launchChecklist.filter(item => item.complete).length;
+  const showLaunchChecklist = completedLaunchItems < launchChecklist.length || hasUnpublishedChanges;
 
   return (
     <div className="studio-editor flex-1 flex flex-col h-full overflow-hidden">
@@ -306,6 +320,33 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
         <div className="w-full lg:w-[58%] xl:w-[60%] h-full overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* Profile Identity Editor */}
           <ProfileHeaderEditor />
+
+          {showLaunchChecklist && (
+            <section className="rounded-2xl border border-accent/20 bg-accent/5 p-4" aria-labelledby="launch-checklist-title">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-2.5">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><Rocket className="h-4 w-4" /></span>
+                  <div>
+                    <h2 id="launch-checklist-title" className="text-sm font-bold text-ink">Get your page ready to share</h2>
+                    <p className="mt-0.5 text-[11px] text-muted">Complete the essentials, then publish when everything looks right.</p>
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-[10px] font-semibold text-muted">{completedLaunchItems}/{launchChecklist.length} ready</span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {launchChecklist.map(item => (
+                  <div key={item.id} className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 ${item.complete ? 'border-success/20 bg-success/5' : 'border-line bg-surface'}`}>
+                  {item.complete ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-subtle" aria-hidden="true" />}
+                  <div className="min-w-0"><p className={`text-xs font-semibold ${item.complete ? 'text-success' : 'text-ink'}`}>{item.label}</p><p className="mt-0.5 text-[10px] leading-4 text-muted">{item.detail}</p></div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setCurrentView('themes')} className="min-h-9 rounded-lg border border-line bg-surface px-3 text-[11px] font-semibold text-body hover:border-accent hover:text-accent">Customize appearance</button>
+                <button type="button" onClick={() => { setPublishModalTab('validate'); setIsPublishModalOpen(true); }} className="min-h-9 rounded-lg bg-ink px-3 text-[11px] font-semibold text-white hover:opacity-90">Review and publish</button>
+              </div>
+            </section>
+          )}
 
           {/* Tabs Navigation & Blocks */}
           <div className="space-y-4">
