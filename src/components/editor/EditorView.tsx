@@ -27,6 +27,7 @@ import {
   Rocket
 } from 'lucide-react';
 import { PublishLifecycleModal } from '../modals/PublishLifecycleModal';
+import { ProfileSeoSettingsModal } from '../modals/ProfileSeoSettingsModal';
 
 interface EditorViewProps {
   onOpenReportModal?: () => void;
@@ -64,6 +65,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
   const [newTabTitle, setNewTabTitle] = useState('');
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [isMobilePreviewOpen, setIsMobilePreviewOpen] = useState(false);
+  const [isSeoModalOpen, setIsSeoModalOpen] = useState(false);
 
   // Sync activeTabId if profile changes
   const currentTab = activeProfile.tabs.find(t => t.id === activeTabId) || activeProfile.tabs[0];
@@ -325,7 +327,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
         {/* Left Column: Builder & Block Editor */}
         <div className="w-full lg:w-[58%] xl:w-[60%] h-full overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* Profile Identity Editor */}
-          <ProfileHeaderEditor />
+          <ProfileHeaderEditor onOpenSeoModal={() => setIsSeoModalOpen(true)} />
 
           {showLaunchChecklist && (
             <section className="rounded-2xl border border-accent/20 bg-accent/5 p-4" aria-labelledby="launch-checklist-title">
@@ -484,6 +486,12 @@ export const EditorView: React.FC<EditorViewProps> = ({ onOpenReportModal, onOpe
         isOpen={isPublishModalOpen}
         initialTab={publishModalTab}
         onClose={() => setIsPublishModalOpen(false)}
+      />
+
+      {/* SEO & Open Graph Social Preview Settings Modal */}
+      <ProfileSeoSettingsModal
+        isOpen={isSeoModalOpen}
+        onClose={() => setIsSeoModalOpen(false)}
       />
     </div>
   );
