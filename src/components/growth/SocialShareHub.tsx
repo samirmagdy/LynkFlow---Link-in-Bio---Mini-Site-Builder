@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AtSign, CalendarDays, Check, ChevronLeft, ChevronRight, Clipboard, ExternalLink, Facebook, Instagram, Linkedin, Loader2, Mail, MessageCircle, Music2, Send, Share2, Twitter, Upload, Youtube } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { uploadBlockAsset } from '../../services/backgroundAssetService';
-import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialProviderConfiguration, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, publishThreadsPost, recordSocialShare, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, scheduleThreadsPost, syncSocialFollowers, ShareProvider, SocialConnection, SocialPublication, SocialFollowerSync, SocialProviderConfiguration, startFacebookOAuth as startFacebookOAuthRaw, startInstagramOAuth as startInstagramOAuthRaw, startLinkedInOAuth as startLinkedInOAuthRaw, startTikTokOAuth as startTikTokOAuthRaw, startXOAuth as startXOAuthRaw, startYouTubeOAuth as startYouTubeOAuthRaw, startThreadsOAuth as startThreadsOAuthRaw, SocialShareEvent } from '../../services/socialShareService';
+import { cancelSocialPublication, completeSocialShare, loadSocialConnections, loadSocialProviderConfiguration, loadSocialPublications, loadSocialShareEvents, publishFacebookPost, publishInstagramPost, publishLinkedInPost, publishTikTokPost, publishXPost, publishYouTubePost, publishThreadsPost, recordSocialShare, retrySocialPublication, scheduleFacebookPost, scheduleInstagramPost, scheduleLinkedInPost, scheduleTikTokPost, scheduleXPost, scheduleYouTubePost, scheduleThreadsPost, syncSocialFollowers, ShareProvider, SocialConnection, SocialPublication, SocialFollowerSync, SocialProviderConfiguration, startFacebookOAuth as startFacebookOAuthRaw, startInstagramOAuth as startInstagramOAuthRaw, startLinkedInOAuth as startLinkedInOAuthRaw, startTikTokOAuth as startTikTokOAuthRaw, startXOAuth as startXOAuthRaw, startYouTubeOAuth as startYouTubeOAuthRaw, startThreadsOAuth as startThreadsOAuthRaw, SocialShareEvent } from '../../services/socialShareService';
 
 const PROVIDERS: Array<{ id: ShareProvider; label: string; icon: React.ReactNode; hint: string }> = [
   { id: 'x', label: 'X', icon: <Twitter className="h-4 w-4" />, hint: 'Post with a pre-filled message' },
@@ -76,6 +76,7 @@ export const SocialShareHub: React.FC = () => {
   const [mediaUploadError, setMediaUploadError] = useState<string | null>(null);
   const [scheduledAt, setScheduledAt] = useState(defaultScheduleTime);
   const [scheduling, setScheduling] = useState(false);
+  const [retryingPublicationId, setRetryingPublicationId] = useState<string | null>(null);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
   const [calendarCursor, setCalendarCursor] = useState(() => {
     const now = new Date();
@@ -459,6 +460,17 @@ export const SocialShareHub: React.FC = () => {
     finally { setScheduling(false); }
   };
 
+  const retryScheduledPost = async (publication: SocialPublication) => {
+    setRetryingPublicationId(publication.id); setError(null);
+    try {
+      const retried = await retrySocialPublication(publication.id);
+      setPublications(previous => previous.map(item => item.id === publication.id ? retried : item));
+      setError(`Retry queued for ${publication.provider}. It will run on the next Worker cycle.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to retry scheduled post.');
+    } finally { setRetryingPublicationId(null); }
+  };
+
   const retryShare = async (event: SocialShareEvent) => {
     if (busyProvider !== null) return;
     setBusyProvider(event.provider); setError(null);
@@ -516,7 +528,7 @@ export const SocialShareHub: React.FC = () => {
     catch { setError('Copy is unavailable in this browser.'); }
   };
 
-  const publicationPanel = publications.length > 0 ? <section className="overflow-hidden rounded-2xl border border-line bg-surface"><div className="border-b border-line px-5 py-4"><h3 className="text-sm font-semibold text-ink">Scheduled publishing</h3><p className="mt-1 text-xs text-muted">Scheduled posts continue even if you leave the Studio.</p></div><div className="divide-y divide-line">{publications.map(publication => <div key={publication.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold capitalize text-ink">{publication.provider}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${publication.status === 'published' ? 'bg-success/10 text-success' : publication.status === 'failed' ? 'bg-danger/10 text-danger' : publication.status === 'cancelled' ? 'bg-surface-2 text-muted' : 'bg-warning/10 text-warning'}`}>{publication.status}</span><time className="text-[10px] text-subtle">{new Date(publication.scheduled_at).toLocaleString()}</time></div><p className="mt-1 truncate text-[11px] text-muted">{publication.last_error || publication.content}</p></div>{publication.status === 'scheduled' && <button type="button" disabled={scheduling} onClick={() => void cancelScheduledPost(publication)} className="self-start text-[11px] font-semibold text-danger hover:underline disabled:opacity-50 sm:self-auto">Cancel</button>}</div>)}</div></section> : null;
+  const publicationPanel = publications.length > 0 ? <section className="overflow-hidden rounded-2xl border border-line bg-surface"><div className="border-b border-line px-5 py-4"><h3 className="text-sm font-semibold text-ink">Scheduled publishing</h3><p className="mt-1 text-xs text-muted">Scheduled posts continue even if you leave the Studio. Failed deliveries can be requeued after reconnecting a provider.</p></div><div className="divide-y divide-line">{publications.map(publication => <div key={publication.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold capitalize text-ink">{publication.provider}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${publication.status === 'published' ? 'bg-success/10 text-success' : publication.status === 'failed' ? 'bg-danger/10 text-danger' : publication.status === 'cancelled' ? 'bg-surface-2 text-muted' : 'bg-warning/10 text-warning'}`}>{publication.status}</span><time className="text-[10px] text-subtle">{new Date(publication.scheduled_at).toLocaleString()}</time></div><p className="mt-1 truncate text-[11px] text-muted">{publication.last_error || publication.content}</p></div><div className="flex shrink-0 items-center gap-3">{publication.status === 'failed' && <button type="button" disabled={retryingPublicationId === publication.id || scheduling} onClick={() => void retryScheduledPost(publication)} className="self-start text-[11px] font-semibold text-accent hover:underline disabled:opacity-50 sm:self-auto">{retryingPublicationId === publication.id ? 'Queueing…' : 'Retry'}</button>}{publication.status === 'scheduled' && <button type="button" disabled={scheduling || retryingPublicationId !== null} onClick={() => void cancelScheduledPost(publication)} className="self-start text-[11px] font-semibold text-danger hover:underline disabled:opacity-50 sm:self-auto">Cancel</button>}</div></div>)}</div></section> : null;
 
   return <div className="studio-page flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-5xl space-y-6">
     <header><div className="flex items-center gap-2"><Share2 className="h-5 w-5 text-accent" /><h2 className="text-lg font-bold text-ink">Share & Publish</h2></div><p className="mt-1 max-w-2xl text-xs leading-5 text-muted">Compose once, then hand off to the networks your audience already uses. LynkFlow records each handoff without storing social credentials.</p></header>

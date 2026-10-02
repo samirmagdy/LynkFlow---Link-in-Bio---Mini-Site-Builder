@@ -253,3 +253,12 @@ export async function cancelSocialPublication(id: string): Promise<void> {
     throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to cancel scheduled post.');
   }
 }
+
+export async function retrySocialPublication(id: string): Promise<SocialPublication> {
+  const response = await authorizedRequest(`/api/social/publications/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+  const body = await response.json() as { data?: SocialPublication; error?: string | { message?: string } };
+  if (!response.ok || !body.data) {
+    throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Unable to retry scheduled post.');
+  }
+  return body.data;
+}

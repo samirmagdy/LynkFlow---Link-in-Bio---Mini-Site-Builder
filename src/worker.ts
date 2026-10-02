@@ -4023,6 +4023,37 @@ async function cancelSocialPublication(request: Request, env: Env, publicationId
   return json({ success: true });
 }
 
+async function retrySocialPublication(request: Request, env: Env, publicationId: string): Promise<Response> {
+  const user = await getSupabaseUser(request, env);
+  if (user instanceof Response) return user;
+  if (user.role === 'viewer') return apiError('FORBIDDEN', 'Viewers cannot retry social posts.', 403);
+  const existingResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&select=*`, env);
+  const existing = await existingResponse.json() as Array<Record<string, unknown>>;
+  const publication = existing[0];
+  const profileId = String(publication?.profile_id || '');
+  if (!publication || !profileId || !canManageProfile(user, profileId)) return apiError('NOT_FOUND', 'Scheduled post not found.', 404);
+  if (publication.status !== 'failed') return apiError('CONFLICT', 'Only failed social posts can be retried.', 409);
+  const provider = String(publication.provider || '');
+  if (!['linkedin', 'tiktok', 'instagram', 'facebook', 'youtube', 'threads', 'x'].includes(provider)) return apiError('VALIDATION_ERROR', 'Unsupported social provider.', 422);
+  const connection = provider === 'linkedin' ? await activeLinkedInConnection(user.id, env)
+    : provider === 'tiktok' ? await activeTikTokConnection(user.id, env)
+      : provider === 'instagram' ? await activeInstagramConnection(user.id, env)
+        : provider === 'facebook' ? await activeFacebookConnection(user.id, env)
+          : provider === 'youtube' ? await activeYouTubeConnection(user.id, env)
+            : provider === 'threads' ? await activeThreadsConnection(user.id, env)
+              : await activeXConnection(user.id, env);
+  if (!connection) return apiError('CONNECTION_REQUIRED', `Reconnect ${provider === 'x' ? 'X' : provider} before retrying this post.`, 409);
+  const nextAttempt = new Date(Date.now() + 60_000).toISOString();
+  const shareEventId = typeof publication.share_event_id === 'string' ? publication.share_event_id : '';
+  const update = { status: 'scheduled', scheduled_at: nextAttempt, provider_post_id: null, last_error: null, attempt_count: 0, updated_at: new Date().toISOString() };
+  const updateResponse = await supabaseRequest(`social_publications?id=eq.${encodeURIComponent(publicationId)}&workspace_id=eq.${encodeURIComponent(user.id)}&status=eq.failed`, env, { method: 'PATCH', headers: { prefer: 'return=representation' }, body: JSON.stringify(update) });
+  if (!updateResponse.ok) return apiError('PERSISTENCE_ERROR', 'The failed post could not be requeued.', 503);
+  if (shareEventId) await supabaseRequest(`social_share_events?id=eq.${encodeURIComponent(shareEventId)}&workspace_id=eq.${encodeURIComponent(user.id)}`, env, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ status: 'initiated' }) });
+  await supabaseRequest('audit_logs', env, { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ id: `audit-${crypto.randomUUID()}`, workspace_id: user.id, actor: user.email, action: `social.${provider}.schedule_retried`, target: publicationId, occurred_at: new Date().toISOString(), details: `Requeued failed ${provider} publication for ${nextAttempt}.` }) });
+  const updated = (await updateResponse.json() as Array<Record<string, unknown>>)[0] || { ...publication, ...update };
+  return json({ data: updated, requestId: crypto.randomUUID() });
+}
+
 async function listBookingRequests(request: Request, env: Env): Promise<Response> {
   const access = await requirePaidWorkspace(request, env);
   if (access instanceof Response) return access;
@@ -5150,6 +5181,10 @@ export default {
     if (url.pathname === '/api/social/threads/schedule') {
       if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       try { return await scheduleSimpleSocialPost(request, env, 'threads'); } catch (error) { return internalApiError('Schedule Threads post failed', error, 'Unable to schedule Threads post.'); }
+    }
+    if (url.pathname.startsWith('/api/social/publications/') && url.pathname.endsWith('/retry')) {
+      if (request.method !== 'POST') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      try { return await retrySocialPublication(request, env, decodeURIComponent(url.pathname.slice('/api/social/publications/'.length, -'/retry'.length))); } catch (error) { return internalApiError('Retry social publication failed', error, 'Unable to retry scheduled post.'); }
     }
     if (url.pathname.startsWith('/api/social/publications/')) {
       if (request.method !== 'DELETE') return apiError('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
