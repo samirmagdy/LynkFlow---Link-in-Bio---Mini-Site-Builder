@@ -30,7 +30,8 @@ import {
   LogOut,
   Users,
   MoreHorizontal,
-  X
+  X,
+  ChevronDown
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -104,36 +105,67 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     setCurrentView('public_standalone');
   };
 
+  // Collapsible sidebar sections
+  const [collapsedSections, setCollapsedSections] = React.useState<Record<string, boolean>>({});
+
+  const toggleSection = (sectionTitle: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [sectionTitle]: !prev[sectionTitle]
+    }));
+  };
+
   return (
     <div className="studio-shell flex h-[calc(100vh-64px)] w-full overflow-hidden bg-canvas">
       {/* Left Navigation Sidebar */}
       <aside className="studio-sidebar w-56 shrink-0 border-r border-line bg-surface/40 backdrop-blur-md hidden md:flex flex-col justify-between p-3 overflow-y-auto">
-        <nav aria-label="Workspace navigation" className="space-y-4">
-          {navSections.map(section => (
-            <div key={section.title} className="space-y-1">
-              <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-subtle font-semibold">
-                {section.title}
+        <nav aria-label="Workspace navigation" className="space-y-3">
+          {navSections.map(section => {
+            const isCollapsed = Boolean(collapsedSections[section.title]);
+            const containsActive = section.items.some(item => item.id === currentView);
+            return (
+              <div key={section.title} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(section.title)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-subtle font-semibold hover:text-ink transition-colors cursor-pointer group rounded-lg"
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>{section.title}</span>
+                    {containsActive && isCollapsed && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent" title="Active item in section" />
+                    )}
+                  </span>
+                  <ChevronDown className={`w-3 h-3 text-subtle transition-transform duration-200 group-hover:text-ink ${
+                    isCollapsed ? '-rotate-90' : 'rotate-0'
+                  }`} />
+                </button>
+                {!isCollapsed && (
+                  <div className="space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                    {section.items.map(item => {
+                      const isActive = currentView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setCurrentView(item.id)}
+                          aria-current={isActive ? 'page' : undefined}
+                          className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                            isActive
+                              ? 'bg-surface-2 text-ink font-semibold shadow-xs'
+                              : 'text-muted hover:text-ink-strong hover:bg-surface-3'
+                          }`}
+                        >
+                          <span className={isActive ? 'text-accent' : 'text-muted'}>{item.icon}</span>
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              {section.items.map(item => {
-                const isActive = currentView === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setCurrentView(item.id)}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                      isActive
-                        ? 'bg-surface-2 text-ink font-semibold shadow-xs'
-                        : 'text-muted hover:text-ink-strong hover:bg-surface-3'
-                    }`}
-                  >
-                    <span className={isActive ? 'text-accent' : 'text-muted'}>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* User Card & Back Action */}
