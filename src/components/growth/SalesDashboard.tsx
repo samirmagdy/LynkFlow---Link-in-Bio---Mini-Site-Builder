@@ -7,6 +7,8 @@ const formatMoney = (amount: number, currency: string) => new Intl.NumberFormat(
 
 export const SalesDashboard: React.FC = () => {
   const { activeProfile, showToast } = useApp();
+  const profileId = activeProfile?.id;
+  const username = activeProfile?.username || 'user';
   const [orders, setOrders] = useState<ProductOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -14,10 +16,14 @@ export const SalesDashboard: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    if (!profileId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    void loadProductOrders(activeProfile.id).then(result => { if (!cancelled) { setOrders(result); setError(null); } }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load sales data.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    void loadProductOrders(profileId).then(result => { if (!cancelled) { setOrders(result); setError(null); } }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load sales data.'); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activeProfile.id]);
+  }, [profileId]);
 
   const paidOrders = useMemo(() => orders.filter(order => order.payment_status === 'paid'), [orders]);
   const physicalOrders = useMemo(() => paidOrders.filter(order => order.physical_product), [paidOrders]);
@@ -55,7 +61,7 @@ export const SalesDashboard: React.FC = () => {
   };
 
   return <div className="studio-page flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-5xl space-y-6">
-    <header><div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-accent" /><h2 className="text-lg font-bold text-ink">Sales</h2></div><p className="mt-1 text-xs text-muted">Payments and fulfillment from secure Stripe checkout on @{activeProfile.username}.</p></header>
+    <header><div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-accent" /><h2 className="text-lg font-bold text-ink">Sales</h2></div><p className="mt-1 text-xs text-muted">Payments and fulfillment from secure Stripe checkout on @{username}.</p></header>
     {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-surface p-3 text-xs text-danger"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
     <div className="grid gap-3 sm:grid-cols-4"><div className="rounded-2xl border border-line bg-surface p-4"><p className="text-[11px] text-muted">Gross sales</p><p className="mt-2 text-2xl font-bold text-ink">{formatMoney(gross, currency)}</p></div><div className="rounded-2xl border border-line bg-surface p-4"><p className="text-[11px] text-muted">Paid orders</p><p className="mt-2 text-2xl font-bold text-ink">{paidOrders.length}</p></div><div className="rounded-2xl border border-line bg-surface p-4"><p className="text-[11px] text-muted">To fulfill</p><p className="mt-2 text-2xl font-bold text-ink">{physicalOrders.filter(order => ['pending', 'processing'].includes(order.fulfillment_status || '')).length}</p></div><div className="rounded-2xl border border-line bg-surface p-4"><p className="text-[11px] text-muted">Checkout status</p><p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-success"><CheckCircle2 className="h-4 w-4" />Stripe connected</p></div></div>
     <section className="overflow-hidden rounded-2xl border border-line bg-surface"><div className="border-b border-line px-4 py-3"><h3 className="text-sm font-semibold text-ink">Recent orders and memberships</h3></div>{loading ? <div className="flex items-center justify-center gap-2 p-10 text-xs text-muted"><Loader2 className="h-4 w-4 animate-spin" />Loading sales…</div> : orders.length === 0 ? <div className="p-10 text-center"><DollarSign className="mx-auto h-8 w-8 text-subtle" /><p className="mt-3 text-sm font-semibold text-ink">No orders yet</p><p className="mt-1 text-xs text-muted">Enable secure checkout on a product or membership block to start selling.</p></div> : <div className="divide-y divide-line">{orders.map(order => <div key={order.id} className="flex flex-col gap-3 px-4 py-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium text-ink">{order.customer_name || order.customer_email || 'Customer'}</p>{order.commerce_type === 'membership' && <span className="rounded-full bg-accent-surface px-2 py-0.5 text-[10px] font-semibold text-accent">Membership</span>}{order.physical_product && <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning"><PackageCheck className="h-3 w-3" />Physical item</span>}</div><p className="text-[11px] text-muted">{new Date(order.created_at).toLocaleString()} · {order.commerce_type === 'membership' ? order.membership_status || 'pending' : order.payment_status}{order.delivery_sent_at ? ' · Delivered' : order.delivery_url ? ' · Delivery pending' : ''}</p>{order.shipping_address && <p className="mt-1 text-[11px] text-muted">Ship to: {order.shipping_name || 'Customer'} · {order.shipping_address.city || ''}{order.shipping_address.country ? `, ${order.shipping_address.country}` : ''}</p>}</div><span className="text-sm font-semibold text-ink">{formatMoney(order.amount_total, order.currency)}{order.commerce_type === 'membership' && <span className="text-[10px] font-medium text-muted"> / recurring</span>}</span></div>{order.physical_product && order.payment_status === 'paid' && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-canvas p-3"><span className="text-xs font-semibold text-body">Fulfillment: <span className="capitalize">{order.fulfillment_status || 'pending'}</span></span>{order.fulfillment_status !== 'processing' && order.fulfillment_status !== 'fulfilled' && <button type="button" disabled={busyOrder === order.id} onClick={() => void updateFulfillment(order, 'processing')} className="rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-body disabled:opacity-50">Start processing</button>}{order.fulfillment_status !== 'fulfilled' && <button type="button" disabled={busyOrder === order.id} onClick={() => handleOpenFulfillmentModal(order)} className="rounded-lg bg-accent px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50 cursor-pointer">Mark fulfilled</button>}{order.tracking_url && <a href={order.tracking_url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-accent">Tracking{order.tracking_number ? ` · ${order.tracking_number}` : ''}</a>}</div>}</div>)}</div>}</section>

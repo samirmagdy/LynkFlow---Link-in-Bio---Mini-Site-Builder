@@ -252,9 +252,19 @@ const AppContent: React.FC = () => {
         <Suspense fallback={<div className="min-h-screen bg-canvas" />}><MarketingPage onOpenAuth={handleOpenAuth} /></Suspense>
         ) : user.id === 'usr-guest' ? (
           <div className="flex min-h-[calc(100vh-64px)] flex-1 items-center justify-center bg-canvas px-6">
-            <div className="w-full max-w-sm rounded-2xl border border-line bg-surface/70 p-6 text-center shadow-sm">
+            <div className="w-full max-w-sm rounded-2xl border border-line bg-surface/70 p-6 text-center shadow-sm space-y-3">
               <p className="text-sm font-semibold text-ink">Sign in to open Studio</p>
-              <p className="mt-1 text-xs text-muted">Your studio route is ready. Sign in to continue.</p>
+              <p className="text-xs text-muted">Your studio workspace requires an active session. Sign in to access your sales, analytics, and editor.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthModalMode('login');
+                  setIsAuthModalOpen(true);
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-accent text-white font-semibold text-xs hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Sign In to LynkFlow
+              </button>
             </div>
           </div>
         ) : (
