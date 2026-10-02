@@ -66,11 +66,38 @@ export const QrCodeStudio: React.FC = () => {
   const handleDownload = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Auto-persist current configuration so download and profile state never drift
+    updateDraftProfile(prev => ({
+      ...prev,
+      qrConfig: {
+        fgColor,
+        bgColor,
+        pattern,
+        showLogo: true,
+        dynamicTargetUrl: targetUrl
+      }
+    }));
     const link = document.createElement('a');
     link.download = `qrcode_${activeProfile.username}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-    showToast('High-resolution QR code downloaded');
+    showToast('High-resolution QR code downloaded and settings saved');
+  };
+
+  const applyPreset = (presetFg: string, presetBg: string, presetPattern: 'dots' | 'square' | 'rounded') => {
+    setFgColor(presetFg);
+    setBgColor(presetBg);
+    setPattern(presetPattern);
+    updateDraftProfile(prev => ({
+      ...prev,
+      qrConfig: {
+        ...prev.qrConfig,
+        fgColor: presetFg,
+        bgColor: presetBg,
+        pattern: presetPattern
+      }
+    }));
+    showToast('Applied QR material preset');
   };
 
   const handleSimulateScan = () => {
@@ -163,6 +190,39 @@ export const QrCodeStudio: React.FC = () => {
             <h3 className="text-xs font-bold text-ink uppercase tracking-wider font-mono">
               Customizer & Retargeting
             </h3>
+          </div>
+
+          {/* Physical Material Presets */}
+          <div>
+            <label className="block text-xs font-medium text-body mb-1.5">
+              Material & Print Presets
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => applyPreset('#000000', '#ffffff', 'square')}
+                className="p-2 rounded-xl border border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas text-left cursor-pointer transition-all flex flex-col gap-1"
+              >
+                <span className="text-[11px] font-bold text-ink">Print Master</span>
+                <span className="text-[10px] text-muted">Black & White, 100% scannable</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('#6366f1', '#09090b', 'dots')}
+                className="p-2 rounded-xl border border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas text-left cursor-pointer transition-all flex flex-col gap-1"
+              >
+                <span className="text-[11px] font-bold text-ink">Digital Neon</span>
+                <span className="text-[10px] text-muted">Vibrant dots on dark canvas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('#0f172a', '#f8fafc', 'rounded')}
+                className="p-2 rounded-xl border border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas text-left cursor-pointer transition-all flex flex-col gap-1"
+              >
+                <span className="text-[11px] font-bold text-ink">Card & Packaging</span>
+                <span className="text-[10px] text-muted">Soft slate rounded corners</span>
+              </button>
+            </div>
           </div>
 
           {/* Dynamic Destination */}

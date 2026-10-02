@@ -45,27 +45,54 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { currentView, setCurrentView, user, activeProfile, setPublicViewingUsername, setPublicDemo, resendVerificationEmail, logOut } = useApp();
   const [mobileMoreOpen, setMobileMoreOpen] = React.useState(false);
 
-  const navItems = [
-    { id: 'editor' as const, label: 'Page Builder', icon: <Sliders className="w-4 h-4" /> },
-    { id: 'themes' as const, label: 'Themes & Styles', icon: <Palette className="w-4 h-4" /> },
-    { id: 'analytics' as const, label: 'Analytics', icon: <BarChart2 className="w-4 h-4" /> },
-    { id: 'forms' as const, label: 'Form Inbox', icon: <MailCheck className="w-4 h-4" /> },
-    { id: 'sales' as const, label: 'Sales', icon: <ShoppingBag className="w-4 h-4" /> },
-    { id: 'social' as const, label: 'Share & Publish', icon: <Share2 className="w-4 h-4" /> },
-    { id: 'growth' as const, label: 'Dynamic QR', icon: <QrCode className="w-4 h-4" /> },
-    { id: 'profiles' as const, label: 'All Profiles', icon: <Users className="w-4 h-4" /> },
-    { id: 'settings' as const, label: 'Custom Domain', icon: <Globe className="w-4 h-4" /> },
-    { id: 'billing' as const, label: 'Plans & Billing', icon: <CreditCard className="w-4 h-4" /> },
-    { id: 'api' as const, label: 'API & Webhooks', icon: <Terminal className="w-4 h-4" /> },
-    { id: 'support' as const, label: 'Support', icon: <LifeBuoy className="w-4 h-4" /> },
-    { id: 'admin' as const, label: 'Trust & Safety', icon: <Shield className="w-4 h-4" /> },
+  interface NavItem {
+    id: 'editor' | 'themes' | 'analytics' | 'forms' | 'sales' | 'social' | 'growth' | 'profiles' | 'settings' | 'billing' | 'api' | 'support' | 'admin';
+    label: string;
+    icon: React.ReactNode;
+  }
+
+  interface NavSection {
+    title: string;
+    items: NavItem[];
+  }
+
+  const navSections: NavSection[] = [
+    {
+      title: 'Design & Build',
+      items: [
+        { id: 'editor', label: 'Page Builder', icon: <Sliders className="w-4 h-4" /> },
+        { id: 'themes', label: 'Themes & Styles', icon: <Palette className="w-4 h-4" /> },
+      ]
+    },
+    {
+      title: 'Audience & Growth',
+      items: [
+        { id: 'analytics', label: 'Insights & Traffic', icon: <BarChart2 className="w-4 h-4" /> },
+        { id: 'forms', label: 'Inbox & Audience', icon: <MailCheck className="w-4 h-4" /> },
+        { id: 'sales', label: 'Sales & Orders', icon: <ShoppingBag className="w-4 h-4" /> },
+        { id: 'growth', label: 'Dynamic QR', icon: <QrCode className="w-4 h-4" /> },
+        { id: 'social', label: 'Social Publishing', icon: <Share2 className="w-4 h-4" /> },
+      ]
+    },
+    {
+      title: 'Workspace',
+      items: [
+        { id: 'profiles', label: 'All Profiles', icon: <Users className="w-4 h-4" /> },
+        { id: 'settings', label: 'Custom Domain', icon: <Globe className="w-4 h-4" /> },
+        { id: 'billing', label: 'Plans & Billing', icon: <CreditCard className="w-4 h-4" /> },
+        { id: 'api', label: 'API & Webhooks', icon: <Terminal className="w-4 h-4" /> },
+        { id: 'support', label: 'Support', icon: <LifeBuoy className="w-4 h-4" /> },
+        { id: 'admin', label: 'Trust & Safety', icon: <Shield className="w-4 h-4" /> },
+      ]
+    }
   ];
 
-  const mobilePrimaryItems = navItems.slice(0, 4);
-  const mobileSecondaryItems = navItems.slice(4);
+  const flatNavItems: NavItem[] = navSections.reduce<NavItem[]>((acc, s) => acc.concat(s.items), []);
+  const mobilePrimaryItems = flatNavItems.slice(0, 4);
+  const mobileSecondaryItems = flatNavItems.slice(4);
   const isSecondaryView = mobileSecondaryItems.some(item => item.id === currentView);
 
-  const handleMobileNavigation = (view: typeof navItems[number]['id']) => {
+  const handleMobileNavigation = (view: NavItem['id']) => {
     setCurrentView(view);
     setMobileMoreOpen(false);
   };
@@ -80,30 +107,33 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   return (
     <div className="studio-shell flex h-[calc(100vh-64px)] w-full overflow-hidden bg-canvas">
       {/* Left Navigation Sidebar */}
-      <aside className="studio-sidebar w-56 shrink-0 border-r border-line bg-surface/40 backdrop-blur-md hidden md:flex flex-col justify-between p-3">
-        <nav aria-label="Workspace navigation" className="space-y-1">
-          <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-subtle">
-            Workspace Hub
-          </div>
-
-          {navItems.map(item => {
-            const isActive = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setCurrentView(item.id)}
-                aria-current={isActive ? 'page' : undefined}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                  isActive
-                    ? 'bg-surface-2 text-ink font-semibold shadow-xs'
-                    : 'text-muted hover:text-ink-strong hover:bg-surface-3'
-                }`}
-              >
-                <span className={isActive ? 'text-accent' : 'text-muted'}>{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+      <aside className="studio-sidebar w-56 shrink-0 border-r border-line bg-surface/40 backdrop-blur-md hidden md:flex flex-col justify-between p-3 overflow-y-auto">
+        <nav aria-label="Workspace navigation" className="space-y-4">
+          {navSections.map(section => (
+            <div key={section.title} className="space-y-1">
+              <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-subtle font-semibold">
+                {section.title}
+              </div>
+              {section.items.map(item => {
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setCurrentView(item.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-surface-2 text-ink font-semibold shadow-xs'
+                        : 'text-muted hover:text-ink-strong hover:bg-surface-3'
+                    }`}
+                  >
+                    <span className={isActive ? 'text-accent' : 'text-muted'}>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* User Card & Back Action */}

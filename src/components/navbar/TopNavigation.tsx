@@ -14,7 +14,7 @@ interface TopNavigationProps {
 }
 
 export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
-  const { currentView, setCurrentView, activeProfile, setPublicViewingUsername, setPublicDemo, user, logOut } = useApp();
+  const { currentView, setCurrentView, activeProfile, profiles, switchActiveProfile, setPublicViewingUsername, setPublicDemo, user, logOut } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMarketing = currentView === 'marketing';
 
@@ -144,6 +144,29 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({ onOpenAuth }) => {
                   <span>Unverified</span>
                 </button>
               )}
+
+              {/* Profile Quick Switcher Dropdown */}
+              {profiles.length > 1 && (
+                <div className="relative">
+                  <select
+                    value={activeProfile.id}
+                    onChange={(e) => switchActiveProfile(e.target.value)}
+                    className="h-9 pl-2 pr-7 rounded-lg bg-surface border border-line text-xs font-mono text-ink appearance-none cursor-pointer focus:outline-none focus:border-indigo-500 shadow-xs"
+                    title="Switch active profile"
+                    aria-label="Switch active profile"
+                  >
+                    {profiles.map(p => (
+                      <option key={p.id} value={p.id}>
+                        @{p.username} {p.id === activeProfile.id ? '✓' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted">
+                    ▾
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-surface border border-line text-xs shadow-xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs" />
                 <span className="font-semibold text-ink max-w-[120px] truncate">{user.name}</span>
