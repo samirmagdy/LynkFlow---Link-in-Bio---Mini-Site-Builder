@@ -21,7 +21,14 @@ import {
   Download,
   Upload,
   Search,
-  Loader2
+  Loader2,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Sparkles,
+  X,
+  Smartphone
 } from 'lucide-react';
 import { uploadBackgroundAsset, removeBackgroundAsset, listBackgroundAssets, registerRemoteBackgroundAsset, BackgroundAsset } from '../../services/backgroundAssetService';
 import { extractImageAccentGradient } from '../../utils/imageAccent';
@@ -251,6 +258,12 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
   const [themeSearch, setThemeSearch] = useState('');
   const [themeCategory, setThemeCategory] = useState('All');
+  const [themeStyle, setThemeStyle] = useState('All');
+  const [themeBgType, setThemeBgType] = useState('All');
+  const [themeModeFilter, setThemeModeFilter] = useState('All');
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [showAllThemes, setShowAllThemes] = useState(false);
+  const [isMobilePreviewOpen, setIsMobilePreviewOpen] = useState(false);
   const [pexelsQuery, setPexelsQuery] = useState('abstract background');
   const [pexelsResults, setPexelsResults] = useState<PexelsMedia[]>([]);
   const [pexelsPage, setPexelsPage] = useState(0);
@@ -898,13 +911,52 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
   const currentStage = STUDIO_STAGES.find(stage => stage.id === activeStage) || STUDIO_STAGES[0];
   const visibleStageTabs = currentStage.tabs.filter(tab => editorMode === 'advanced' || QUICK_CUSTOMIZE_TABS.includes(tab));
   const themeCategories = ['All', ...Array.from(new Set(SPEC_THEME_PRESETS.map(theme => theme.category || 'Creator'))).sort()];
+  const RECOMMENDED_PRESET_IDS = [
+    'preset-midnight-studio',
+    'preset-nordic-clean',
+    'preset-onyx-minimal',
+    'preset-ayre-coat',
+    'preset-kd-salon',
+    'preset-grace-bakery',
+    'liinks-workithealth',
+    'preset-editorial-cream'
+  ];
+
+  const getThemeStyle = (preset: StandardTheme): string => {
+    const font = (preset.tokens.typography.displayFamily || '').toLowerCase();
+    const bgType = preset.background.type;
+    const cat = (preset.category || '').toLowerCase();
+    const isDark = (preset.tokens.colors.pageBackground || '#fff').startsWith('#0') || 
+                   (preset.tokens.colors.pageBackground || '#fff').startsWith('#1') || 
+                   (preset.tokens.colors.pageBackground || '#fff').startsWith('#2');
+    
+    if (font.includes('serif') || font.includes('fraunces') || font.includes('cormorant') || font.includes('playfair')) return 'Editorial';
+    if (isDark) return 'Dark';
+    if (bgType === 'gradient' || cat.includes('art') || cat.includes('food')) return 'Vibrant';
+    if (preset.tokens.shape.buttonRadius > 20 || cat.includes('bakery') || cat.includes('lifestyle')) return 'Playful';
+    if (cat.includes('finance') || cat.includes('professional') || cat.includes('health') || cat.includes('business')) return 'Corporate';
+    return 'Minimal';
+  };
+
+  const themeStyles = ['All', 'Minimal', 'Editorial', 'Dark', 'Vibrant', 'Playful', 'Corporate'];
+
   const normalizedThemeSearch = themeSearch.trim().toLowerCase();
   const visibleThemePresets = SPEC_THEME_PRESETS.filter(preset => {
     const category = preset.category || 'Creator';
     const matchesCategory = themeCategory === 'All' || category === themeCategory;
-    const matchesSearch = !normalizedThemeSearch || `${preset.name} ${category} ${preset.tokens.typography.displayFamily}`.toLowerCase().includes(normalizedThemeSearch);
-    return matchesCategory && matchesSearch;
+    const style = getThemeStyle(preset);
+    const matchesStyle = themeStyle === 'All' || style === themeStyle;
+    const matchesBg = themeBgType === 'All' || preset.background.type === themeBgType;
+    const isDark = (preset.tokens.colors.pageBackground || '#fff').startsWith('#0') || 
+                   (preset.tokens.colors.pageBackground || '#fff').startsWith('#1') || 
+                   (preset.tokens.colors.pageBackground || '#fff').startsWith('#2');
+    const matchesMode = themeModeFilter === 'All' || (themeModeFilter === 'dark' ? isDark : !isDark);
+    const matchesSearch = !normalizedThemeSearch || 
+      `${preset.name} ${category} ${style} ${preset.tokens.typography.displayFamily}`.toLowerCase().includes(normalizedThemeSearch);
+    return matchesCategory && matchesStyle && matchesBg && matchesMode && matchesSearch;
   });
+
+  const recommendedPresets = SPEC_THEME_PRESETS.filter(p => RECOMMENDED_PRESET_IDS.includes(p.id));
   const personaForTheme = (preset: StandardTheme): PersonaTemplate => {
     const category = (preset.category || '').toLowerCase();
     const personaId = category.includes('music') || category.includes('audio') || category.includes('entertainment')
@@ -994,19 +1046,15 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         {/* Header & Undo/Redo/Save Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-line">
           <div>
-            <h2 className="text-lg font-bold text-ink tracking-tight flex items-center gap-2">
-              <Palette className="w-5 h-5 text-accent" />
-              <span>Theme & Styling Studio</span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-accent border border-indigo-500/20">
-                v{standardTheme.schemaVersion}.0
-              </span>
-            </h2>
-          <p className="text-xs text-muted mt-0.5">
-              Live design tokens interpreted by the shared public renderer. Changes appear in the preview immediately.
+            <h1 className="text-xl sm:text-2xl font-bold text-ink tracking-tight flex items-center gap-2">
+              <span>Choose a theme</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-muted mt-1">
+              Pick a starting point. You can customize colors and fonts later.
             </p>
-            <div className="mt-3 inline-flex rounded-lg border border-line bg-canvas p-0.5" aria-label="Theme editor mode">
-              <button type="button" onClick={() => changeEditorMode('quick')} aria-pressed={editorMode === 'quick'} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold ${editorMode === 'quick' ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>Quick customize</button>
-              <button type="button" onClick={() => changeEditorMode('advanced')} aria-pressed={editorMode === 'advanced'} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold ${editorMode === 'advanced' ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>Advanced</button>
+            <div className="mt-2.5 inline-flex rounded-lg border border-line bg-canvas p-0.5" aria-label="Theme editor mode">
+              <button type="button" onClick={() => changeEditorMode('quick')} aria-pressed={editorMode === 'quick'} className={`rounded-md px-2.5 py-1 text-[11px] font-semibold ${editorMode === 'quick' ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>Quick customize</button>
+              <button type="button" onClick={() => changeEditorMode('advanced')} aria-pressed={editorMode === 'advanced'} className={`rounded-md px-2.5 py-1 text-[11px] font-semibold ${editorMode === 'advanced' ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>Advanced</button>
             </div>
           </div>
 
@@ -1186,9 +1234,9 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           </div>
         </div>
 
-        {/* Four-stage builder navigation */}
-        <div className="rounded-2xl border border-line bg-surface/90 p-2.5 shadow-xs backdrop-blur-xs">
-          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
+        {/* Streamlined stage progress & navigation */}
+        <div className="rounded-xl border border-line bg-surface/80 p-2 shadow-2xs backdrop-blur-xs">
+          <div className="flex items-center justify-between gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none" aria-label="Theme workflow steps">
             {STUDIO_STAGES.map((stage, index) => {
               const isActive = activeStage === stage.id;
               const isComplete = stageCompletion[stage.id] && !isActive;
@@ -1198,33 +1246,27 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                   type="button"
                   onClick={() => openStudioStage(stage)}
                   aria-current={isActive ? 'step' : undefined}
-                  aria-label={`${stage.label}: ${stage.description}`}
-                  className={`min-h-14 min-w-[9.5rem] flex-1 rounded-xl px-3 py-2 text-left transition-all cursor-pointer relative overflow-hidden ${
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left transition-all cursor-pointer whitespace-nowrap ${
                     isActive 
-                      ? 'bg-ink text-white shadow-sm ring-1 ring-ink/20' 
-                      : 'text-muted hover:bg-canvas hover:text-ink border border-transparent hover:border-line'
+                      ? 'bg-ink text-white font-semibold shadow-xs' 
+                      : 'text-muted hover:bg-canvas hover:text-ink'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                      isActive 
-                        ? 'bg-white/20 text-white' 
-                        : isComplete 
-                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
-                          : 'bg-canvas text-muted border border-line'
-                    }`}>
-                      {isComplete ? '✓' : index + 1}
-                    </span>
-                    <span className="text-xs font-bold truncate">{stage.label}</span>
-                  </div>
-                  <span className={`mt-1 block pl-7 text-[10px] leading-tight ${isActive ? 'text-white/70' : 'text-subtle'}`}>
-                    {stage.description}
+                  <span className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                    isActive 
+                      ? 'bg-white/25 text-white' 
+                      : isComplete 
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold' 
+                        : 'bg-canvas text-subtle border border-line'
+                  }`}>
+                    {isComplete ? '✓' : index + 1}
                   </span>
+                  <span className="text-[11px] font-medium">{stage.label}</span>
                 </button>
               );
             })}
           </div>
-          <div role="tablist" aria-label={`${currentStage.label} theme settings`} className="mt-2.5 flex items-center gap-1.5 overflow-x-auto border-t border-line/70 px-1 pt-2.5 scrollbar-none">
+          <div role="tablist" aria-label={`${currentStage.label} theme settings`} className="mt-1.5 flex items-center gap-1 overflow-x-auto border-t border-line/60 pt-1.5 scrollbar-none">
             {visibleStageTabs.map(tab => (
               <button
                 key={tab}
@@ -1232,9 +1274,9 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                 onClick={() => openStudioTab(tab)}
                 role="tab"
                 aria-selected={activeTab === tab}
-                className={`min-h-9 whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                className={`min-h-7 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
                   activeTab === tab 
-                    ? 'bg-accent text-white shadow-xs' 
+                    ? 'bg-accent text-white font-semibold shadow-xs' 
                     : 'text-muted hover:bg-canvas hover:text-ink'
                 }`}
               >
@@ -1285,83 +1327,403 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
         {activeTab === 'presets' && (
           <div className="space-y-6">
             <div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                <div>
-                  <div className="text-xs font-semibold text-muted uppercase tracking-wider font-mono">
-                    Specification Curated Presets ({SPEC_THEME_PRESETS.length})
-                  </div>
-                  <p className="text-[11px] text-muted mt-0.5">Finished visual directions, tested for contrast and responsive preview. Choose a look first; customize details later.</p>
-                </div>
-              </div>
-              <div className="mb-4 flex flex-col gap-2 rounded-xl border border-line bg-surface p-2.5 sm:flex-row sm:items-center">
-                <label className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" aria-hidden="true" />
-                  <span className="sr-only">Search themes</span>
-                  <input value={themeSearch} onChange={event => setThemeSearch(event.target.value)} placeholder="Search by style, category, or font" className="h-9 w-full rounded-lg border border-line bg-canvas pl-9 pr-3 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
-                </label>
-                <div className="flex min-w-0 gap-1.5 overflow-x-auto pb-0.5" role="tablist" aria-label="Theme categories">
-                  {themeCategories.map(category => (
-                    <button key={category} type="button" role="tab" aria-selected={themeCategory === category} onClick={() => setThemeCategory(category)} className={`min-h-9 shrink-0 rounded-lg px-2.5 text-[11px] font-semibold transition-colors cursor-pointer ${themeCategory === category ? 'bg-ink text-white' : 'bg-canvas text-muted hover:text-ink'}`}>
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {visibleThemePresets.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-line-strong bg-surface p-8 text-center">
-                  <p className="text-sm font-semibold text-ink">No themes match that search.</p>
-                  <button type="button" onClick={() => { setThemeSearch(''); setThemeCategory('All'); }} className="mt-2 text-xs font-semibold text-accent hover:underline cursor-pointer">Clear filters</button>
-                </div>
-              ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {visibleThemePresets.map((preset) => {
-                  const isSelected = standardTheme.presetId === preset.presetId || standardTheme.id === preset.id;
-                  return (
-                    <div
-                      key={preset.id}
-                      className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden group flex flex-col justify-between ${
-                        isSelected 
-                          ? 'border-accent ring-2 ring-accent/20 bg-surface shadow-md' 
-                          : 'border-line bg-surface/70 hover:border-line-strong hover:bg-surface hover:shadow-xs'
+              {/* Compact Filters Bar */}
+              <div className="mb-4 rounded-xl border border-line bg-surface p-2 sm:p-2.5 space-y-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  {/* Search */}
+                  <label className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" aria-hidden="true" />
+                    <span className="sr-only">Search themes</span>
+                    <input 
+                      value={themeSearch} 
+                      onChange={event => setThemeSearch(event.target.value)} 
+                      placeholder="Search themes, styles, fonts..." 
+                      className="h-9 w-full rounded-lg border border-line bg-canvas pl-9 pr-3 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" 
+                    />
+                  </label>
+
+                  {/* Category Selector */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <label htmlFor="theme-category-select" className="sr-only">Category</label>
+                    <select
+                      id="theme-category-select"
+                      value={themeCategory}
+                      onChange={e => setThemeCategory(e.target.value)}
+                      className="h-9 rounded-lg border border-line bg-canvas px-2.5 text-xs text-ink outline-none focus:border-accent font-medium cursor-pointer"
+                    >
+                      {themeCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat === 'All' ? 'All Categories' : cat}</option>
+                      ))}
+                    </select>
+
+                    {/* Style Selector */}
+                    <label htmlFor="theme-style-select" className="sr-only">Style</label>
+                    <select
+                      id="theme-style-select"
+                      value={themeStyle}
+                      onChange={e => setThemeStyle(e.target.value)}
+                      className="h-9 rounded-lg border border-line bg-canvas px-2.5 text-xs text-ink outline-none focus:border-accent font-medium cursor-pointer"
+                    >
+                      {themeStyles.map(st => (
+                        <option key={st} value={st}>{st === 'All' ? 'All Styles' : `${st} Style`}</option>
+                      ))}
+                    </select>
+
+                    {/* More Filters Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreFilters(v => !v)}
+                      aria-expanded={showMoreFilters}
+                      className={`h-9 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                        showMoreFilters || themeBgType !== 'All' || themeModeFilter !== 'All'
+                          ? 'border-accent/40 bg-accent/10 text-accent'
+                          : 'border-line bg-canvas text-muted hover:text-ink'
                       }`}
                     >
-                      <div>
-                        <div className="relative overflow-hidden rounded-xl">
-                          <ThemePreviewCard theme={preset} profile={activeProfile} />
-                          {isSelected && (
-                            <span className="absolute top-2 right-2 rounded-full bg-accent px-2 py-0.5 text-[9px] font-bold text-white shadow-xs">
-                              Active
-                            </span>
-                          )}
-                        </div>
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">More filters</span>
+                      {showMoreFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
 
-                        <div className="mt-3 flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-ink truncate flex items-center gap-1.5">
-                              <span>{preset.name}</span>
-                              <span className="text-[9px] font-mono text-muted/80">({preset.tokens.typography.displayFamily.split(',')[0]})</span>
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              <span className="rounded-md bg-canvas border border-line px-1.5 py-0.5 text-[9px] font-semibold text-ink">{preset.category || 'Creator'}</span>
-                              <span className="rounded-md bg-canvas px-1.5 py-0.5 text-[9px] text-muted capitalize">{preset.mode || 'system'}</span>
-                              <span className="rounded-md bg-canvas px-1.5 py-0.5 text-[9px] text-muted capitalize">{preset.background.type}</span>
-                              {preset.supportsRTL !== false && <span className="rounded-md bg-indigo-500/10 text-accent px-1.5 py-0.5 text-[9px] font-medium">RTL</span>}
-                            </div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />}
-                        </div>
-                      </div>
-
-                      <div className="mt-3.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3 pt-2.5 border-t border-line/60">
-                        <button type="button" onClick={() => previewPreset(preset)} className="min-h-9 rounded-lg border border-line px-2 py-1.5 text-[11px] font-semibold text-muted hover:bg-canvas hover:text-ink cursor-pointer transition-colors">Preview</button>
-                        <button type="button" onClick={() => applyMarketplaceTheme(preset)} className="min-h-9 rounded-lg bg-ink px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-ink/85 cursor-pointer transition-colors sm:col-span-2">Use this theme</button>
-                        {editorMode === 'quick' && <button type="button" onClick={() => applyPersonaTemplate(personaForTheme(preset), preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors sm:col-span-3">Use with starter content</button>}
-                        {editorMode === 'advanced' && <button type="button" onClick={() => applyLayoutOnly(preset)} className="min-h-9 rounded-lg border border-accent/40 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/20 cursor-pointer transition-colors sm:col-span-3">Apply layout only</button>}
+                {/* More Filters Expansion Panel */}
+                {showMoreFilters && (
+                  <div className="pt-2 border-t border-line/60 flex flex-wrap items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted text-[11px] font-medium">Appearance:</span>
+                      <div className="inline-flex rounded-md border border-line bg-canvas p-0.5" role="radiogroup">
+                        {(['All', 'light', 'dark'] as const).map(mode => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setThemeModeFilter(mode)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium capitalize cursor-pointer ${
+                              themeModeFilter === mode ? 'bg-surface text-ink shadow-2xs font-semibold' : 'text-muted hover:text-ink'
+                            }`}
+                          >
+                            {mode}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted text-[11px] font-medium">Background:</span>
+                      <div className="inline-flex rounded-md border border-line bg-canvas p-0.5" role="radiogroup">
+                        {(['All', 'solid', 'gradient', 'image'] as const).map(bg => (
+                          <button
+                            key={bg}
+                            type="button"
+                            onClick={() => setThemeBgType(bg)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium capitalize cursor-pointer ${
+                              themeBgType === bg ? 'bg-surface text-ink shadow-2xs font-semibold' : 'text-muted hover:text-ink'
+                            }`}
+                          >
+                            {bg}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {(themeSearch || themeCategory !== 'All' || themeStyle !== 'All' || themeBgType !== 'All' || themeModeFilter !== 'All') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setThemeSearch('');
+                          setThemeCategory('All');
+                          setThemeStyle('All');
+                          setThemeBgType('All');
+                          setThemeModeFilter('All');
+                        }}
+                        className="text-xs text-accent hover:underline font-semibold ml-auto cursor-pointer"
+                      >
+                        Reset filters
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {visibleThemePresets.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-line-strong bg-surface p-8 text-center">
+                  <p className="text-sm font-semibold text-ink">No themes match that search or filter combination.</p>
+                  <button 
+                    type="button" 
+                    onClick={() => { 
+                      setThemeSearch(''); 
+                      setThemeCategory('All');
+                      setThemeStyle('All');
+                      setThemeBgType('All');
+                      setThemeModeFilter('All');
+                    }} 
+                    className="mt-2 text-xs font-semibold text-accent hover:underline cursor-pointer"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Recommended Section (Shown when no search query is typed) */}
+                  {!themeSearch.trim() && themeCategory === 'All' && themeStyle === 'All' && themeBgType === 'All' && themeModeFilter === 'All' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-accent" />
+                          <h2 className="text-xs font-bold text-ink uppercase tracking-wider">
+                            Recommended Starting Themes
+                          </h2>
+                        </div>
+                        <span className="text-[11px] text-muted">
+                          Curated for contrast &amp; conversion
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {recommendedPresets.slice(0, 6).map((preset) => {
+                          const isApplied = standardTheme.presetId === preset.presetId || standardTheme.id === preset.id;
+                          const isPreviewing = previewTheme?.presetId === preset.presetId || previewTheme?.id === preset.id;
+                          const style = getThemeStyle(preset);
+                          return (
+                            <div
+                              key={preset.id}
+                              className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden group flex flex-col justify-between ${
+                                isPreviewing
+                                  ? 'border-indigo-500 ring-2 ring-indigo-500/30 bg-surface shadow-md'
+                                  : isApplied 
+                                    ? 'border-accent ring-2 ring-accent/20 bg-surface shadow-md' 
+                                    : 'border-line bg-surface/70 hover:border-line-strong hover:bg-surface hover:shadow-xs'
+                              }`}
+                            >
+                              <div>
+                                <div 
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => previewPreset(preset)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); previewPreset(preset); } }}
+                                  aria-label={`Preview ${preset.name} theme in full device mockup`}
+                                  className="relative overflow-hidden rounded-xl cursor-pointer group/preview focus:outline-none focus:ring-2 focus:ring-accent"
+                                >
+                                  <ThemePreviewCard theme={preset} profile={activeProfile} />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white font-semibold text-xs backdrop-blur-2xs">
+                                    <Eye className="w-4 h-4" />
+                                    <span>Preview theme</span>
+                                  </div>
+                                  {isApplied && (
+                                    <span className="absolute top-2 right-2 rounded-full bg-accent px-2 py-0.5 text-[9px] font-bold text-white shadow-xs">
+                                      Applied
+                                    </span>
+                                  )}
+                                  {isPreviewing && !isApplied && (
+                                    <span className="absolute top-2 right-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold text-white shadow-xs animate-pulse">
+                                      Previewing
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-3 flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold text-ink truncate flex items-center gap-1.5">
+                                      <span>{preset.name}</span>
+                                      <span className="text-[10px] text-muted font-medium">· {style}</span>
+                                    </div>
+                                    <p className="mt-0.5 text-[10px] text-muted truncate">
+                                      {preset.tokens.typography.displayFamily.split(',')[0]} · {preset.category || 'Creator'}
+                                    </p>
+                                  </div>
+                                  {isApplied && <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />}
+                                </div>
+                              </div>
+
+                              <div className="mt-3.5 pt-2.5 border-t border-line/60 flex items-center gap-2">
+                                <button 
+                                  type="button" 
+                                  onClick={() => applyMarketplaceTheme(preset)} 
+                                  className={`min-h-9 flex-1 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                                    isApplied 
+                                      ? 'bg-accent/15 text-accent border border-accent/30' 
+                                      : 'bg-ink text-white hover:bg-ink/85'
+                                  }`}
+                                >
+                                  {isApplied ? 'Active theme' : 'Use theme'}
+                                </button>
+                                
+                                <div className="relative group/actions">
+                                  <button
+                                    type="button"
+                                    aria-label="More options for this theme"
+                                    className="min-h-9 w-9 rounded-xl border border-line bg-canvas flex items-center justify-center text-muted hover:text-ink hover:bg-surface transition-colors cursor-pointer"
+                                  >
+                                    <MoreHorizontal className="w-4 h-4" />
+                                  </button>
+                                  <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover/actions:flex flex-col w-48 rounded-xl border border-line bg-surface p-1 shadow-xl z-20">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => previewPreset(preset)}
+                                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-canvas rounded-lg cursor-pointer"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-muted" /> Preview in device
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => applyPersonaTemplate(personaForTheme(preset), preset)}
+                                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-canvas rounded-lg cursor-pointer"
+                                    >
+                                      <Sparkles className="w-3.5 h-3.5 text-accent" /> Use with starter copy
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => applyLayoutOnly(preset)}
+                                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-canvas rounded-lg cursor-pointer"
+                                    >
+                                      <Palette className="w-3.5 h-3.5 text-muted" /> Apply layout only
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* All Themes / Browsable Catalog Section */}
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                      <div>
+                        <h2 className="text-xs font-bold text-ink uppercase tracking-wider">
+                          {themeSearch.trim() || themeCategory !== 'All' || themeStyle !== 'All' || themeBgType !== 'All' || themeModeFilter !== 'All'
+                            ? `Matching Themes (${visibleThemePresets.length})`
+                            : `Full Theme Library (${visibleThemePresets.length})`}
+                        </h2>
+                        <p className="text-[11px] text-muted">
+                          Every theme is tested for WCAG contrast and works on all device viewports.
+                        </p>
+                      </div>
+
+                      {!themeSearch.trim() && themeCategory === 'All' && themeStyle === 'All' && themeBgType === 'All' && themeModeFilter === 'All' && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllThemes(v => !v)}
+                          className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-2 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <span>{showAllThemes ? 'Show fewer' : `Browse all ${visibleThemePresets.length} themes`}</span>
+                          {showAllThemes ? <ChevronUp className="w-3.5 h-3.5 text-muted" /> : <ChevronDown className="w-3.5 h-3.5 text-muted" />}
+                        </button>
+                      )}
+                    </div>
+
+                    {(showAllThemes || themeSearch.trim() || themeCategory !== 'All' || themeStyle !== 'All' || themeBgType !== 'All' || themeModeFilter !== 'All') && (
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {visibleThemePresets.map((preset) => {
+                          const isApplied = standardTheme.presetId === preset.presetId || standardTheme.id === preset.id;
+                          const isPreviewing = previewTheme?.presetId === preset.presetId || previewTheme?.id === preset.id;
+                          const style = getThemeStyle(preset);
+                          return (
+                            <div
+                              key={preset.id}
+                              className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden group flex flex-col justify-between ${
+                                isPreviewing
+                                  ? 'border-indigo-500 ring-2 ring-indigo-500/30 bg-surface shadow-md'
+                                  : isApplied 
+                                    ? 'border-accent ring-2 ring-accent/20 bg-surface shadow-md' 
+                                    : 'border-line bg-surface/70 hover:border-line-strong hover:bg-surface hover:shadow-xs'
+                              }`}
+                            >
+                              <div>
+                                <div 
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => previewPreset(preset)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); previewPreset(preset); } }}
+                                  aria-label={`Preview ${preset.name} theme in full device mockup`}
+                                  className="relative overflow-hidden rounded-xl cursor-pointer group/preview focus:outline-none focus:ring-2 focus:ring-accent"
+                                >
+                                  <ThemePreviewCard theme={preset} profile={activeProfile} />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white font-semibold text-xs backdrop-blur-2xs">
+                                    <Eye className="w-4 h-4" />
+                                    <span>Preview theme</span>
+                                  </div>
+                                  {isApplied && (
+                                    <span className="absolute top-2 right-2 rounded-full bg-accent px-2 py-0.5 text-[9px] font-bold text-white shadow-xs">
+                                      Applied
+                                    </span>
+                                  )}
+                                  {isPreviewing && !isApplied && (
+                                    <span className="absolute top-2 right-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold text-white shadow-xs animate-pulse">
+                                      Previewing
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-3 flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold text-ink truncate flex items-center gap-1.5">
+                                      <span>{preset.name}</span>
+                                      <span className="text-[10px] text-muted font-medium">· {style}</span>
+                                    </div>
+                                    <p className="mt-0.5 text-[10px] text-muted truncate">
+                                      {preset.tokens.typography.displayFamily.split(',')[0]} · {preset.category || 'Creator'}
+                                    </p>
+                                  </div>
+                                  {isApplied && <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />}
+                                </div>
+                              </div>
+
+                              <div className="mt-3.5 pt-2.5 border-t border-line/60 flex items-center gap-2">
+                                <button 
+                                  type="button" 
+                                  onClick={() => applyMarketplaceTheme(preset)} 
+                                  className={`min-h-9 flex-1 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                                    isApplied 
+                                      ? 'bg-accent/15 text-accent border border-accent/30' 
+                                      : 'bg-ink text-white hover:bg-ink/85'
+                                  }`}
+                                >
+                                  {isApplied ? 'Active theme' : 'Use theme'}
+                                </button>
+                                
+                                <div className="relative group/actions">
+                                  <button
+                                    type="button"
+                                    aria-label="More options for this theme"
+                                    className="min-h-9 w-9 rounded-xl border border-line bg-canvas flex items-center justify-center text-muted hover:text-ink hover:bg-surface transition-colors cursor-pointer"
+                                  >
+                                    <MoreHorizontal className="w-4 h-4" />
+                                  </button>
+                                  <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover/actions:flex flex-col w-48 rounded-xl border border-line bg-surface p-1 shadow-xl z-20">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => previewPreset(preset)}
+                                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-canvas rounded-lg cursor-pointer"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-muted" /> Preview in device
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => applyPersonaTemplate(personaForTheme(preset), preset)}
+                                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-canvas rounded-lg cursor-pointer"
+                                    >
+                                      <Sparkles className="w-3.5 h-3.5 text-accent" /> Use with starter copy
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => applyLayoutOnly(preset)}
+                                      className="flex items-center gap-2 w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-canvas rounded-lg cursor-pointer"
+                                    >
+                                      <Palette className="w-3.5 h-3.5 text-muted" /> Apply layout only
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -2827,58 +3189,184 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
           onClose={() => setIsPublishOpen(false)}
         />
 
-        <div className="sticky bottom-2 z-30 flex items-center justify-between gap-3 rounded-2xl border border-line-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur min-[900px]:hidden">
-          <span className="min-w-0 truncate text-[11px] font-medium text-muted" role="status">
-            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'offline' ? 'Offline changes pending' : saveStatus === 'error' ? 'Save failed — retry above' : saveStatus === 'conflict' ? 'Conflict detected' : hasUnpublishedChanges ? `Draft ready to publish · ${savedRecency.toLowerCase()}` : savedRecency}
-          </span>
-          <button type="button" onClick={() => setIsPublishOpen(true)} disabled={!hasUnpublishedChanges || !a11y.canPublish} className="shrink-0 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Publish</button>
+        {/* Mobile floating bar for instant theme preview */}
+        <div className="sticky bottom-2 z-30 flex items-center justify-between gap-2 rounded-2xl border border-line-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur min-[900px]:hidden">
+          <button
+            type="button"
+            onClick={() => setIsMobilePreviewOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-2 transition-colors cursor-pointer"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-accent" />
+            <span>Preview in phone</span>
+            {previewTheme && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+          </button>
+          
+          {previewTheme ? (
+            <button
+              type="button"
+              onClick={() => {
+                applyMarketplaceTheme(previewTheme);
+                setPreviewTheme(null);
+              }}
+              className="shrink-0 rounded-xl bg-ink px-3 py-1.5 text-xs font-bold text-white hover:bg-ink/85 transition-colors cursor-pointer shadow-xs"
+            >
+              Use {previewTheme.name}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsPublishOpen(true)}
+              disabled={!hasUnpublishedChanges || !a11y.canPublish}
+              className="shrink-0 rounded-xl bg-accent px-3.5 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 shadow-xs"
+            >
+              Publish
+            </button>
+          )}
         </div>
 
       </div>
 
       {/* Right Column: Live Phone Mockup Preview */}
-      <div className="order-1 min-[900px]:order-2 flex min-w-0 w-full min-[900px]:w-[42%] xl:w-[40%] h-[min(58vh,520px)] min-[900px]:h-full shrink-0 border-b min-[900px]:border-b-0 min-[900px]:border-l border-line bg-canvas/40 p-3 sm:p-4 xl:p-6 items-center justify-center overflow-hidden">
-        {showComparison ? (
-          <div className="flex h-full w-full min-w-0 flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-ink">Comparison controls</p>
-                <p className="text-[10px] text-muted">Review the same draft and published snapshot at one viewport and locale.</p>
+      <div className="order-1 min-[900px]:order-2 hidden min-[900px]:flex min-w-0 w-full min-[900px]:w-[42%] xl:w-[40%] h-full shrink-0 border-b min-[900px]:border-b-0 min-[900px]:border-l border-line bg-canvas/40 p-3 sm:p-4 xl:p-6 flex-col items-center justify-between overflow-hidden">
+        {/* Sticky Preview Header / Theme Status Bar */}
+        <div className="w-full max-w-[340px] mb-3 flex items-center justify-between gap-2 rounded-xl border border-line bg-surface/95 px-3 py-2 shadow-xs backdrop-blur-xs">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted block">
+              {previewTheme ? 'Previewing Theme' : 'Current Draft'}
+            </span>
+            <span className="text-xs font-bold text-ink truncate block">
+              {previewTheme ? previewTheme.name : standardTheme.name}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {previewTheme ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTheme(null)}
+                  className="rounded-lg border border-line px-2 py-1 text-[11px] font-medium text-muted hover:text-ink hover:bg-canvas cursor-pointer transition-colors"
+                >
+                  Exit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    applyMarketplaceTheme(previewTheme);
+                    setPreviewTheme(null);
+                  }}
+                  className="rounded-lg bg-ink px-3 py-1 text-[11px] font-bold text-white hover:bg-ink/85 cursor-pointer transition-colors shadow-xs"
+                >
+                  Use this theme
+                </button>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <Check className="w-3 h-3" />
+                <span>Applied</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Mockup Canvas */}
+        <div className="flex-1 w-full min-h-0 flex items-center justify-center">
+          {showComparison ? (
+            <div className="flex h-full w-full min-w-0 flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ink">Comparison controls</p>
+                  <p className="text-[10px] text-muted">Review the same draft and published snapshot at one viewport and locale.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center rounded-md border border-line-strong bg-canvas p-0.5" aria-label="Comparison source">
+                    <button type="button" onClick={() => setComparisonSnapshot(null)} aria-pressed={!comparisonSnapshot} className={`rounded px-2 py-1 text-[10px] font-semibold ${!comparisonSnapshot ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}>Published</button>
+                    {comparisonSnapshot && <span className="rounded px-2 py-1 text-[10px] font-semibold text-accent">v{comparisonSnapshot.version} {comparisonSnapshot.versionName || 'Release'}</span>}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[10px] font-semibold text-muted">
+                    <span className="sr-only">Comparison viewport</span>
+                    <select value={comparisonDevice} onChange={event => setComparisonDevice(event.target.value as typeof comparisonDevice)} className="rounded-md border border-line-strong bg-canvas px-2 py-1.5 text-[10px] text-ink outline-none">
+                      <option value="mobile-small">Small mobile</option>
+                      <option value="mobile">Mobile</option>
+                      <option value="tablet">Tablet</option>
+                      <option value="desktop">Desktop</option>
+                      <option value="wide">Wide desktop</option>
+                    </select>
+                  </label>
+                  <div className="flex items-center rounded-md border border-line-strong bg-canvas p-0.5" aria-label="Comparison language">
+                    {(['en', 'ar'] as const).map(locale => <button key={locale} type="button" onClick={() => setComparisonLocale(locale)} aria-pressed={comparisonLocale === locale} className={`rounded px-2 py-1 text-[10px] font-semibold uppercase ${comparisonLocale === locale ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}>{locale}</button>)}
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center rounded-md border border-line-strong bg-canvas p-0.5" aria-label="Comparison source">
-                  <button type="button" onClick={() => setComparisonSnapshot(null)} aria-pressed={!comparisonSnapshot} className={`rounded px-2 py-1 text-[10px] font-semibold ${!comparisonSnapshot ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}>Published</button>
-                  {comparisonSnapshot && <span className="rounded px-2 py-1 text-[10px] font-semibold text-accent">v{comparisonSnapshot.version} {comparisonSnapshot.versionName || 'Release'}</span>}
-                </div>
-                <label className="flex items-center gap-1.5 text-[10px] font-semibold text-muted">
-                  <span className="sr-only">Comparison viewport</span>
-                  <select value={comparisonDevice} onChange={event => setComparisonDevice(event.target.value as typeof comparisonDevice)} className="rounded-md border border-line-strong bg-canvas px-2 py-1.5 text-[10px] text-ink outline-none">
-                    <option value="mobile-small">Small mobile</option>
-                    <option value="mobile">Mobile</option>
-                    <option value="tablet">Tablet</option>
-                    <option value="desktop">Desktop</option>
-                    <option value="wide">Wide desktop</option>
-                  </select>
-                </label>
-                <div className="flex items-center rounded-md border border-line-strong bg-canvas p-0.5" aria-label="Comparison language">
-                  {(['en', 'ar'] as const).map(locale => <button key={locale} type="button" onClick={() => setComparisonLocale(locale)} aria-pressed={comparisonLocale === locale} className={`rounded px-2 py-1 text-[10px] font-semibold uppercase ${comparisonLocale === locale ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}>{locale}</button>)}
-                </div>
+              <div className="grid min-h-0 flex-1 w-full min-w-0 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-2">
+                <div className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-warning/30 bg-warning/5 p-2"><div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-warning">Current draft</div><PhoneMockup hideControls previewSourceOverride="draft" previewDeviceOverride={comparisonDevice} previewLocaleOverride={comparisonLocale} onOpenReportModal={onOpenReportModal} profileOverride={previewTheme ? { ...activeProfile, standardTheme: previewTheme } : undefined} /></div>
+                <div className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-success/30 bg-success/5 p-2"><div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-success">{comparisonSnapshot ? `Before · v${comparisonSnapshot.version} ${comparisonSnapshot.versionName || 'Release'}` : 'Published version'}</div><PhoneMockup hideControls previewSourceOverride={comparisonSnapshot ? 'draft' : 'published'} previewDeviceOverride={comparisonDevice} previewLocaleOverride={comparisonLocale} onOpenReportModal={onOpenReportModal} profileOverride={comparisonSnapshot ? { ...activeProfile, standardTheme: comparisonSnapshot.theme } : undefined} /></div>
               </div>
             </div>
-            <div className="grid min-h-0 flex-1 w-full min-w-0 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-2">
-              <div className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-warning/30 bg-warning/5 p-2"><div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-warning">Current draft</div><PhoneMockup hideControls previewSourceOverride="draft" previewDeviceOverride={comparisonDevice} previewLocaleOverride={comparisonLocale} onOpenReportModal={onOpenReportModal} profileOverride={previewTheme ? { ...activeProfile, standardTheme: previewTheme } : undefined} /></div>
-              <div className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-success/30 bg-success/5 p-2"><div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-success">{comparisonSnapshot ? `Before · v${comparisonSnapshot.version} ${comparisonSnapshot.versionName || 'Release'}` : 'Published version'}</div><PhoneMockup hideControls previewSourceOverride={comparisonSnapshot ? 'draft' : 'published'} previewDeviceOverride={comparisonDevice} previewLocaleOverride={comparisonLocale} onOpenReportModal={onOpenReportModal} profileOverride={comparisonSnapshot ? { ...activeProfile, standardTheme: comparisonSnapshot.theme } : undefined} /></div>
+          ) : (
+            <PhoneMockup
+              onOpenReportModal={onOpenReportModal}
+              profileOverride={previewTheme ? { ...activeProfile, standardTheme: previewTheme } : undefined}
+              onBackgroundChange={(patch) => {
+                if (patch.focalPoint) handleUpdateBackground('focalPoint', patch.focalPoint);
+                if (patch.scale !== undefined) handleUpdateBackground('scale', patch.scale);
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Fullscreen/Drawer Preview Modal */}
+      {isMobilePreviewOpen && (
+        <Dialog
+          open={isMobilePreviewOpen}
+          onClose={() => setIsMobilePreviewOpen(false)}
+          labelledBy="mobile-preview-title"
+          className="max-w-md w-full bg-surface rounded-2xl border border-line p-4 shadow-2xl"
+        >
+          <div className="flex flex-col items-center justify-center max-h-[85vh] overflow-y-auto">
+            <div className="w-full flex items-center justify-between mb-3 pb-2 border-b border-line">
+              <div>
+                <h3 id="mobile-preview-title" className="text-sm font-bold text-ink">
+                  {previewTheme ? `Preview: ${previewTheme.name}` : `Preview: ${standardTheme.name}`}
+                </h3>
+                <span className="text-[11px] text-muted">
+                  {previewTheme ? 'Previewing temporary theme' : 'Current draft theme'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {previewTheme && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyMarketplaceTheme(previewTheme);
+                      setPreviewTheme(null);
+                      setIsMobilePreviewOpen(false);
+                    }}
+                    className="rounded-lg bg-ink px-3 py-1.5 text-xs font-bold text-white hover:bg-ink/85 cursor-pointer shadow-xs"
+                  >
+                    Use theme
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsMobilePreviewOpen(false)}
+                  className="rounded-lg border border-line p-1.5 text-muted hover:text-ink cursor-pointer"
+                  aria-label="Close preview modal"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="h-[520px] w-full flex items-center justify-center">
+              <PhoneMockup
+                onOpenReportModal={onOpenReportModal}
+                profileOverride={previewTheme ? { ...activeProfile, standardTheme: previewTheme } : undefined}
+              />
             </div>
           </div>
-        ) : <PhoneMockup
-          onOpenReportModal={onOpenReportModal}
-          profileOverride={previewTheme ? { ...activeProfile, standardTheme: previewTheme } : undefined}
-          onBackgroundChange={(patch) => {
-            if (patch.focalPoint) handleUpdateBackground('focalPoint', patch.focalPoint);
-            if (patch.scale !== undefined) handleUpdateBackground('scale', patch.scale);
-          }}
-        />}
-      </div>
+        </Dialog>
+      )}
     </div>
   );
 };
