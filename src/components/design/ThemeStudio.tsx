@@ -1437,8 +1437,19 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                     key={palette.name}
                     type="button"
                     onClick={() => {
-                      handleUpdateColor('accent', palette.accent);
-                      handleUpdateColor('accentText', palette.text);
+                      updateStandardTheme(prev => ({
+                        ...prev,
+                        tokens: {
+                          ...prev.tokens,
+                          colors: {
+                            ...prev.tokens.colors,
+                            accent: palette.accent,
+                            accentText: palette.text,
+                            accentPrimary: palette.accent,
+                            ctaText: palette.text
+                          }
+                        }
+                      }));
                     }}
                     className="p-2.5 rounded-xl border border-line bg-canvas/70 hover:border-line-strong hover:bg-canvas text-left cursor-pointer transition-all flex items-center gap-2.5"
                   >
@@ -1512,8 +1523,13 @@ export const ThemeStudio: React.FC<ThemeStudioProps> = ({ onOpenReportModal }) =
                     onChange={(e) => handleUpdateColor('primaryText', e.target.value)}
                     className="w-28 px-2 py-1 text-xs rounded bg-canvas border border-line text-ink font-mono"
                   />
-                  <span className="text-[11px] font-mono text-muted">
+                  <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                    calculateContrastRatio(standardTheme.tokens.colors.primaryText, standardTheme.tokens.colors.pageBackground) >= 4.5
+                      ? 'bg-emerald-500/10 text-emerald-500 font-medium'
+                      : 'bg-rose-500/10 text-rose-500 font-bold'
+                  }`} title={calculateContrastRatio(standardTheme.tokens.colors.primaryText, standardTheme.tokens.colors.pageBackground) >= 4.5 ? 'Meets WCAG AA (>= 4.5:1)' : 'Fails WCAG AA (< 4.5:1)'}>
                     {calculateContrastRatio(standardTheme.tokens.colors.primaryText, standardTheme.tokens.colors.pageBackground)}:1
+                    {calculateContrastRatio(standardTheme.tokens.colors.primaryText, standardTheme.tokens.colors.pageBackground) < 4.5 && ' ⚠️'}
                   </span>
                 </div>
               </div>

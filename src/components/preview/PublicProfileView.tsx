@@ -456,16 +456,6 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       dir={direction}
       style={{ ...bgStyle, textAlign: layout.alignment, paddingBottom: isStandalone && !cookieConsentDismissed ? '14rem' : '2.5rem' }}
     >
-      {/* Background Overlay layer if configured */}
-      {(standardTheme.background.overlay ?? 0) > 0 && (
-        <div 
-          className="absolute inset-0 pointer-events-none z-0" 
-          style={{ 
-            backgroundColor: standardTheme.background.overlayColor || '#000000',
-            opacity: standardTheme.background.overlay 
-          }} 
-        />
-      )}
       {bgType === 'video' && standardTheme.background.assetUrl && !(prefersReducedMotion && standardTheme.background.reducedMotionFallback === 'solid') && (
         <video
           className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
@@ -481,6 +471,16 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         >
           {standardTheme.background.mobileAssetUrl && <source media="(max-width: 639px)" src={standardTheme.background.mobileAssetUrl} />}
         </video>
+      )}
+      {/* Background Overlay layer if configured */}
+      {(standardTheme.background.overlay ?? 0) > 0 && (
+        <div 
+          className="absolute inset-0 pointer-events-none z-[1]" 
+          style={{ 
+            backgroundColor: standardTheme.background.overlayColor || '#000000',
+            opacity: standardTheme.background.overlay 
+          }} 
+        />
       )}
       {/* Standalone Top Floating Control Bar */}
       {isStandalone && (
